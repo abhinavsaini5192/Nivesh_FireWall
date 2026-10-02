@@ -7,6 +7,7 @@ Distinguishes:
 - AUTHORITY_IDENTITY_MISMATCH: Registration conflicts with official registry records or impersonates authority
 """
 
+import re
 from typing import Optional, Any
 from nivesh.schemas.normalized import NormalizedContent
 from nivesh.schemas.claims import ClaimAnalysis
@@ -64,7 +65,7 @@ class AuthorityResolver:
         # Check content text for authority mentions
         norm_text = content.normalized.text.lower()
         for auth_key, auth_canon in cls.RECOGNIZED_AUTHORITIES.items():
-            if auth_key in norm_text:
+            if re.search(r"\b" + re.escape(auth_key) + r"\b", norm_text):
                 referenced_authorities.add(auth_canon)
 
         if not referenced_authorities:

@@ -6,7 +6,10 @@ Provides:
 """
 
 from typing import Optional
+from urllib.parse import urlparse
+import base64
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -23,6 +26,16 @@ from nivesh.identity.engine import IdentityVerificationEngine
 from nivesh.identity.schemas import IdentityAnalysis, ClaimedEntity
 from nivesh.behaviour.engine import BehaviouralSignalEngine
 from nivesh.behaviour.schemas import BehaviouralAnalysis
+from nivesh.orchestrator.service import (
+    ProductOrchestrator,
+    format_firewall_response,
+    sanitize_sensitive_data,
+)
+from nivesh.schemas.firewall import (
+    FirewallAnalyzeRequest,
+    FirewallAnalysisResponse,
+    FirewallApiError,
+)
 from nivesh.behaviour.event_model import InteractionEvent, InteractionHistory
 from nivesh.schemas.input import ContentInput, ChannelType
 from nivesh.schemas.normalized import NormalizedContent
@@ -124,6 +137,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.get("/health")
+@app.get("/api/v1/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "engine": "Content Intelligence Engine",
+        "version": ENGINE_VERSION,
+        "engines": [
+            "Engine 1: Content Intelligence Engine",
+            "Engine 2: Claim Intelligence Engine",
+            "Engine 3: Action Intelligence Engine",
+            "Engine 4: Source Intelligence Engine",
+            "Engine 5: Evidence Verification Engine",
+            "Engine 6: Threat & Attack-Path Intelligence Engine",
+            "Engine 7: Scam Fingerprint & Collective Threat Intelligence Engine",
+            "Engine 8: Policy & Intervention Engine",
+            "Engine 9: Identity Verification & Entity Resolution Engine",
+            "Engine 10: Behavioural Signal Intelligence Engine",
+        ],
+        "firewall": "Nivesh Firewall Phase 11.4",
+    }
+
+
+@app.exception_handler(RequestValidationError)
+async def firewall_validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Cleanly formats validation errors for the unified firewall API."""
+    if request.url.path.startswith("/api/v1/firewall"):
+        return JSONResponse(
+            status_code=400,
+            content=FirewallApiError(
+                error_code="INVALID_REQUEST",
+                message="Malformed request payload or validation failure.",
+                details={"errors": [e.get("msg", str(e)) for e in exc.errors()]},
+            ).model_dump(),
+        )
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+    )
+
+
 # Instantiate singleton engines
 content_engine = ContentIntelligenceEngine()
 claims_engine = ClaimIntelligenceEngine()
@@ -136,6 +191,22 @@ policy_engine = PolicyInterventionEngine()
 identity_engine = IdentityVerificationEngine()
 behaviour_engine = BehaviouralSignalEngine()
 
+# Canonical Product Orchestrator singleton wiring all 10 engines
+firewall_orchestrator = ProductOrchestrator(
+    engines={
+        "engine_1": content_engine,
+        "engine_2": claims_engine,
+        "engine_3": actions_engine,
+        "engine_4": sources_engine,
+        "engine_5": evidence_engine,
+        "engine_6": threat_engine,
+        "engine_7": fingerprint_engine,
+        "engine_8": policy_engine,
+        "engine_9": identity_engine,
+        "engine_10": behaviour_engine,
+    }
+)
+
 
 @app.get("/health", tags=["System"])
 @app.get("/api/v1/health", tags=["System"])
@@ -143,7 +214,9 @@ async def health_check():
     """Health status check."""
     return {
         "status": "healthy",
-        "engine": "Content Intelligence Engine",
+        "engine": "Nivesh Firewall Unified API",
+        "unified_firewall_api": "/api/v1/firewall/analyze",
+        "retrieval_api": "/api/v1/firewall/analysis/{analysis_id}",
         "engines": [
             "Engine 1: Content Intelligence Engine",
             "Engine 2: Claim Intelligence Engine",
@@ -882,6 +955,187 @@ async def record_behaviour_event(payload: BehaviouralEventPayload):
         raise HTTPException(
             status_code=400,
             detail=f"Failed to record interaction event: {str(e)}"
+        )
+
+
+# ==============================================================================
+# Unified Nivesh Firewall Product API (Phase 11.4)
+# ==============================================================================
+
+MAX_TEXT_LENGTH = 50_000
+MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10MB
+MAX_SESSION_ID_LENGTH = 128
+
+
+@app.post(
+    "/api/v1/firewall/analyze",
+    response_model=FirewallAnalysisResponse,
+    responses={
+        400: {"model": FirewallApiError, "description": "Invalid client request or input payload"},
+        500: {"model": FirewallApiError, "description": "Internal pipeline execution failure"},
+    },
+    tags=["Nivesh Firewall (Unified Product API)"],
+    summary="Execute unified end-to-end Nivesh Firewall security analysis",
+)
+async def firewall_analyze(payload: FirewallAnalyzeRequest):
+    """Execute end-to-end security analysis across Engines 1 through 10.
+
+    Canonical frontend-facing API endpoint. Returns unified decision from Engine 8
+    along with structured summaries for claims, actions, evidence, identity,
+    threat, fingerprint, and behavioural patterns. Does not expose credentials or PII.
+    """
+    # 1. Validate Input Type
+    if payload.input_type not in ("text", "url", "image"):
+        return JSONResponse(
+            status_code=400,
+            content=FirewallApiError(
+                error_code="UNSUPPORTED_INPUT",
+                message=f"Unsupported input type '{payload.input_type}'. Must be 'text', 'url', or 'image'.",
+                details={"input_type": payload.input_type, "supported": ["text", "url", "image"]},
+            ).model_dump(),
+        )
+
+    # 2. Check for empty payload
+    has_text = bool(payload.text and payload.text.strip())
+    has_url = bool(payload.url and payload.url.strip())
+    has_image = bool(payload.image_base64 or payload.image_path)
+
+    if not has_text and not has_url and not has_image:
+        return JSONResponse(
+            status_code=400,
+            content=FirewallApiError(
+                error_code="INVALID_REQUEST",
+                message="No valid input provided. Specify 'text', 'url', or 'image_base64'.",
+                details={"supported_fields": ["text", "url", "image_base64", "image_path"]},
+            ).model_dump(),
+        )
+
+    # 3. Payload size checks
+    if payload.text and len(payload.text) > MAX_TEXT_LENGTH:
+        return JSONResponse(
+            status_code=400,
+            content=FirewallApiError(
+                error_code="INPUT_TOO_LARGE",
+                message=f"Payload text exceeds maximum permitted limit of {MAX_TEXT_LENGTH} characters.",
+                details={"provided_length": len(payload.text), "max_limit": MAX_TEXT_LENGTH},
+            ).model_dump(),
+        )
+
+    # 4. URL Validation
+    if payload.url:
+        parsed = urlparse(payload.url.strip())
+        if not parsed.scheme or parsed.scheme.lower() not in ("http", "https") or not parsed.netloc:
+            return JSONResponse(
+                status_code=400,
+                content=FirewallApiError(
+                    error_code="INVALID_URL",
+                    message="Target URL is malformed or uses an unsupported protocol.",
+                    details={"url": payload.url, "supported_schemes": ["http", "https"]},
+                ).model_dump(),
+            )
+
+    # 5. Session ID Validation
+    if payload.session_id and len(payload.session_id) > MAX_SESSION_ID_LENGTH:
+        return JSONResponse(
+            status_code=400,
+            content=FirewallApiError(
+                error_code="INVALID_SESSION",
+                message=f"Session identifier exceeds maximum length of {MAX_SESSION_ID_LENGTH} characters.",
+                details={"session_id_length": len(payload.session_id), "max_limit": MAX_SESSION_ID_LENGTH},
+            ).model_dump(),
+        )
+
+    # 6. Decode Base64 Image
+    image_bytes = None
+    if payload.image_base64:
+        try:
+            image_bytes = base64.b64decode(payload.image_base64)
+            if len(image_bytes) > MAX_IMAGE_BYTES:
+                return JSONResponse(
+                    status_code=400,
+                    content=FirewallApiError(
+                        error_code="INPUT_TOO_LARGE",
+                        message=f"Image payload exceeds maximum limit of {MAX_IMAGE_BYTES // (1024*1024)}MB.",
+                        details={"provided_bytes": len(image_bytes), "max_bytes": MAX_IMAGE_BYTES},
+                    ).model_dump(),
+                )
+        except Exception:
+            return JSONResponse(
+                status_code=400,
+                content=FirewallApiError(
+                    error_code="INVALID_REQUEST",
+                    message="Failed to decode base64 image data.",
+                    details={},
+                ).model_dump(),
+            )
+
+    # 7. Execute Orchestration
+    try:
+        result = firewall_orchestrator.analyze(
+            text=payload.text,
+            url=payload.url,
+            image_bytes=image_bytes,
+            image_path=payload.image_path,
+            session_id=payload.session_id,
+            interaction_history=payload.interaction_history,
+            metadata=payload.metadata,
+            channel=payload.channel,
+            policy_context=payload.policy_context,
+            idempotency_key=payload.idempotency_key,
+        )
+        response = firewall_orchestrator.format_response(result)
+        return response
+    except Exception as e:
+        # Sanitized error response - no stack trace or filesystem paths exposed
+        return JSONResponse(
+            status_code=500,
+            content=FirewallApiError(
+                error_code="PIPELINE_FAILURE",
+                message="An unexpected error occurred during firewall analysis execution.",
+                details={"engine": "ProductOrchestrator"},
+            ).model_dump(),
+        )
+
+
+@app.get(
+    "/api/v1/firewall/analysis/{analysis_id}",
+    response_model=FirewallAnalysisResponse,
+    responses={
+        404: {"model": FirewallApiError, "description": "Analysis record not found"},
+        500: {"model": FirewallApiError, "description": "Internal error during retrieval"},
+    },
+    tags=["Nivesh Firewall (Unified Product API)"],
+    summary="Retrieve unified firewall analysis result by analysis ID",
+)
+async def get_firewall_analysis(analysis_id: str):
+    """Retrieve a previously executed Nivesh Firewall analysis.
+
+    Preserves privacy sanitization, final policy decision, and provenance
+    without re-running the underlying intelligence pipeline.
+    """
+    try:
+        result = firewall_orchestrator.get_analysis(analysis_id)
+        if not result:
+            return JSONResponse(
+                status_code=404,
+                content=FirewallApiError(
+                    error_code="ANALYSIS_NOT_FOUND",
+                    message=f"Analysis with ID '{analysis_id}' was not found.",
+                    analysis_id=analysis_id,
+                    details={"reason": "The requested analysis ID does not exist or has expired."},
+                ).model_dump(),
+            )
+        response = firewall_orchestrator.format_response(result)
+        return response
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content=FirewallApiError(
+                error_code="PIPELINE_FAILURE",
+                message="An unexpected error occurred while retrieving analysis.",
+                analysis_id=analysis_id,
+                details={},
+            ).model_dump(),
         )
 
 

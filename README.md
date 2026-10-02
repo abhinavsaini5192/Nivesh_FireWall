@@ -1430,37 +1430,109 @@ etry_count, and metadata.
 
 ---
 
-## 16. Test Suite Verification
+---
 
-Run all pytest unit, integration, regression, orchestration, context, and pipeline tests across all 10 engines and the product orchestrator:
+## 16. Unified Firewall API & Result (Phase 11.4)
+
+Phase 11.4 provides the **single canonical, frontend-facing product API layer** for Nivesh Firewall. It abstracts the internal multi-engine architecture (Engines 1–10) behind a clean, stable product interface.
+
+### 16.1 Product API Architecture
+
+The frontend communicates with a single canonical endpoint rather than orchestrating individual engines:
+
+```text
+Frontend (Web / Extension / Mobile)
+               │
+               ▼
+   POST /api/v1/firewall/analyze
+               │
+               ▼
+┌──────────────────────────────────────────────┐
+│           Product Orchestrator               │
+│               (Phase 11.3)                   │
+│                                              │
+│   E1 -> E2 -> E3 -> E4 -> E5                 │
+│         -> E6, E7, E9 -> E10                 │
+│         -> E8 (Policy Decision Authority)    │
+└──────────────────────────────────────────────┘
+               │
+               ▼
+   FirewallAnalysisResponse
+ (Clean, sanitized, unified frontend result)
+```
+
+- **Canonical Analyze Endpoint**: `POST /api/v1/firewall/analyze`
+- **Canonical Retrieval Endpoint**: `GET /api/v1/firewall/analysis/{analysis_id}`
+- **Sole Decision Authority**: The final decision (`ALLOW`, `INFORM`, `WARN`, `PAUSE`, `BLOCK`) comes exclusively from Engine 8. The API transport layer performs zero decision calculations.
+- **Additive & Backwards-Compatible**: All 10 existing engine endpoints under `/api/v1/...` remain completely intact for testing and diagnostic use.
+
+### 16.2 Canonical Request & Response Schemas
+
+#### Request (`FirewallAnalyzeRequest`)
+- `input_type`: `text`, `url`, `image`, or `normalized`
+- `text`: Raw text payload (max 50,000 characters)
+- `url`: Optional target URL
+- `session_id`: Optional session identifier (max 128 characters)
+- `channel`: Ingestion channel (e.g., `web`, `browser`, `telegram`, `whatsapp`, `instagram`, `youtube`, `email`, `sms`)
+- `metadata`: Optional client metadata
+
+#### Response (`FirewallAnalysisResponse`)
+- **Analysis Identifiers**: `analysis_id`, `session_id`, `pipeline_status`, `created_at`, `completed_at`, `duration_ms`
+- **Canonical Decision**: `decision` (`ALLOW` / `INFORM` / `WARN` / `PAUSE` / `BLOCK`), `severity`, `primary_reason`, `reason_codes`, `explanation` (`user_message`, `technical_message`, `supporting_signals`), `actions_required`, `required_user_confirmation`, `cooldown_seconds`
+- **Structured Engine Sections**:
+  - `content`: `content_id`, `summary`, `contains_financial_content`, `language`, `entities`
+  - `claims`: `claim_id`, `text`, `topic`, `predicate`, `verification_status`
+  - `actions`: `action_id`, `action_type`, `description`, `target`, `impact_level`
+  - `evidence`: `overall_status`, `verification_count`, `supported_claims_count`, `contradicted_claims_count`, `source_documents_count`, `retrieval_status`
+  - `identity`: `identity_status` (`ESTABLISHED`, `NOT_ESTABLISHED`, `IDENTITY_MISMATCH`, `AMBIGUOUS`), `claimed_entities`, `findings_summary`, `confidence`
+  - `threat`: `threat_signals`, `attack_stage`, `terminal_stage`, `threat_families`, `high_impact_action_count`, `confidence`
+  - `fingerprint`: `match_type` (`NO_MATCH`, `EXACT_MATCH`, `SEMANTIC_VARIANT`, `STRUCTURAL_MATCH`), `fingerprint_id`, `match_confidence`
+  - `behaviour`: `signals`, `findings`, `session_id`, `events_in_session`, `time_pressure_detected`, `rapid_escalation_detected`, `channel_migration_detected`
+- **Provenance & Telemetry**: `provenance` (`orchestrator_version`, `source_mode`, `engines_executed`, `engines_succeeded`), `warnings`, `errors`
+
+### 16.3 Privacy Boundary & Error Sanitization
+
+- **Zero Secret Leakage**: Passwords, OTPs, PINs, CVVs, card numbers, bank accounts, and raw credentials are scrubbed and redacted (`[REDACTED]`, `[REDACTED_CARD]`) at the API serialization boundary.
+- **Safe Error Structure (`FirewallApiError`)**: Rejections and pipeline errors return structured JSON (`error_code`, `message`, `analysis_id`, `details`). Internal stack traces, python exceptions, and server filesystem paths are never leaked to clients.
+- **Session Isolation**: Session histories and behavioural event streams are strictly isolated per `session_id`.
+
+---
+
+## 17. Test Suite Verification
+
+Run all pytest unit, integration, regression, orchestration, context, pipeline, and product API tests across all 10 engines and the product orchestrator:
 
 ```bash
 python -X utf8 -m pytest -v
 ```
-**Results:** 441 passed in 24.42s (0 failed, 100% pass rate).
+**Results:** 461 passed (0 failed, 100% pass rate).
 - **Existing 10 Intelligence Engines**: 386 tests.
 - **Phase 11.1 Product Orchestrator Core (`tests/test_orchestrator.py`)**: 17 tests.
 - **Phase 11.2 Unified Analysis Context Suite (`tests/test_context.py`)**: 20 tests.
 - **Phase 11.3 Engine Pipeline & Failure Handling (`tests/test_pipeline.py`)**: 18 tests.
-  1. Full successful execution (`E1` -> `E2` -> `E3` -> `E4` -> `E5` -> `E6/E7/E9/E10` -> `E8`)
-  2. Correct dependency order enforcement
-  3. Engine 1 failure blocks downstream engines
-  4. Engine 4 source failure preserves failure, skips E5, produces no fake evidence
-  5. Engine 6 threat failure preserves independent E9/E10 results, skips E7
-  6. Engine 7 fingerprint failure isolation
-  7. Engine 9 identity failure not converted to `IDENTITY_MISMATCH`
-  8. Engine 10 behaviour failure creates no synthetic behavioural signals
-  9. Policy Gate blocks Engine 8 when prerequisites are unresolved
-  10. Policy authority: Engine 8 is sole decision authority; orchestrator never invents policy
-  11. Timeout protection: engine timeout handled gracefully without hanging
-  12. Bounded retry: transient failure retried deterministically with observable `retry_count`
-  13. Retry safety for fingerprinting: repeated runs do not inflate observation count
-  14. Session isolation: simultaneous sessions remain completely independent
-  15. Context integrity: one engine cannot overwrite another engine's results
-  16. Safe cancellation: leaves context as CANCELLED, never COMPLETED
-  17. Deterministic execution: equivalent inputs yield identical execution states
-  18. Privacy preservation: telemetry and errors never leak credentials, OTPs, PINs, or cards
+- **Phase 11.4 Unified Firewall API & Result (`tests/test_firewall_api.py`)**: 20 tests.
+  1. Valid text analysis (HTTP 200, unified schema)
+  2. Threat benchmark scenario (detects attack signals, policy PAUSE/BLOCK)
+  3. Final policy decision matches Engine 8 exactly
+  4. No policy duplication in API layer (verified via AST/source inspection)
+  5. Identity result preservation (`NOT_ESTABLISHED`, `IDENTITY_MISMATCH`)
+  6. Behaviour result preservation (time pressure, progression signals)
+  7. Fingerprint result preservation (`NO_MATCH`, structural equivalence)
+  8. Evidence preservation (`SUPPORTED`, `CONTRADICTED`, `INSUFFICIENT_EVIDENCE`)
+  9. Source unavailable handled as analytical result, not 500
+  10. Invalid input returns 400 (`INVALID_REQUEST`, `UNSUPPORTED_INPUT`, `INVALID_URL`)
+  11. Oversized input returns 400 (`INPUT_TOO_LARGE`)
+  12. Missing analysis GET returns 404 (`ANALYSIS_NOT_FOUND`)
+  13. Privacy boundary (forbidden credentials/PII stripped/redacted)
+  14. Session isolation (distinct sessions only receive their own history)
+  15. Provenance exposure without internal credential leakage
+  16. Error sanitization (no stack traces or filesystem paths)
+  17. Deterministic result structure
+  18. Benign content does not trigger false threat escalation
+  19. API Contract freeze test representing frontend consumption
+  20. Full 5-stage benchmark end-to-end test
 
 **Reconciled Arithmetic**:
-386 \text{ (Engines 1--10)} + 17 \text{ (Phase 11.1)} + 20 \text{ (Phase 11.2)} + 18 \text{ (Phase 11.3)} = 441 \text{ tests (100\% match)}
+386 (Engines 1–10) + 17 (Phase 11.1) + 20 (Phase 11.2) + 18 (Phase 11.3) + 20 (Phase 11.4) = 461 tests (100% match)
 *(Zero regressions across all existing suites, zero skipped, 0 failed across consecutive fresh-process runs).*
+

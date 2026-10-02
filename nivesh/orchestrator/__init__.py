@@ -14,7 +14,7 @@ from .telemetry import EngineExecutionRecord, PipelineTelemetry
 from .config import OrchestratorConfig
 from .state import OrchestrationState
 from .result import OrchestrationResult
-from .service import ProductOrchestrator
+from .service import ProductOrchestrator, format_firewall_response, sanitize_sensitive_data
 from .context import (
     AnalysisContext,
     PipelineStatus,
@@ -30,6 +30,21 @@ from .pipeline import (
     PipelineGraph,
     PolicyGate,
     SafeEngineExecutor,
+)
+from nivesh.schemas.firewall import (
+    FirewallAnalyzeRequest,
+    FirewallAnalysisResponse,
+    FirewallApiError,
+    FirewallDecisionSummary,
+    FirewallExplanation,
+    FirewallContentSummary,
+    FirewallClaimSummary,
+    FirewallActionSummary,
+    FirewallEvidenceSummary,
+    FirewallIdentitySummary,
+    FirewallThreatSummary,
+    FirewallFingerprintSummary,
+    FirewallBehaviourSummary,
 )
 
 __all__ = [
@@ -55,4 +70,19 @@ __all__ = [
     "PipelineGraph",
     "PolicyGate",
     "SafeEngineExecutor",
+    "format_firewall_response",
+    "sanitize_sensitive_data",
+    "FirewallAnalyzeRequest",
+    "FirewallAnalysisResponse",
+    "FirewallApiError",
+    "FirewallDecisionSummary",
+    "FirewallExplanation",
+    "FirewallContentSummary",
+    "FirewallClaimSummary",
+    "FirewallActionSummary",
+    "FirewallEvidenceSummary",
+    "FirewallIdentitySummary",
+    "FirewallThreatSummary",
+    "FirewallFingerprintSummary",
+    "FirewallBehaviourSummary",
 ]

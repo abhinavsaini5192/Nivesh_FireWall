@@ -74,6 +74,20 @@ from .pipeline import (
     PolicyGate,
     SafeEngineExecutor,
 )
+from nivesh.schemas.firewall import (
+    FirewallAnalysisResponse,
+    FirewallDecisionSummary,
+    FirewallExplanation,
+    FirewallContentSummary,
+    FirewallClaimSummary,
+    FirewallActionSummary,
+    FirewallEvidenceSummary,
+    FirewallIdentitySummary,
+    FirewallThreatSummary,
+    FirewallFingerprintSummary,
+    FirewallBehaviourSummary,
+    FirewallApiError,
+)
 
 SENSITIVE_PATTERNS = [
     # Card numbers (13 to 19 digits)
@@ -84,11 +98,19 @@ SENSITIVE_PATTERNS = [
     (re.compile(r"(?i)\b(otp|pin|cvv|cvc)\s+(\d{3,8})\b"), r"\1 [REDACTED]"),
     # Passwords and secrets
     (re.compile(r"(?i)\b(password|passwd|pwd|secret|token)\s*[:=]\s*\S+"), r"\1=[REDACTED]"),
+    (re.compile(r"(?i)\b(password|passwd|pwd)\s+is\s+\S+"), r"\1 is [REDACTED]"),
     # Bank accounts
     (re.compile(r"(?i)\b(account|acct|acc)\s*(?:number|num|no)?\s*[:=]\s*\d+"), r"\1=[REDACTED]"),
     # Keystrokes & raw credentials
     (re.compile(r"(?i)\b(keystroke[s]?|raw_credential[s]?)\s*[:=]\s*\S+"), r"\1=[REDACTED]"),
 ]
+
+FORBIDDEN_FIELD_NAMES = {
+    "password", "passwd", "pwd", "otp", "pin", "cvv", "cvc",
+    "card_number", "card_no", "account_number", "bank_account",
+    "raw_credentials", "raw_credential", "keystrokes", "secret",
+    "private_key", "access_token",
+}
 
 
 def sanitize_sensitive_data(val: Any) -> Any:
@@ -99,10 +121,38 @@ def sanitize_sensitive_data(val: Any) -> Any:
             cleaned = pat.sub(repl, cleaned)
         return cleaned
     elif isinstance(val, dict):
-        return {k: sanitize_sensitive_data(v) for k, v in val.items()}
+        res = {}
+        for k, v in val.items():
+            if str(k).lower() in FORBIDDEN_FIELD_NAMES:
+                res[k] = "[REDACTED]"
+            else:
+                res[k] = sanitize_sensitive_data(v)
+        return res
     elif isinstance(val, list):
         return [sanitize_sensitive_data(v) for v in val]
     return val
+
+
+def normalize_channel(ch: Optional[str]) -> str:
+    """Normalize user-friendly channel names (e.g. 'web', 'sms') to valid Engine 1 ChannelType."""
+    if not ch:
+        return "unknown"
+    c = str(ch).lower().strip()
+    if c in ("browser", "web", "chrome", "firefox", "safari", "edge"):
+        return "browser"
+    elif c in ("telegram", "tg"):
+        return "telegram"
+    elif c in ("whatsapp", "wa"):
+        return "whatsapp"
+    elif c in ("instagram", "ig"):
+        return "instagram"
+    elif c in ("youtube", "yt"):
+        return "youtube"
+    elif c in ("email", "mail"):
+        return "email"
+    elif c in ("browser", "telegram", "whatsapp", "instagram", "youtube", "email"):
+        return c
+    return "unknown"
 
 
 def create_empty_threat_analysis(content_id: str) -> ThreatAnalysis:
@@ -158,6 +208,7 @@ class ProductOrchestrator:
         self.pipeline_graph = PipelineGraph()
         self.executor = SafeEngineExecutor()
         self._idempotency_cache: dict[str, OrchestrationResult] = {}
+        self._analysis_store: dict[str, OrchestrationResult] = {}
 
     def record_interaction_event(
         self, session_id: str, event: InteractionEvent
@@ -168,6 +219,10 @@ class ProductOrchestrator:
     def get_session_history(self, session_id: str) -> Optional[InteractionHistory]:
         """Retrieve recorded session interaction history by session ID."""
         return self.e10.get_session(session_id)
+
+    def get_analysis(self, analysis_id: str) -> Optional[OrchestrationResult]:
+        """Retrieve a previously executed analysis by analysis ID without re-running engines."""
+        return self._analysis_store.get(analysis_id)
 
     def analyze(
         self,
@@ -196,6 +251,7 @@ class ProductOrchestrator:
         started_at_iso = datetime.now(timezone.utc).isoformat()
         analysis_id = f"ORCH-{uuid.uuid4().hex[:12].upper()}"
 
+        channel = normalize_channel(channel)
         clean_metadata = sanitize_sensitive_data(metadata or {})
         input_type = "text" if text is not None else "url" if url is not None else "image"
 
@@ -1063,10 +1119,16 @@ class ProductOrchestrator:
             errors=state.errors,
         )
 
+        self._analysis_store[analysis_id] = res
+
         if idempotency_key:
             self._idempotency_cache[idempotency_key] = res
 
         return res
+
+    def format_response(self, result: OrchestrationResult) -> FirewallAnalysisResponse:
+        """Format an OrchestrationResult into the canonical FirewallAnalysisResponse."""
+        return format_firewall_response(result)
 
     def _handle_engine_error(
         self,
@@ -1097,3 +1159,348 @@ class ProductOrchestrator:
         state.telemetry.record_engine(record)
         state.warnings.append(f"{record.engine_name} failed recoverably: {clean_msg}")
         state.errors.append(f"{record.engine_name}: {clean_msg}")
+
+
+def format_firewall_response(result: OrchestrationResult) -> FirewallAnalysisResponse:
+    """Transform a product OrchestrationResult into the canonical FirewallAnalysisResponse."""
+    state = result.state
+    context = result.context
+
+    # 1. Final Decision Summary (sole authority: Engine 8)
+    if result.policy_decision is not None:
+        pd = result.policy_decision
+        exp = FirewallExplanation(
+            decision=str(getattr(pd.decision, "value", pd.decision)),
+            user_message=pd.user_message,
+            technical_message=pd.technical_message,
+            primary_reason=pd.primary_reason,
+            supporting_signals=list(pd.triggered_signals),
+        )
+        actions_req = list(pd.actions_required) if hasattr(pd, "actions_required") else []
+        if pd.required_user_confirmation and "USER_CONFIRMATION_REQUIRED" not in actions_req:
+            actions_req.append("USER_CONFIRMATION_REQUIRED")
+
+        decision_summary = FirewallDecisionSummary(
+            decision=str(getattr(pd.decision, "value", pd.decision)),
+            severity=str(getattr(pd.severity, "value", pd.severity)),
+            primary_reason=pd.primary_reason,
+            reason_codes=list(pd.reason_codes),
+            explanation=exp,
+            actions_required=actions_req,
+            required_user_confirmation=pd.required_user_confirmation,
+            cooldown_seconds=pd.cooldown_seconds,
+            policy_version=pd.policy_version,
+            decision_id=pd.decision_id,
+        )
+    else:
+        fallback_decision = "PAUSE" if state.status == "FAILED" else "INFORM"
+        exp = FirewallExplanation(
+            decision=fallback_decision,
+            user_message="Analysis could not be fully completed due to an internal execution event.",
+            technical_message="Pipeline execution halted or degraded before Engine 8 policy evaluation.",
+            primary_reason="Pipeline incomplete before policy evaluation",
+            supporting_signals=["PIPELINE_INCOMPLETE"],
+        )
+        decision_summary = FirewallDecisionSummary(
+            decision=fallback_decision,
+            severity="MEDIUM" if state.status == "FAILED" else "NONE",
+            primary_reason="Pipeline incomplete before policy evaluation",
+            reason_codes=["PIPELINE_INCOMPLETE"],
+            explanation=exp,
+            actions_required=["RETRY_ANALYSIS"],
+            required_user_confirmation=False,
+            cooldown_seconds=None,
+            policy_version="8.0.0",
+            decision_id=None,
+        )
+
+    # 2. Content Summary
+    if state.content is not None:
+        c = state.content
+        summary_text = c.normalized.text[:200] if c.normalized and c.normalized.text else ""
+        entities_dict = {
+            "people": [p.text for p in c.entities.people],
+            "organizations": [o.text for o in c.entities.organizations],
+            "regulators": [r.text for r in c.entities.regulators],
+            "financial_instruments": [f.text for f in c.entities.financial_instruments],
+        }
+        content_summary = FirewallContentSummary(
+            content_id=c.content_id,
+            input_type=c.source.type,
+            channel=c.source.channel,
+            summary=summary_text,
+            contains_financial_content=c.content_features.contains_financial_content,
+            language=c.normalized.language,
+            language_confidence=c.normalized.language_confidence,
+            entities=entities_dict,
+        )
+    else:
+        content_summary = FirewallContentSummary(
+            content_id="UNKNOWN",
+            input_type=context.input_type or "text",
+            channel=context.channel or "unknown",
+            summary="",
+            contains_financial_content=False,
+            language=None,
+            language_confidence=None,
+            entities={},
+        )
+
+    # 3. Claims
+    claim_verif_lookup: dict[str, str] = {}
+    if state.evidence is not None:
+        for v in state.evidence.verifications:
+            claim_verif_lookup[v.claim_id] = str(getattr(v.status, "value", v.status))
+
+    claim_summaries: list[FirewallClaimSummary] = []
+    if state.claims is not None:
+        for cl in state.claims.claims:
+            verif_st = claim_verif_lookup.get(cl.claim_id)
+            claim_text = cl.text.original if hasattr(cl, "text") and hasattr(cl.text, "original") else str(getattr(cl, "text", ""))
+            raw_topic = getattr(cl, "claim_type", getattr(cl, "topic", "CLAIM"))
+            topic_str = str(getattr(raw_topic, "value", raw_topic))
+            pred_str = str(getattr(cl.predicate, "value", cl.predicate)) if hasattr(cl, "predicate") else "ASSERTION"
+            mod_str = str(getattr(cl.modality.type, "value", cl.modality.type)) if hasattr(cl, "modality") and hasattr(cl.modality, "type") else "statement"
+            claim_summaries.append(
+                FirewallClaimSummary(
+                    claim_id=cl.claim_id,
+                    text=claim_text,
+                    topic=topic_str,
+                    predicate=pred_str,
+                    modality=mod_str,
+                    verification_status=verif_st,
+                )
+            )
+
+    # 4. Actions
+    action_summaries: list[FirewallActionSummary] = []
+    if state.actions is not None:
+        for act in state.actions.actions:
+            target_val = act.target.value if act.target and act.target.value else (act.target.type if act.target else None)
+            is_urg = bool(act.parameters.get("deadline") or (hasattr(act, "modality") and getattr(act.modality, "type", None) in ("warning", "instruction") and "immediate" in str(act.text.original).lower()))
+            cat = str(getattr(act.category, "value", act.category))
+            rev = "IRREVERSIBLE" if cat in ("FINANCIAL_TRANSACTION", "CREDENTIAL_ACCESS") else "REVERSIBLE"
+            action_summaries.append(
+                FirewallActionSummary(
+                    action_id=act.action_id,
+                    action_type=str(getattr(act.action_type, "value", act.action_type)),
+                    target=target_val,
+                    impact_category=cat,
+                    reversibility=rev,
+                    urgency_detected=is_urg,
+                )
+            )
+
+    # 5. Evidence
+    if state.evidence is not None:
+        ev = state.evidence
+        status_counts: dict[str, int] = {}
+        for v in ev.verifications:
+            st = str(getattr(v.status, "value", v.status))
+            status_counts[st] = status_counts.get(st, 0) + 1
+
+        overall = "NOT_ESTABLISHED"
+        if status_counts.get("CONTRADICTED", 0) > 0:
+            overall = "CONTRADICTED"
+        elif status_counts.get("SOURCE_UNAVAILABLE", 0) > 0 and not ev.verifications:
+            overall = "SOURCE_UNAVAILABLE"
+        elif status_counts.get("SUPPORTED", 0) > 0 and status_counts.get("CONTRADICTED", 0) == 0:
+            overall = "SUPPORTED"
+        elif status_counts.get("INSUFFICIENT_EVIDENCE", 0) > 0:
+            overall = "INSUFFICIENT_EVIDENCE"
+        elif ev.verifications:
+            overall = "PARTIAL_EVIDENCE"
+
+        src_count = 0
+        if state.sources is not None:
+            if hasattr(state.sources, "analysis_metadata") and hasattr(state.sources.analysis_metadata, "documents_retrieved"):
+                src_count = state.sources.analysis_metadata.documents_retrieved
+            elif hasattr(state.sources, "claim_sources"):
+                src_count = sum(len(getattr(cs, "documents", [])) for cs in state.sources.claim_sources)
+
+        retrieval_st = "COMPLETED"
+        e4_record = context.engine_states.get("engine_4_sources") if hasattr(context, "engine_states") else None
+        if (
+            (e4_record and getattr(e4_record, "analytical_result", None) == "SOURCE_UNAVAILABLE")
+            or getattr(state.sources, "retrieval_status", None) == "SOURCE_UNAVAILABLE"
+            or (state.sources and getattr(state.sources, "analysis_metadata", None) and getattr(state.sources.analysis_metadata, "retrieval_failures", 0) > 0 and src_count == 0)
+        ):
+            retrieval_st = "SOURCE_UNAVAILABLE"
+
+        evidence_summary = FirewallEvidenceSummary(
+            overall_status=overall,
+            verification_count=len(ev.verifications),
+            supported_claims_count=ev.analysis_metadata.claims_supported + ev.analysis_metadata.claims_partially_supported,
+            contradicted_claims_count=ev.analysis_metadata.claims_contradicted,
+            insufficient_claims_count=ev.analysis_metadata.claims_insufficient,
+            source_documents_count=src_count,
+            retrieval_status=retrieval_st,
+        )
+    else:
+        src_status = "SOURCE_UNAVAILABLE" if (state.sources and getattr(state.sources, "retrieval_status", None) == "SOURCE_UNAVAILABLE") else "NOT_RUN"
+        overall_ev = "SOURCE_UNAVAILABLE" if src_status == "SOURCE_UNAVAILABLE" else "NOT_ESTABLISHED"
+        src_count = 0
+        if state.sources is not None:
+            if hasattr(state.sources, "analysis_metadata") and hasattr(state.sources.analysis_metadata, "documents_retrieved"):
+                src_count = state.sources.analysis_metadata.documents_retrieved
+            elif hasattr(state.sources, "claim_sources"):
+                src_count = sum(len(getattr(cs, "documents", [])) for cs in state.sources.claim_sources)
+
+        evidence_summary = FirewallEvidenceSummary(
+            overall_status=overall_ev,
+            verification_count=0,
+            supported_claims_count=0,
+            contradicted_claims_count=0,
+            insufficient_claims_count=0,
+            source_documents_count=src_count,
+            retrieval_status=src_status,
+        )
+
+    # 6. Identity
+    if state.identity is not None:
+        idt = state.identity
+        id_status = str(getattr(idt.identity_status, "value", idt.identity_status))
+        entities_list = [getattr(e, "name", getattr(e, "normalized_name", str(e))) for e in idt.entities] if hasattr(idt, "entities") else []
+        findings_desc = [f.description for f in idt.identity_findings[:5]] if hasattr(idt, "identity_findings") else []
+        identity_summary = FirewallIdentitySummary(
+            identity_status=id_status,
+            claimed_entities=entities_list,
+            findings_count=len(idt.identity_findings) if hasattr(idt, "identity_findings") else 0,
+            findings_summary=findings_desc,
+            confidence=idt.confidence,
+        )
+    else:
+        identity_summary = FirewallIdentitySummary(
+            identity_status="NOT_ESTABLISHED",
+            claimed_entities=[],
+            findings_count=0,
+            findings_summary=[],
+            confidence=0.0,
+        )
+
+    # 7. Threat
+    if state.threat is not None:
+        th = state.threat
+        threat_signals = []
+        if hasattr(th, "threat_signals") and th.threat_signals:
+            for s in th.threat_signals:
+                sig_type = getattr(s, "type", getattr(s, "signal_type", str(s)))
+                threat_signals.append(str(getattr(sig_type, "value", sig_type)))
+
+        th_fams: list[str] = []
+        if hasattr(th, "threat_families") and th.threat_families:
+            th_fams = [str(getattr(f, "value", f)) for f in th.threat_families]
+
+        init_st = None
+        term_st = None
+        if hasattr(th, "attack_path") and th.attack_path:
+            raw_entry = getattr(th.attack_path, "entry_stage", getattr(th.attack_path, "initial_stage", None))
+            init_st = str(getattr(raw_entry, "value", raw_entry)) if raw_entry else None
+            raw_term = getattr(th.attack_path, "terminal_stage", None)
+            term_st = str(getattr(raw_term, "value", raw_term)) if raw_term else None
+
+        hi_count = len(th.high_impact_actions) if hasattr(th, "high_impact_actions") and th.high_impact_actions else len([a for a in action_summaries if a.impact_category in ("FINANCIAL_TRANSACTION", "CREDENTIAL_ACCESS")])
+
+        threat_summary = FirewallThreatSummary(
+            threat_signals=threat_signals,
+            attack_stage=init_st,
+            terminal_stage=term_st,
+            threat_families=th_fams,
+            high_impact_action_count=hi_count,
+            confidence=th.confidence,
+        )
+    else:
+        threat_summary = FirewallThreatSummary(
+            threat_signals=[],
+            attack_stage=None,
+            terminal_stage=None,
+            threat_families=[],
+            high_impact_action_count=0,
+            confidence=0.0,
+        )
+
+    # 8. Fingerprint
+    if state.fingerprint is not None:
+        fp = state.fingerprint
+        m_type = str(getattr(fp.match_type, "value", fp.match_type))
+        fp_id = fp.fingerprint.fingerprint_id if fp.fingerprint else None
+        obs_count = fp.fingerprint.observation_count if fp.fingerprint else 0
+        channels_count = len(fp.fingerprint.distinct_channels) if (fp.fingerprint and hasattr(fp.fingerprint, "distinct_channels")) else 0
+        sig = fp.fingerprint.attack_path_signature if (fp.fingerprint and hasattr(fp.fingerprint, "attack_path_signature")) else None
+        fingerprint_summary = FirewallFingerprintSummary(
+            match_type=m_type,
+            fingerprint_id=fp_id,
+            match_confidence=fp.match_confidence,
+            observation_count=obs_count,
+            distinct_channels_count=channels_count,
+            attack_path_signature=sig,
+        )
+    else:
+        fingerprint_summary = FirewallFingerprintSummary(
+            match_type="NO_MATCH",
+            fingerprint_id=None,
+            match_confidence=0.0,
+            observation_count=0,
+            distinct_channels_count=0,
+            attack_path_signature=None,
+        )
+
+    # 9. Behaviour
+    if state.behaviour is not None:
+        bh = state.behaviour
+        bh_signals = [str(getattr(s.signal_type, "value", s.signal_type)) for s in bh.signals]
+        bh_findings = [f.description for f in bh.findings]
+        time_press = bh.policy_hints.pressure_present or any("PRESSURE" in s or "URGENCY" in s for s in bh_signals)
+        rapid_esc = bh.policy_hints.rapid_escalation_present or any("RAPID" in s for s in bh_signals)
+        chan_mig = any("CHANNEL" in s for s in bh_signals)
+        behaviour_summary = FirewallBehaviourSummary(
+            signals=bh_signals,
+            findings=bh_findings,
+            session_id=result.session_id,
+            events_in_session=bh.session_summary.event_count if bh.session_summary else 0,
+            time_pressure_detected=time_press,
+            rapid_escalation_detected=rapid_esc,
+            channel_migration_detected=chan_mig,
+        )
+    else:
+        behaviour_summary = FirewallBehaviourSummary(
+            signals=[],
+            findings=[],
+            session_id=result.session_id,
+            events_in_session=0,
+            time_pressure_detected=False,
+            rapid_escalation_detected=False,
+            channel_migration_detected=False,
+        )
+
+    # Provenance sanitized
+    safe_provenance = sanitize_sensitive_data(dict(result.provenance or {}))
+    for forbidden in ["api_key", "secret", "token", "password", "connection_string", "auth"]:
+        safe_provenance.pop(forbidden, None)
+
+    c_at = getattr(context, "created_at", None) or getattr(state, "started_at", None) or datetime.now(timezone.utc).isoformat()
+    d_at = getattr(state, "completed_at", None) or getattr(context, "updated_at", None) or datetime.now(timezone.utc).isoformat()
+
+    raw_response = FirewallAnalysisResponse(
+        analysis_id=result.analysis_id,
+        session_id=result.session_id,
+        pipeline_status=result.pipeline_status,
+        created_at=c_at,
+        completed_at=d_at,
+        duration_ms=result.telemetry.total_duration_ms if result.telemetry else 0.0,
+        decision=decision_summary,
+        content=content_summary,
+        claims=claim_summaries,
+        actions=action_summaries,
+        evidence=evidence_summary,
+        identity=identity_summary,
+        threat=threat_summary,
+        fingerprint=fingerprint_summary,
+        behaviour=behaviour_summary,
+        provenance=safe_provenance,
+        warnings=list(result.warnings),
+        errors=list(result.errors),
+    )
+
+    sanitized_dict = sanitize_sensitive_data(raw_response.model_dump())
+    return FirewallAnalysisResponse.model_validate(sanitized_dict)

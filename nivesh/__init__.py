@@ -66,6 +66,10 @@ from .orchestrator import (
     PipelineGraph,
     PolicyGate,
     SafeEngineExecutor,
+    format_firewall_response,
+    FirewallAnalyzeRequest,
+    FirewallAnalysisResponse,
+    FirewallApiError,
 )
 from .schemas import (
 
@@ -240,6 +244,10 @@ __all__ = [
     "PipelineGraph",
     "PolicyGate",
     "SafeEngineExecutor",
+    "format_firewall_response",
+    "FirewallAnalyzeRequest",
+    "FirewallAnalysisResponse",
+    "FirewallApiError",
 ]
 
 
