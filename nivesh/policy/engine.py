@@ -54,16 +54,20 @@ class PolicyInterventionEngine:
         threat: ThreatAnalysis,
         fingerprint: FingerprintAnalysis,
         identity: Optional[IdentityAnalysis] = None,
+        behaviour: Optional[Any] = None,
         context: Optional[PolicyContext] = None,
     ) -> PolicyDecision:
         """Determines the safety intervention for the current interaction.
 
-        Consumes the structured outputs from Engines 1–7 and Engine 9 without re-computing them.
+        Consumes the structured outputs from Engines 1–7, Engine 9, and Engine 10 without re-computing them.
         """
-        # Defensive handling if context was passed positionally as 8th argument
+        # Defensive handling if context was passed positionally
         if isinstance(identity, PolicyContext) and context is None:
             context = identity
             identity = None
+        elif isinstance(behaviour, PolicyContext) and context is None:
+            context = behaviour
+            behaviour = None
 
         with self._lock:
             decision_id = f"DEC-{self._counter:03d}"
@@ -79,6 +83,7 @@ class PolicyInterventionEngine:
             threat=threat,
             fingerprint=fingerprint,
             identity=identity,
+            behaviour=behaviour,
             context=context,
         )
 
@@ -117,6 +122,10 @@ class PolicyInterventionEngine:
         if identity is not None and hasattr(identity, "analysis_id"):
             relevant_identity_id = identity.analysis_id
 
+        relevant_behaviour_id = None
+        if behaviour is not None and hasattr(behaviour, "analysis_id"):
+            relevant_behaviour_id = behaviour.analysis_id
+
         # 5. Build privacy-safe audit record (zero PII, credentials, or raw content)
         threat_stages = []
         if threat and hasattr(threat, "attack_path") and hasattr(threat.attack_path, "nodes"):
@@ -147,6 +156,14 @@ class PolicyInterventionEngine:
             audit_metadata["identity_analysis_id"] = identity.analysis_id
             audit_metadata["identity_entity_count"] = len(getattr(identity, "entities", []))
 
+        if behaviour is not None:
+            audit_metadata["behaviour_analysis_id"] = behaviour.analysis_id
+            audit_metadata["behaviour_signal_count"] = len(getattr(behaviour, "signals", []))
+            audit_metadata["behaviour_signals"] = [
+                s.signal_type.value if hasattr(s.signal_type, "value") else str(s.signal_type)
+                for s in getattr(behaviour, "signals", [])
+            ]
+
         # 6. Instantiate canonical PolicyDecision
         decision = PolicyDecision(
             decision_id=decision_id,
@@ -162,6 +179,7 @@ class PolicyInterventionEngine:
             relevant_evidence_ids=relevant_evidence_ids,
             relevant_fingerprint_id=relevant_fp_id,
             relevant_identity_id=relevant_identity_id,
+            relevant_behaviour_id=relevant_behaviour_id,
             intervention_scope=resolved.scope,
             required_user_confirmation=resolved.required_user_confirmation,
             cooldown_seconds=resolved.cooldown_seconds,

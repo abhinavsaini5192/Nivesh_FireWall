@@ -54,6 +54,10 @@ class UrlSignal(BaseModel):
     query: Optional[str] = None
     fragment: Optional[str] = None
     port: Optional[int] = None
+    
+    @property
+    def url(self) -> str:
+        return self.normalized_url or self.original_url
 
 
 class DomainSignal(BaseModel):

@@ -1,6 +1,6 @@
 # Nivesh Firewall — Backend Core
 
-Production-quality implementations of **Engine 1 (Content Intelligence)**, **Engine 2 (Claim Intelligence)**, **Engine 3 (Action Intelligence)**, **Engine 4 (Source Intelligence)**, **Engine 5 (Evidence Verification)**, **Engine 6 (Threat & Attack-Path Intelligence)**, **Engine 7 (Scam Fingerprint & Collective Threat Intelligence)**, **Engine 8 (Policy & Intervention Engine)**, and **Engine 9 (Identity Verification & Entity Resolution Engine)** for the **Nivesh Firewall** backend.
+Production-quality implementations of **Engine 1 (Content Intelligence)**, **Engine 2 (Claim Intelligence)**, **Engine 3 (Action Intelligence)**, **Engine 4 (Source Intelligence)**, **Engine 5 (Evidence Verification)**, **Engine 6 (Threat & Attack-Path Intelligence)**, **Engine 7 (Scam Fingerprint & Collective Threat Intelligence)**, **Engine 8 (Policy & Intervention Engine)**, **Engine 9 (Identity Verification & Entity Resolution Engine)**, and **Engine 10 (Behavioural Signal Intelligence Engine)** for the **Nivesh Firewall** backend.
 
 ```
 RAW CONTENT (Text, URL, Image)
@@ -46,34 +46,28 @@ RAW CONTENT (Text, URL, Image)
      EvidenceAnalysis (VerificationResult[])
           │
           ▼
-┌───────────────────────────────────────────────┐
-│ ENGINE 6: Threat & Attack-Path Intelligence   │
-└───────────────────────────────────────────────┘
-          │ (Answers: "How do claims, actions, identity signals, and evidence combine into a harmful path?")
+       ┌─────────────────────────────────────────────────────────┐
+       │                  downstream intelligence                │
+       └─────────────────────────────────────────────────────────┘
+          ↓                          ↓                         ↓
+┌───────────────────────┐  ┌───────────────────┐  ┌─────────────────────────┐
+│ ENGINE 6: Threat Intel│  │ ENGINE 7: Fingerpr│  │ ENGINE 9: Identity Verif│
+└───────────────────────┘  └───────────────────┘  └─────────────────────────┘
+          \                          │                         /
+           \                         │                        /
+            ↓                        ↓                       ↓
+┌───────────────────────────────────────────────────────────────────────────┐
+│ ENGINE 10: Behavioural Signal Intelligence Engine                         │
+└───────────────────────────────────────────────────────────────────────────┘
+          │ (Answers: "What behavioural pattern is emerging across this interaction sequence?")
           ▼
-     ThreatAnalysis (AttackPath, ThreatSignal[], ClaimActionLink[], ThreatFamily[])
-          │
-          ▼
-┌─────────────────────────────────────────────────────────┐
-│ ENGINE 7: Scam Fingerprint & Collective Intelligence     │
-└─────────────────────────────────────────────────────────┘
-          │ (Answers: "Have we previously observed this underlying financial threat pattern?")
-          ▼
-     FingerprintAnalysis (ScamFingerprint, FingerprintObservation, FingerprintMatch[])
-          │
-          ▼
-┌───────────────────────────────────────────────────────────────────┐
-│ ENGINE 9: Identity Verification & Entity Resolution Engine        │
-└───────────────────────────────────────────────────────────────────┘
-          │ (Answers: "Does the claimed entity align with authoritative identity evidence?")
-          ▼
-     IdentityAnalysis (IdentityStatus, ClaimedEntity[], IdentityMatch[], AuthorityAlignment[], DomainAlignment[])
+     BehaviouralAnalysis (BehaviouralSignal[], BehaviouralFinding[], BehaviouralPolicyHints)
           │
           ▼
 ┌─────────────────────────────────────────────────────────┐
 │ ENGINE 8: Policy & Intervention Engine                  │
 └─────────────────────────────────────────────────────────┘
-          │ (Answers: "Given threat, fingerprint, and identity findings, what safety intervention applies?")
+          │ (Answers: "Given threat, fingerprint, identity, and behavioural findings, what safety intervention applies?")
           ▼
      PolicyDecision (ALLOW | INFORM | WARN | PAUSE | BLOCK)
           │
@@ -94,7 +88,8 @@ RAW CONTENT (Text, URL, Image)
 > - **Engine 7** creates privacy-preserving structural scam fingerprints, normalizes threat patterns across multiple observations, detects exact and semantic variants, maintains observation counts with copy-amplification protection, and provides collective intelligence without storing raw PII, declaring criminality, or predicting scam probability.
 > - **Engine 8** evaluates multi-engine structured intelligence against explicit, deterministic policy rules and precedence hierarchies to emit intervention decisions (`ALLOW`, `INFORM`, `WARN`, `PAUSE`, `BLOCK`) with machine-readable reason codes, non-accusatory user explanations, and zero PII or investment advice.
 > - **Engine 9** resolves entity identities, normalizes organization and person names without over-aggressive merging, verifies registration credentials against official databases, evaluates domain lookalikes vs official domains, validates regulatory authority claims vs actual records, and assesses social handles without assuming ownership—producing structured findings and identity resolution confidence without declaring criminality or fraud.
-> - **Engines 1 through 9 NEVER** recommend buying/selling/holding investments, predict future market outcomes, calculate general "scam probabilities" (e.g. 0.94), declare individuals criminals, or directly manipulate the host OS/browser (device-level enforcement is delegated to downstream adapters).
+> - **Engine 10** identifies emerging behavioural and sequence patterns (time pressure, FOMO urgency, progressive commitment, rapid action escalation, retry after decline, channel migration, information-to-transaction shift) across interaction sequences without making psychological inferences, judging user character, declaring scam probabilities, or issuing policy interventions.
+> - **Engines 1 through 10 NEVER** recommend buying/selling/holding investments, predict future market outcomes, calculate general "scam probabilities" (e.g. 0.94), declare individuals criminals, or directly manipulate the host OS/browser (device-level enforcement is delegated to downstream adapters).
 
 
 
@@ -1102,15 +1097,80 @@ print(f"Identity Resolution Confidence: {identity_2.confidence}")  # >= 0.95
 
 ---
 
+## 11. Engine 10: Behavioural Signal Intelligence Engine
+
+Identifies behavioural and interaction-pattern signals emerging across sequences of financial content and user actions without making legal fraud adjudications, diagnosing psychological conditions, or issuing direct policy interventions.
+
+### Core Capabilities
+1. **Interaction Event Model & Session History**:
+   - Small typed event model (`InteractionEvent`, `InteractionEventType`, `InteractionHistory`).
+   - Privacy-safe reference storage (`action_id`, `claim_id`, `decision_id`, `sequence_index`, `timestamp`) with automatic scrubbing of forbidden sensitive keys (`password`, `otp`, `pin`, `cvv`, `keystrokes`, etc.).
+2. **Temporal & Progression Analysis**:
+   - Configurable timing thresholds (`rapid_escalation_seconds_threshold`, `rapid_channel_migration_seconds_threshold`, `short_interval_seconds_threshold`).
+   - Interval computations and time-budget evaluation.
+3. **Multi-Pattern Detectors**:
+   - **Pressure Detector** (`PressureDetector`): Identifies `TIME_PRESSURE`, `FOMO_PRESSURE`, `REPEATED_URGENCY`, and `URGENCY_ESCALATION` without accusatory labeling.
+   - **Escalation Detector** (`EscalationDetector`): Identifies `LOW_TO_HIGH_IMPACT_TRANSITION`, `PROGRESSIVE_COMMITMENT`, `RAPID_ACTION_ESCALATION`, and `INFORMATION_TO_TRANSACTION_SHIFT`.
+   - **Persistence Detector** (`PersistenceDetector`): Identifies `RETRY_AFTER_DECLINE`, `PERSISTENT_PAYMENT_REQUEST`, `PERSISTENT_CREDENTIAL_REQUEST`, `REPEATED_ACTION_REQUEST`, `USER_OVERRIDE`, and `REPEATED_WARNING_OVERRIDE`.
+   - **Channel Detector** (`ChannelDetector`): Identifies `CHANNEL_MIGRATION`, `RAPID_CHANNEL_MIGRATION`, and `PRIVATE_CHANNEL_ESCALATION`.
+4. **Findings & Downstream Policy Hints**:
+   - High-level `BehaviouralFinding` generation with objective evidence basis and provenance.
+   - Structured `BehaviouralPolicyHints` flags for Engine 8 consumption (`high_impact_action_progression`, `pressure_present`, `repeated_request_present`, `user_override_present`, `rapid_escalation_present`, `information_to_transaction_shift`).
+   - `SessionBehaviourSummary` aggregating session statistics without user trustworthiness scoring or character grading.
+
+### Usage Example
+
+```python
+from nivesh.behaviour import (
+    BehaviouralSignalEngine,
+    InteractionEvent,
+    InteractionEventType,
+    InteractionHistory,
+)
+
+engine = BehaviouralSignalEngine()
+
+# Session history with sequence of observable events
+history = InteractionHistory(session_id="SESS-001")
+history.add_event(InteractionEvent(
+    event_id="EVT-01",
+    timestamp="10:00:00",
+    event_type=InteractionEventType.CONTENT_VIEW,
+))
+history.add_event(InteractionEvent(
+    event_id="EVT-02",
+    timestamp="10:01:00",
+    event_type=InteractionEventType.CHANNEL_CHANGED,
+    channel="telegram",
+))
+history.add_event(InteractionEvent(
+    event_id="EVT-03",
+    timestamp="10:03:00",
+    event_type=InteractionEventType.PAYMENT_REQUESTED,
+))
+
+analysis = engine.analyze(
+    content=content,
+    claims=claims,
+    actions=actions,
+    interaction_history=history,
+)
+
+print(analysis.signals)       # [LOW_TO_HIGH_IMPACT_TRANSITION, CHANNEL_MIGRATION, ...]
+print(analysis.policy_hints)  # high_impact_action_progression=True, ...
+```
+
+---
+
 ## 12. Test Suite Verification
 
-Run all pytest unit, integration, and regression tests across all 9 engines:
+Run all pytest unit, integration, and regression tests across all 10 engines:
 
 ```bash
 python -X utf8 -m pytest -v
 ```
 
-**Results:** `358 passed in 31.26s` (0 failed, 100% pass rate).
+**Results:** `386 passed in 31.36s` (0 failed, 100% pass rate).
 - **Engine 1 Unit Tests**: Text normalizer (7), URL extractor (8), Social extractor (6), Contact extractor (4), Financial extractor (6), Entity extractor (5), CTA extractor (7), Language detector (4), Financial relevance (4), OCR adapter (6), URL adapter (3), Primary fixture (3), API (4) -> **67 tests**.
 - **Engine 2 Unit Tests**: Claim canonicalizer (7), Modality and Temporal (8), Claim segmenter & Action filtering (5), Verification requirements & Relations (5), Benchmark cases (12), Primary fixture (1), Engine 1 -> Engine 2 integration (3), Claim API (3) -> **44 tests**.
 - **Engine 3 Unit Tests**: Schemas & validation (2), Classifier & hierarchy (4), Parameter extractor & privacy (3), Benchmark cases (6), Primary fixture benchmark (1), Engine 1 -> Engine 2 -> Engine 3 integration (2), Action API (4) -> **22 tests**.
@@ -1120,9 +1180,10 @@ python -X utf8 -m pytest -v
 - **Engine 7 Unit & Regression Tests**: Schemas & validation (5), Feature extraction & canonical ordering (2), Multi-dimensional matcher (3), Lifecycle, disputes & relationships (5), Copy-amplification defense & observation counting (2), Primary benchmark fixture & secondary demo (1), Adversarial false-match & false-split tests (2), Privacy preservation & boundary guardrails (1), Full 7-engine end-to-end integration (1), FastAPI endpoints (3), Regression suite (5) -> **30 tests**.
 - **Engine 8 Unit & Integration Tests**: Schemas & validation (5), Individual rules (5), Precedence & user overrides (7), Negative guardrails (9), Neutral explainability (2), Privacy preservation & safety boundaries (2), FastAPI endpoints (4), Primary benchmark fixture & determinism (4), Full 8-engine end-to-end integration (2) -> **40 tests**.
 - **Engine 9 Unit, Integration & Regression Tests**: Schemas & validation (5), Entity & domain normalizer (6), Registration resolver (5), Domain & brand alignment (3), Authority & social channel resolution (4), Negative guardrails & safety boundaries (5), Core benchmarks: primary, positive, mismatch, ambiguous (4), Privacy preservation & provenance integrity (3), FastAPI endpoints (4), Full 9-engine end-to-end integration (2), Downstream ordering & Policy integration regression suite (8) -> **49 tests**.
+- **Engine 10 Unit, Integration & Benchmark Tests**: Schemas & validation (6), Pressure, escalation, persistence, and channel detectors (11), Primary, persistence, and benign benchmarks (3), Full 10-engine end-to-end pipeline (4), FastAPI endpoints (4) -> **28 tests**.
 
 **Reconciled Arithmetic**:
-$$67 + 44 + 22 + 45 + 25 + 36 + 30 + 40 + 49 = 358 \text{ tests (100\% match)}$$
+$$67 + 44 + 22 + 45 + 25 + 36 + 30 + 40 + 49 + 28 = 386 \text{ tests (100\% match)}$$
 *(Zero regressions across all existing suites, zero skipped, 0 failed across two consecutive fresh-process runs).*
 
 

@@ -60,6 +60,7 @@ class PolicyRule:
         threat: ThreatAnalysis,
         fingerprint: FingerprintAnalysis,
         identity: Optional[Any] = None,
+        behaviour: Optional[Any] = None,
         context: Optional[PolicyContext] = None,
     ) -> Optional[PolicyRuleResult]:
         return self.condition_fn(
@@ -71,6 +72,7 @@ class PolicyRule:
             threat=threat,
             fingerprint=fingerprint,
             identity=identity,
+            behaviour=behaviour,
             context=context,
         )
 
@@ -375,8 +377,25 @@ def _rule_pause_high_impact_payment_threat_pattern(
     has_channel_or_app = _has_channel_migration_action(actions, threat) or _has_software_action(actions, threat)
     has_fp_match = fingerprint.match_type in ("EXACT_MATCH", "STRUCTURAL_MATCH", "SEMANTIC_VARIANT")
 
+    has_rapid_escalation = False
+    has_persistent_payment = False
+    behaviour_triggered_signals: list[str] = []
+    if kwargs.get("behaviour") is not None:
+        beh = kwargs["behaviour"]
+        hints = getattr(beh, "policy_hints", None)
+        if hints:
+            if hints.rapid_escalation_present or hints.high_impact_action_progression:
+                has_rapid_escalation = True
+            if hints.persistent_payment_present or hints.repeated_request_present:
+                has_persistent_payment = True
+        for sig in getattr(beh, "signals", []):
+            stype = getattr(sig, "signal_type", None)
+            stype_val = stype.value if hasattr(stype, "value") else str(stype)
+            if stype_val in ("RAPID_ACTION_ESCALATION", "PERSISTENT_PAYMENT_REQUEST", "LOW_TO_HIGH_IMPACT_TRANSITION", "INFORMATION_TO_TRANSACTION_SHIFT", "RETRY_AFTER_DECLINE"):
+                behaviour_triggered_signals.append(stype_val)
+
     # Condition: Payment requested combined with unverified authority / regulatory conflict AND either software/channel or known pattern
-    if (has_unverified_auth or has_reg_conflict or has_guaranteed_ret) and (has_channel_or_app or has_fp_match or "PAYMENT_REQUEST" in sig_types):
+    if (has_unverified_auth or has_reg_conflict or has_guaranteed_ret) and (has_channel_or_app or has_fp_match or has_rapid_escalation or has_persistent_payment or "PAYMENT_REQUEST" in sig_types):
         reasons_list = [
             ReasonCode.PAYMENT_REQUEST,
             ReasonCode.HIGH_IMPACT_ACTION,
@@ -393,11 +412,32 @@ def _rule_pause_high_impact_payment_threat_pattern(
             reasons_list.append(ReasonCode.PRIVATE_CHANNEL_MIGRATION)
         if _has_software_action(actions, threat):
             reasons_list.append(ReasonCode.EXTERNAL_APP_INSTALLATION)
+        if has_rapid_escalation:
+            reasons_list.append(ReasonCode.RAPID_ACTION_ESCALATION)
+        if has_persistent_payment:
+            reasons_list.append(ReasonCode.PERSISTENT_PAYMENT_REQUEST)
         if has_fp_match:
             reasons_list.append(
                 ReasonCode.KNOWN_THREAT_STRUCTURAL_MATCH if fingerprint.match_type in ("EXACT_MATCH", "STRUCTURAL_MATCH")
                 else ReasonCode.KNOWN_THREAT_SEMANTIC_VARIANT
             )
+
+        supporting = [
+            "Content instructs the user to make an irreversible financial payment.",
+            "Claimed regulatory registration could not be established from authoritative sources.",
+            "Content promises guaranteed or assured financial returns conflicting with regulatory guidelines.",
+            "Action sequence involves channel migration, external software, or matches a previously observed threat variant.",
+        ]
+        if has_rapid_escalation or has_persistent_payment:
+            supporting.append("Interaction sequence displays rapid action escalation or persistent payment requests.")
+
+        triggered_sigs = list(sig_types.intersection({
+            "REGULATORY_AUTHORITY_CLAIM", "IDENTITY_NOT_ESTABLISHED", "GUARANTEED_RETURN_LANGUAGE",
+            "REGULATORY_CLAIM_CONFLICT", "CHANNEL_MIGRATION", "PRIVATE_CHANNEL_MIGRATION", "EXTERNAL_APP", "PAYMENT_REQUEST"
+        }))
+        for bsig in behaviour_triggered_signals:
+            if bsig not in triggered_sigs:
+                triggered_sigs.append(bsig)
 
         return PolicyRuleResult(
             rule_id="RULE-PAUSE-01",
@@ -407,16 +447,8 @@ def _rule_pause_high_impact_payment_threat_pattern(
             scope=InterventionScope.CURRENT_ACTION,
             reason_codes=reasons_list,
             primary_reason="Pause before proceeding: This payment request is linked to an unverified identity claim, guaranteed return promise, or matching threat structure.",
-            supporting_reasons=[
-                "Content instructs the user to make an irreversible financial payment.",
-                "Claimed regulatory registration could not be established from authoritative sources.",
-                "Content promises guaranteed or assured financial returns conflicting with regulatory guidelines.",
-                "Action sequence involves channel migration, external software, or matches a previously observed threat variant.",
-            ],
-            triggered_signals=list(sig_types.intersection({
-                "REGULATORY_AUTHORITY_CLAIM", "IDENTITY_NOT_ESTABLISHED", "GUARANTEED_RETURN_LANGUAGE",
-                "REGULATORY_CLAIM_CONFLICT", "CHANNEL_MIGRATION", "PRIVATE_CHANNEL_MIGRATION", "EXTERNAL_APP", "PAYMENT_REQUEST"
-            })),
+            supporting_reasons=supporting,
+            triggered_signals=triggered_sigs,
             required_user_confirmation=True,
             cooldown_seconds=DEFAULT_COOLDOWN_PAUSE_SECONDS,
         )

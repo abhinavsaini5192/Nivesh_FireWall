@@ -21,6 +21,9 @@ from nivesh.policy.engine import PolicyInterventionEngine
 from nivesh.policy.schemas import PolicyDecision, PolicyContext
 from nivesh.identity.engine import IdentityVerificationEngine
 from nivesh.identity.schemas import IdentityAnalysis, ClaimedEntity
+from nivesh.behaviour.engine import BehaviouralSignalEngine
+from nivesh.behaviour.schemas import BehaviouralAnalysis
+from nivesh.behaviour.event_model import InteractionEvent, InteractionHistory
 from nivesh.schemas.input import ContentInput, ChannelType
 from nivesh.schemas.normalized import NormalizedContent
 from nivesh.schemas.claims import ClaimAnalysis
@@ -36,6 +39,20 @@ from nivesh.schemas.fingerprint import (
 )
 from pydantic import BaseModel
 from datetime import datetime, timezone
+
+class BehaviouralAnalyzePayload(BaseModel):
+    content: Optional[NormalizedContent] = None
+    text: Optional[str] = None
+    claims: Optional[ClaimAnalysis] = None
+    actions: Optional[ActionAnalysis] = None
+    threat: Optional[ThreatAnalysis] = None
+    fingerprint: Optional[FingerprintAnalysis] = None
+    identity: Optional[IdentityAnalysis] = None
+    interaction_history: Optional[InteractionHistory] = None
+
+class BehaviouralEventPayload(BaseModel):
+    session_id: str
+    event: InteractionEvent
 
 class IdentityVerificationPayload(BaseModel):
     content: Optional[NormalizedContent] = None
@@ -87,6 +104,7 @@ class PolicyDecidePayload(BaseModel):
     threat: Optional[ThreatAnalysis] = None
     fingerprint: Optional[FingerprintAnalysis] = None
     identity: Optional[IdentityAnalysis] = None
+    behaviour: Optional[BehaviouralAnalysis] = None
     context: Optional[PolicyContext] = None
 
 
@@ -116,6 +134,7 @@ threat_engine = ThreatIntelligenceEngine()
 fingerprint_engine = ScamFingerprintEngine()
 policy_engine = PolicyInterventionEngine()
 identity_engine = IdentityVerificationEngine()
+behaviour_engine = BehaviouralSignalEngine()
 
 
 @app.get("/health", tags=["System"])
@@ -135,6 +154,7 @@ async def health_check():
             "Engine 7: Scam Fingerprint & Collective Threat Intelligence Engine",
             "Engine 8: Policy & Intervention Engine",
             "Engine 9: Identity Verification & Entity Resolution Engine",
+            "Engine 10: Behavioural Signal Intelligence Engine",
         ],
         "version": ENGINE_VERSION,
     }
@@ -536,6 +556,7 @@ async def evaluate_policy(request: Request):
             threat = payload.threat
             fingerprint = payload.fingerprint
             identity = payload.identity
+            behaviour = payload.behaviour
             context = payload.context
         else:
             content = NormalizedContent(**body)
@@ -546,6 +567,7 @@ async def evaluate_policy(request: Request):
             threat = None
             fingerprint = None
             identity = None
+            behaviour = None
             context = None
 
         if claims is None:
@@ -568,6 +590,15 @@ async def evaluate_policy(request: Request):
                 evidence=evidence,
                 threat=threat,
             )
+        if behaviour is None:
+            behaviour = behaviour_engine.analyze(
+                content=content,
+                claims=claims,
+                actions=actions,
+                threat=threat,
+                fingerprint=fingerprint,
+                identity=identity,
+            )
 
         decision = policy_engine.decide(
             content=content,
@@ -578,6 +609,7 @@ async def evaluate_policy(request: Request):
             threat=threat,
             fingerprint=fingerprint,
             identity=identity,
+            behaviour=behaviour,
             context=context,
         )
         return decision
@@ -755,6 +787,103 @@ async def get_identity_entity(entity_id: str):
             detail=f"Claimed entity '{entity_id}' not found."
         )
     return entity
+
+
+# ==============================================================================
+# Engine 10: Behavioural Signal Intelligence Endpoints
+# ==============================================================================
+
+@app.post(
+    "/api/v1/behaviour/analyze",
+    response_model=BehaviouralAnalysis,
+    tags=["Behavioural Signal Intelligence (Engine 10)"],
+    summary="Analyze interaction sequence for behavioural signals",
+)
+async def analyze_behaviour(request: Request):
+    """Analyzes interaction events and content for behavioural and escalation patterns.
+
+    Identifies time pressure, progressive commitment, channel transitions, and retries.
+    Does not produce scam probabilities, psychological evaluations, or policy decisions.
+    """
+    try:
+        body = await request.json()
+        payload = BehaviouralAnalyzePayload(**body)
+
+        content = payload.content
+        if not content:
+            raw_text = payload.text or body.get("raw_text") or body.get("text")
+            if not raw_text:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Either 'content' or 'text' must be provided in payload."
+                )
+            content = content_engine.process_text(raw_text)
+
+        claims = payload.claims
+        if not claims:
+            claims = claims_engine.analyze(content)
+
+        actions = payload.actions
+        if not actions:
+            actions = actions_engine.analyze(content, claims)
+
+        analysis = behaviour_engine.analyze(
+            content=content,
+            claims=claims,
+            actions=actions,
+            threat=payload.threat,
+            fingerprint=payload.fingerprint,
+            identity=payload.identity,
+            interaction_history=payload.interaction_history,
+        )
+        return analysis
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Behavioural analysis failed: {str(e)}"
+        )
+
+
+@app.get(
+    "/api/v1/behaviour/{analysis_id}",
+    response_model=BehaviouralAnalysis,
+    tags=["Behavioural Signal Intelligence (Engine 10)"],
+    summary="Retrieve a behavioural analysis record by ID",
+)
+async def get_behaviour_analysis(analysis_id: str):
+    """Retrieves an existing behavioural analysis record from in-memory cache."""
+    analysis = behaviour_engine.get_analysis(analysis_id)
+    if not analysis:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Behavioural analysis '{analysis_id}' not found."
+        )
+    return analysis
+
+
+@app.post(
+    "/api/v1/behaviour/events",
+    tags=["Behavioural Signal Intelligence (Engine 10)"],
+    summary="Record an interaction event into session history",
+)
+async def record_behaviour_event(payload: BehaviouralEventPayload):
+    """Appends a structured, privacy-safe interaction event to the specified session."""
+    try:
+        history = behaviour_engine.record_event(payload.session_id, payload.event)
+        return {
+            "status": "recorded",
+            "session_id": history.session_id,
+            "event_count": history.event_count,
+            "last_event_at": history.last_event_at,
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to record interaction event: {str(e)}"
+        )
+
 
 
 

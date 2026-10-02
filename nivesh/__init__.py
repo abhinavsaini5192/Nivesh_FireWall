@@ -34,6 +34,22 @@ from .identity import (
     IdentityFinding,
     IdentityProvenance,
 )
+from .behaviour import (
+    BehaviouralSignalEngine,
+    BehaviouralAnalysis,
+    BehaviouralSignal,
+    BehaviouralFinding,
+    SessionBehaviourSummary,
+    BehaviouralPolicyHints,
+    BehaviouralProvenance,
+    BehaviouralSignalType,
+    BehaviouralFindingType,
+    BehaviouralSignalSeverity,
+    InteractionEvent,
+    InteractionEventType,
+    InteractionHistory,
+    TemporalThresholds,
+)
 from .schemas import (
 
     ContentInput,
@@ -178,6 +194,20 @@ __all__ = [
     "DomainAlignment",
     "IdentityFinding",
     "IdentityProvenance",
+    "BehaviouralSignalEngine",
+    "BehaviouralAnalysis",
+    "BehaviouralSignal",
+    "BehaviouralFinding",
+    "SessionBehaviourSummary",
+    "BehaviouralPolicyHints",
+    "BehaviouralProvenance",
+    "BehaviouralSignalType",
+    "BehaviouralFindingType",
+    "BehaviouralSignalSeverity",
+    "InteractionEvent",
+    "InteractionEventType",
+    "InteractionHistory",
+    "TemporalThresholds",
 ]
 
 

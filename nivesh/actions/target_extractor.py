@@ -99,8 +99,9 @@ class ActionTargetExtractor:
                 return ActionTarget(type="website", value=url_match.group(0).rstrip(".,!?"))
             if content and content.structured_signals and content.structured_signals.urls:
                 for u in content.structured_signals.urls:
-                    if u.url in clean:
-                        return ActionTarget(type="website", value=u.url)
+                    url_val = getattr(u, "url", getattr(u, "normalized_url", getattr(u, "original_url", "")))
+                    if url_val and url_val in clean:
+                        return ActionTarget(type="website", value=url_val)
             return ActionTarget(type="website", value=None)
 
         # 5. Accounts / Financial Targets

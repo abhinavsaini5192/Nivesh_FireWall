@@ -32,6 +32,7 @@ class PolicyEvaluator:
         threat: ThreatAnalysis,
         fingerprint: FingerprintAnalysis,
         identity: Optional[Any] = None,
+        behaviour: Optional[Any] = None,
         context: Optional[PolicyContext] = None,
     ) -> list[PolicyRuleResult]:
         """Evaluates every rule and returns all matching results in order."""
@@ -47,6 +48,7 @@ class PolicyEvaluator:
                 threat=threat,
                 fingerprint=fingerprint,
                 identity=identity,
+                behaviour=behaviour,
                 context=context,
             )
             if result:
