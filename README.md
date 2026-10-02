@@ -1,6 +1,6 @@
 # Nivesh Firewall — Backend Core
 
-Production-quality implementations of **Engine 1 (Content Intelligence Engine)**, **Engine 2 (Claim Intelligence Engine)**, and **Engine 3 (Action Intelligence Engine)** for the **Nivesh Firewall** backend.
+Production-quality implementations of **Engine 1 (Content Intelligence)**, **Engine 2 (Claim Intelligence)**, **Engine 3 (Action Intelligence)**, and **Engine 4 (Source Intelligence)** for the **Nivesh Firewall** backend.
 
 ```
 RAW CONTENT (Text, URL, Image)
@@ -30,9 +30,17 @@ RAW CONTENT (Text, URL, Image)
      ActionAnalysis (CanonicalAction[])
           │
           ▼
+┌───────────────────────────────────────┐
+│  ENGINE 4: Source Intelligence Engine │
+└───────────────────────────────────────┘
+          │ (Answers: "Where is authoritative information, and what source material was retrieved?")
+          ▼
+     SourceAnalysis (SourceDocument[], EvidenceCandidate[])
+          │
+          ▼
 ┌─────────────────────────────────────────────────────────┐
-│ DOWNSTREAM ENGINES (Engine 4+):                         │
-│ - Evidence & Identity Verification Engines              │
+│ DOWNSTREAM ENGINES (Engine 5+):                         │
+│ - Evidence Verification Engine (Engine 5)               │
 │ - Behavioural Signal Engine                             │
 │ - Threat / Attack-Path Engine                           │
 │ - Scam Fingerprint Engine                               │
@@ -45,7 +53,9 @@ RAW CONTENT (Text, URL, Image)
 > - **Engine 1** normalizes text, extracts multi-modal signals, and preserves 100% provenance without risk scoring.
 > - **Engine 2** structures claims into atomic Subject-Predicate-Object canonical claims with modality, temporal context, fingerprint inputs, and verification requirements.
 > - **Engine 3** structures requested user actions into canonical actions with action types, progression hierarchy, targets, parameters, sequence, modality, and rationale claim linkage.
-> - **Engines 1, 2, and 3 NEVER** evaluate scam likelihood, calculate risk scores, determine attack paths, or block content. Those responsibilities belong strictly to later threat and policy engines.
+> - **Engine 4** routes claims to authoritative source taxonomies, queries official registries/filings (SEBI, NSE, etc.), normalizes retrieved documents, and generates structured evidence candidates with full provenance while keeping verification status strictly `UNVERIFIED`.
+> - **Engines 1, 2, 3, and 4 NEVER** evaluate truth/falsity of claims, assess scam likelihood, calculate risk scores, determine attack paths, or block content. Those responsibilities belong strictly to later verification and decision engines.
+
 
 ---
 
@@ -169,7 +179,44 @@ Converts `NormalizedContent` and `ClaimAnalysis` into structured canonical actio
 
 ---
 
-## 4. Benchmark Fixture Execution
+## 4. Engine 4: Source Intelligence Engine
+
+Discovers authoritative sources, routes structured claims, retrieves official filings/registries, and normalizes candidate evidence (`SourceAnalysis`).
+
+### Capabilities
+1. **Controlled Source Taxonomy & Authority Tiers**:
+   - Taxonomies: `REGULATOR`, `REGULATORY_REGISTRY`, `STOCK_EXCHANGE`, `GOVERNMENT`, `COMPANY_OFFICIAL`, `STATUTORY_DOCUMENT`, `FINANCIAL_FILING`, `CORPORATE_ANNOUNCEMENT`, `CORPORATE_ACTION`, `LEGAL_DOCUMENT`, `DOMAIN_SOURCE`, `PUBLIC_DATABASE`, `NEWS`, `OTHER`.
+   - Authority Tiers: `PRIMARY_OFFICIAL`, `SECONDARY_RELIABLE`, `SECONDARY`, `UNKNOWN` (describes source authority, NOT claim truth).
+2. **Centralized Source Catalog** (`SourceCatalog`):
+   - Central registry for official data sources (SEBI Intermediaries Registry, SEBI Enforcement/Regulations, NSE Corporate Announcements, NSE Corporate Actions, NSE Company Filings, BSE, RBI, MCA21, etc.).
+   - Prevents hardcoded lookup logic across the application.
+3. **Deterministic Source Routing** (`SourceRouter`):
+   - Routes claims based strictly on structured fields (`subject`, `predicate`, `object`, `temporal_context`, registration numbers):
+     - `REGULATORY` / `REGISTERED_WITH` → `sebi_recognised_intermediaries`
+     - `GUARANTEED_RETURN` → `sebi_public_regulatory_pages` (SEBI Code of Conduct prohibitions)
+     - `CORPORATE_EVENT` / `ANNOUNCED_BONUS` → `nse_corporate_actions` / `nse_corporate_announcements`
+     - `FINANCIAL` / `REPORTED_PROFIT` → `nse_company_filings`
+4. **Authoritative Source Adapters** (`SEBIAdapter`, `NSEAdapter`, `BSEAdapter`, etc.):
+   - `SEBIAdapter`: Real adapter supporting registration numbers, person/intermediary names, trade names, and statutory prohibitions.
+   - `NSEAdapter`: Real adapter supporting company symbols, announcement keywords, date filtering, and corporate actions.
+   - Boundary Adapters: `BSEAdapter`, `RBIAdapter`, `CompanySourceAdapter` (return explicit `SOURCE_UNAVAILABLE` when unconfigured).
+   - **Explicit Execution Modes**: `LIVE`, `CACHE`, `FIXTURE` (never fakes live provenance).
+5. **SSRF Protection & Outbound Request Safety** (`SsrfValidator`):
+   - Rejects non-HTTP(S) schemes (`file://`, `ftp://`).
+   - Rejects loopback (`127.0.0.0/8`, `localhost`, `::1`), private networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), link-local (`169.254.0.0/16`), and internal hostnames (`.local`, `.internal`).
+   - Validates redirects iteratively against SSRF before following.
+   - Enforces 5MB size caps and 5.0s timeouts.
+6. **Caching & Rate Limiting** (`SourceCache`, `RateLimiter`):
+   - In-memory cache with query hash keys and TTLs.
+   - Rate limiting with token intervals and exponential backoff.
+7. **Document Normalization & Evidence Candidates** (`SourceNormalizer`):
+   - Normalizes disparate sources into a standard `SourceDocument`.
+   - Extracts focused `EvidenceCandidate` excerpts with `matched_terms`, `matched_entities`, and `matched_dates`.
+   - **CRITICAL**: Verification status is strictly preserved as `UNVERIFIED`. Engine 5 evaluates truth.
+
+---
+
+## 5. Benchmark Fixture Execution
 
 ### Benchmark Input:
 ```
@@ -178,143 +225,141 @@ Converts `NormalizedContent` and `ClaimAnalysis` into structured canonical actio
 
 ### Pipeline Flow:
 ```
-Raw Text ──▶ Engine 1 (NormalizedContent) ──▶ Engine 2 (ClaimAnalysis) ──▶ Engine 3 (ActionAnalysis)
+Raw Text ──▶ Engine 1 (Content) ──▶ Engine 2 (Claims) ──▶ Engine 3 (Actions) ──▶ Engine 4 (Sources)
 ```
 
 ### Engine 1 (NormalizedContent):
-- **Entities**:
-  - People: `Rahul Sharma` (confidence: 0.96)
-  - Regulators: `SEBI` -> `Securities and Exchange Board of India` (confidence: 0.99)
-- **Structured Signals**:
-  - URLs: `https://t.me/rahulinvest`
-  - Social Handles: `{"platform": "telegram", "handle": "rahulinvest"}`
-  - Email: `rahul@example.com`
-  - Currency: `₹5,000` (INR 5000.0)
-  - Percentages: `40%` (40.0)
+- **Entities**: `Rahul Sharma` (person, 0.96), `SEBI` (regulator, 0.99)
+- **Structured Signals**: URL: `https://t.me/rahulinvest`, Handle: `telegram:rahulinvest`, Email: `rahul@example.com`, Currency: `₹5,000` (INR 5000.0), Percentage: `40%` (40.0)
 - **Actions Detected**: `join_channel`, `download`, `payment`, `contact`
 
 ### Engine 2 (ClaimAnalysis):
+- **`CLAIM-001`**: `Rahul Sharma` → `REGISTERED_WITH` → `SEBI` (`REGULATORY`)
+- **`CLAIM-002`**: `unspecified_offer` → `GUARANTEED_RETURN` → `40% returns` (`FINANCIAL`)
+
+### Engine 3 (ActionAnalysis):
+- **`ACTION-001`**: `#1 JOIN_CHANNEL` (Target: `channel:Telegram`)
+- **`ACTION-002`**: `#2 DOWNLOAD` (Target: `application:app`)
+- **`ACTION-003`**: `#3 PAYMENT` (Target: `account`, Amount: `INR 5000.0`)
+- **`ACTION-004`**: `#4 CONTACT` (Target: `person:rahul@example.com`)
+
+### Engine 4 (SourceAnalysis):
 ```json
 {
   "content_id": "b68255d2-133f-4bcc-8625-fa5ab0cdc5ca",
-  "claims": [
+  "claim_sources": [
     {
       "claim_id": "CLAIM-001",
-      "claim_type": "REGULATORY",
-      "subject": "Rahul Sharma",
-      "predicate": "REGISTERED_WITH",
-      "object": "SEBI",
-      "canonical_fingerprint": "ENTITY:RAHUL_SHARMA|PREDICATE:REGISTERED_WITH|OBJECT:SEBI|TEMPORAL:CURRENT|MODALITY:ASSERTION"
+      "source_plan": {
+        "primary": ["sebi_recognised_intermediaries"],
+        "fallback": ["sebi_public_regulatory_pages", "government_official_sources"],
+        "required_source_types": ["REGULATORY_REGISTRY", "REGULATOR"],
+        "query": { "name": "Rahul Sharma", "keywords": ["registration", "intermediary", "advisor"] }
+      },
+      "searches": [
+        {
+          "result_id": "SEBI-SEARCH-E1A40BD3",
+          "source_id": "sebi_recognised_intermediaries",
+          "title": "SEBI Recognized Intermediary Registry Search: Rahul Sharma",
+          "url": "https://www.sebi.gov.in/sebiweb/other/OtherAction.do?doRecognisedFmr=yes&intmId=13&searchTerm=Rahul+Sharma"
+        }
+      ],
+      "documents": [
+        {
+          "document_id": "DOC-C9B6A974",
+          "organization": "SEBI",
+          "source_type": "REGULATORY_REGISTRY",
+          "url": "https://www.sebi.gov.in/sebiweb/other/OtherAction.do?doRecognisedFmr=yes&intmId=13&searchTerm=Rahul+Sharma",
+          "retrieval": {
+            "status": "NO_MATCH",
+            "http_status": 200,
+            "method": "SEBIAdapter",
+            "mode": "FIXTURE"
+          },
+          "content": "SEBI RECOGNISED INTERMEDIARY DATABASE SEARCH RESULT\nQuery: 'rahul sharma'\nMatches Found: 0\nStatus: NO_RECORDS_FOUND\nNotice: No entity or advisor matching 'rahul sharma' is registered in the official SEBI registry database."
+        }
+      ],
+      "evidence_candidates": [
+        {
+          "evidence_id": "EVID-C9B6A974-001",
+          "claim_id": "CLAIM-001",
+          "source_document_id": "DOC-C9B6A974",
+          "excerpt": "Query: 'rahul sharma'\nMatches Found: 0\nStatus: NO_RECORDS_FOUND",
+          "relevance": {
+            "matched_terms": ["registered"],
+            "matched_entities": ["Rahul Sharma"],
+            "matched_dates": []
+          },
+          "source_type": "REGULATORY_REGISTRY",
+          "authority_tier": "PRIMARY_OFFICIAL",
+          "verification_status": "UNVERIFIED"
+        }
+      ]
     },
     {
       "claim_id": "CLAIM-002",
-      "claim_type": "FINANCIAL",
-      "subject": "unspecified_offer",
-      "predicate": "GUARANTEED_RETURN",
-      "object": "40% returns",
-      "canonical_fingerprint": "ENTITY:UNSPECIFIED_OFFER|PREDICATE:GUARANTEED_RETURN|OBJECT:40__RETURNS|TEMPORAL:UNKNOWN|MODALITY:ASSERTION"
-    }
-  ]
-}
-```
-
-### Engine 3 (ActionAnalysis):
-```json
-{
-  "content_id": "b68255d2-133f-4bcc-8625-fa5ab0cdc5ca",
-  "actions": [
-    {
-      "action_id": "ACTION-001",
-      "source_content_id": "b68255d2-133f-4bcc-8625-fa5ab0cdc5ca",
-      "text": {
-        "original": "Join our Telegram VIP group: https://t.me/rahulinvest.",
-        "normalized": "Join our Telegram VIP group: https://t.me/rahulinvest."
+      "source_plan": {
+        "primary": ["sebi_public_regulatory_pages"],
+        "fallback": ["rbi_regulatory_publications"],
+        "required_source_types": ["REGULATOR", "STATUTORY_DOCUMENT"],
+        "query": { "keywords": ["guaranteed returns prohibition", "investment advisers regulations"] }
       },
-      "action_type": "JOIN_CHANNEL",
-      "actor": { "type": "user", "name": null },
-      "target": { "type": "channel", "value": "Telegram" },
-      "objects": [],
-      "parameters": {},
-      "sequence": { "index": 1, "is_prerequisite_for": null, "depends_on": null },
-      "modality": { "type": "instruction", "strength": "direct" },
-      "source_span": { "start": 64, "end": 127 },
-      "confidence": 0.95,
-      "canonical_fingerprint": "ACTION:JOIN_CHANNEL|TARGET:CHANNEL|MODALITY:INSTRUCTION",
-      "provenance": { "extraction_method": "hybrid", "processing_version": "1.0.0" }
-    },
-    {
-      "action_id": "ACTION-002",
-      "source_content_id": "b68255d2-133f-4bcc-8625-fa5ab0cdc5ca",
-      "text": {
-        "original": "Download our app",
-        "normalized": "Download our app"
-      },
-      "action_type": "DOWNLOAD",
-      "actor": { "type": "user", "name": null },
-      "target": { "type": "application", "value": "app" },
-      "objects": ["app"],
-      "parameters": {},
-      "sequence": { "index": 2, "is_prerequisite_for": null, "depends_on": null },
-      "modality": { "type": "instruction", "strength": "direct" },
-      "source_span": { "start": 128, "end": 144 },
-      "confidence": 0.95,
-      "canonical_fingerprint": "ACTION:DOWNLOAD|TARGET:APPLICATION|MODALITY:INSTRUCTION",
-      "provenance": { "extraction_method": "hybrid", "processing_version": "1.0.0" }
-    },
-    {
-      "action_id": "ACTION-003",
-      "source_content_id": "b68255d2-133f-4bcc-8625-fa5ab0cdc5ca",
-      "text": {
-        "original": "pay ₹5,000.",
-        "normalized": "pay ₹5,000."
-      },
-      "action_type": "PAYMENT",
-      "actor": { "type": "user", "name": null },
-      "target": { "type": "account", "value": null },
-      "objects": [],
-      "parameters": { "amount": 5000.0, "currency": "INR", "deadline": null, "timeframe": null, "urgency": null },
-      "sequence": { "index": 3, "is_prerequisite_for": null, "depends_on": null },
-      "modality": { "type": "instruction", "strength": "direct" },
-      "source_span": { "start": 149, "end": 160 },
-      "confidence": 0.95,
-      "canonical_fingerprint": "ACTION:PAYMENT|AMOUNT:5000.0|CURRENCY:INR|TARGET:ACCOUNT|MODALITY:INSTRUCTION",
-      "provenance": { "extraction_method": "hybrid", "processing_version": "1.0.0" }
-    },
-    {
-      "action_id": "ACTION-004",
-      "source_content_id": "b68255d2-133f-4bcc-8625-fa5ab0cdc5ca",
-      "text": {
-        "original": "Contact rahul@example.com.",
-        "normalized": "Contact rahul@example.com."
-      },
-      "action_type": "CONTACT",
-      "actor": { "type": "user", "name": null },
-      "target": { "type": "person", "value": "rahul@example.com" },
-      "objects": [],
-      "parameters": {},
-      "sequence": { "index": 4, "is_prerequisite_for": null, "depends_on": null },
-      "modality": { "type": "instruction", "strength": "direct" },
-      "source_span": { "start": 161, "end": 187 },
-      "confidence": 0.95,
-      "canonical_fingerprint": "ACTION:CONTACT|TARGET:PERSON|MODALITY:INSTRUCTION",
-      "provenance": { "extraction_method": "hybrid", "processing_version": "1.0.0" }
+      "searches": [
+        {
+          "result_id": "SEBI-REG-001",
+          "source_id": "sebi_public_regulatory_pages",
+          "title": "SEBI (Investment Advisers) Regulations & Code of Conduct — Prohibition on Assured/Guaranteed Returns",
+          "url": "https://www.sebi.gov.in/legal/circulars/sep-2020/guidelines-for-investment-advisers_47640.html"
+        }
+      ],
+      "documents": [
+        {
+          "document_id": "DOC-72D984FA",
+          "organization": "SEBI",
+          "source_type": "REGULATOR",
+          "url": "https://www.sebi.gov.in/legal/circulars/sep-2020/guidelines-for-investment-advisers_47640.html",
+          "retrieval": {
+            "status": "SUCCESS",
+            "http_status": 200,
+            "method": "SEBIAdapter",
+            "mode": "FIXTURE"
+          },
+          "content": "Securities and Exchange Board of India (Investment Advisers) Regulations, 2013 [Third Schedule - Code of Conduct]:\nProhibition on Assured / Guaranteed Returns: No registered Investment Adviser, Research Analyst, or intermediary shall assure, promise, or guarantee any fixed, risk-free, or predetermined percentage of returns on investments in the securities market."
+        }
+      ],
+      "evidence_candidates": [
+        {
+          "evidence_id": "EVID-72D984FA-001",
+          "claim_id": "CLAIM-002",
+          "source_document_id": "DOC-72D984FA",
+          "excerpt": "Prohibition on Assured / Guaranteed Returns: No registered Investment Adviser, Research Analyst, or intermediary shall assure, promise, or guarantee any fixed, risk-free, or predetermined percentage of returns on investments in the securities market.",
+          "relevance": {
+            "matched_terms": ["40% returns"],
+            "matched_entities": [],
+            "matched_dates": []
+          },
+          "source_type": "REGULATOR",
+          "authority_tier": "PRIMARY_OFFICIAL",
+          "verification_status": "UNVERIFIED"
+        }
+      ]
     }
   ],
-  "action_relations": [],
   "analysis_metadata": {
-    "processing_time_ms": 3.42,
-    "total_actions": 4,
-    "action_types_count": { "JOIN_CHANNEL": 1, "DOWNLOAD": 1, "PAYMENT": 1, "CONTACT": 1 },
-    "hierarchy_categories_present": ["COMMUNICATION", "CHANNEL_MIGRATION", "SOFTWARE_INSTALLATION", "FINANCIAL_TRANSACTION"],
-    "max_hierarchy_rank": 9,
-    "duplicate_actions_merged": 0
+    "claims_processed": 2,
+    "sources_queried": 2,
+    "documents_retrieved": 2,
+    "evidence_candidates_count": 2,
+    "retrieval_failures": 0,
+    "cache_hits": 0,
+    "processing_time_ms": 4.12
   }
 }
 ```
 
 ---
 
-## 5. API Endpoints
+## 6. API Endpoints
 
 Start the server:
 ```bash
@@ -322,7 +367,7 @@ uvicorn nivesh.api.app:app --host 0.0.0.0 --port 8000
 ```
 
 1. **`GET /health`** / **`GET /api/v1/health`**:
-   Returns system status and active engines (`content_intelligence`, `claim_intelligence`, `action_intelligence`).
+   Returns system status and active engines (`content_intelligence`, `claim_intelligence`, `action_intelligence`, `source_intelligence`).
 2. **`POST /api/v1/content/analyze`** (Engine 1):
    - Body: `{"text": "...", "url": "...", "channel": "telegram"}`
    - Form-Data: `file=@screenshot.png`, `channel=whatsapp`
@@ -333,22 +378,27 @@ uvicorn nivesh.api.app:app --host 0.0.0.0 --port 8000
 4. **`POST /api/v1/actions/analyze`** (Engine 3):
    - Body: `{"content": NormalizedContent, "claims": ClaimAnalysis (optional)}` or directly `NormalizedContent`
    - Output: `ActionAnalysis`
+5. **`POST /api/v1/sources/analyze`** (Engine 4):
+   - Body: `{"content": NormalizedContent, "claims": ClaimAnalysis, "actions": ActionAnalysis (optional)}` or directly `NormalizedContent`
+   - Output: `SourceAnalysis`
 
 ---
 
-## 6. Direct Python Service Interface
+## 7. Direct Python Service Interface
 
 ```python
 from nivesh import (
     ContentIntelligenceEngine,
     ClaimIntelligenceEngine,
     ActionIntelligenceEngine,
+    SourceIntelligenceEngine,
 )
 
 # Initialize engines
 content_engine = ContentIntelligenceEngine()
 claims_engine = ClaimIntelligenceEngine()
 actions_engine = ActionIntelligenceEngine()
+sources_engine = SourceIntelligenceEngine()
 
 raw_text = (
     "SEBI registered advisor Rahul Sharma! Guaranteed 40% returns. "
@@ -365,23 +415,24 @@ claims = claims_engine.analyze(normalized)
 # Step 3: Engine 3 (What actions are requested?)
 actions = actions_engine.analyze(normalized, claims)
 
-print(f"Content ID: {normalized.content_id}")
-print(f"Extracted {len(claims.claims)} claims:")
-for c in claims.claims:
-    print(f"  [{c.claim_id}] {c.subject} -> {c.predicate} -> {c.object}")
+# Step 4: Engine 4 (Where is authoritative info & what was retrieved?)
+sources = sources_engine.discover_and_retrieve(normalized, claims, actions)
 
-print(f"\nExtracted {len(actions.actions)} actions:")
-for a in actions.actions:
-    print(f"  [{a.action_id}] #{a.sequence.index} {a.action_type} (Target: {a.target.type}={a.target.value})")
-    if a.parameters.amount:
-        print(f"      Parameters: {a.parameters.currency} {a.parameters.amount}")
-    if a.rationale_claim_ids:
-        print(f"      Rationale Claims: {a.rationale_claim_ids}")
+print(f"Content ID: {normalized.content_id}")
+print(f"Processed {sources.analysis_metadata.claims_processed} claims:")
+
+for claim_res in sources.claim_sources:
+    print(f"\n[Claim: {claim_res.claim_id}]")
+    print(f"  Primary Source: {claim_res.source_plan.primary}")
+    for doc in claim_res.documents:
+        print(f"  -> Retrieved {doc.organization} Document ({doc.document_id}): Status={doc.retrieval.status}")
+    for cand in claim_res.evidence_candidates:
+        print(f"  -> Candidate ({cand.evidence_id}): Tier={cand.authority_tier} | Status={cand.verification_status}")
 ```
 
 ---
 
-## 7. Test Suite Verification
+## 8. Test Suite Verification
 
 Run all pytest unit and integration tests:
 
@@ -389,8 +440,9 @@ Run all pytest unit and integration tests:
 python -X utf8 -m pytest -v
 ```
 
-**Results:** `133 passed in 4.67s` (0 failed, 100% pass rate).
+**Results:** `178 passed in 8.51s` (0 failed, 100% pass rate).
 - **Engine 1 Unit Tests**: Text normalizer (7), URL extractor (8), Social extractor (6), Contact extractor (4), Financial extractor (6), Entity extractor (5), CTA extractor (7), Language detector (4), Financial relevance (4), OCR adapter (6), URL adapter (3), Primary fixture (3), API (4) -> **67 tests**.
 - **Engine 2 Unit Tests**: Claim canonicalizer (7), Modality and Temporal (8), Claim segmenter & Action filtering (5), Verification requirements & Relations (5), Benchmark cases (7), Primary fixture (1), Engine 1 -> Engine 2 integration (3), Claim API (3), Correction tests (5) -> **44 tests**.
 - **Engine 3 Unit Tests**: Schemas & validation (3), Classifier & hierarchy (3), Parameter extractor & privacy (4), Benchmark cases (6), Primary fixture benchmark (2), Engine 1 -> Engine 2 -> Engine 3 integration (2), Action API (2) -> **22 tests**.
+- **Engine 4 Unit Tests**: Schemas & validation (4), SSRF protection (20), Source routing (4), Adapters & caching (7), Evidence candidates (1), Primary fixture (1), Full 4-engine integration (1), Source API (3), Correction & boundaries -> **45 tests**.
 

@@ -13,15 +13,22 @@ from fastapi.responses import JSONResponse
 from nivesh.engine import ContentIntelligenceEngine, ENGINE_VERSION
 from nivesh.claims.engine import ClaimIntelligenceEngine
 from nivesh.actions.engine import ActionIntelligenceEngine
+from nivesh.sources.engine import SourceIntelligenceEngine
 from nivesh.schemas.input import ContentInput, ChannelType
 from nivesh.schemas.normalized import NormalizedContent
 from nivesh.schemas.claims import ClaimAnalysis
 from nivesh.schemas.actions import ActionAnalysis
+from nivesh.schemas.sources import SourceAnalysis
 from pydantic import BaseModel
 
 class ActionAnalysisPayload(BaseModel):
     content: NormalizedContent
     claims: Optional[ClaimAnalysis] = None
+
+class SourceAnalysisPayload(BaseModel):
+    content: NormalizedContent
+    claims: Optional[ClaimAnalysis] = None
+    actions: Optional[ActionAnalysis] = None
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -43,6 +50,7 @@ app.add_middleware(
 content_engine = ContentIntelligenceEngine()
 claims_engine = ClaimIntelligenceEngine()
 actions_engine = ActionIntelligenceEngine()
+sources_engine = SourceIntelligenceEngine()
 
 
 @app.get("/health", tags=["System"])
@@ -56,9 +64,11 @@ async def health_check():
             "Engine 1: Content Intelligence Engine",
             "Engine 2: Claim Intelligence Engine",
             "Engine 3: Action Intelligence Engine",
+            "Engine 4: Source Intelligence Engine",
         ],
         "version": ENGINE_VERSION,
     }
+
 
 
 @app.post(
@@ -150,4 +160,40 @@ async def analyze_actions(request: Request):
             status_code=400,
             detail=f"Action analysis failed: {str(e)}"
         )
+
+
+@app.post(
+    "/api/v1/sources/analyze",
+    response_model=SourceAnalysis,
+    tags=["Source Intelligence (Engine 4)"],
+    summary="Discover, route, and retrieve authoritative source documents and evidence candidates"
+)
+async def analyze_sources(request: Request):
+    """Consumes NormalizedContent, ClaimAnalysis, and optional ActionAnalysis to retrieve source evidence."""
+    try:
+        body = await request.json()
+        if "content" in body:
+            payload = SourceAnalysisPayload(**body)
+            content = payload.content
+            claims = payload.claims
+            actions = payload.actions
+        else:
+            # Direct NormalizedContent payload
+            content = NormalizedContent(**body)
+            claims = None
+            actions = None
+
+        # Auto-pipeline fallbacks if upstream analyses not supplied
+        if claims is None:
+            claims = claims_engine.analyze(content)
+        if actions is None:
+            actions = actions_engine.analyze(content, claims)
+
+        return sources_engine.discover_and_retrieve(content, claims, actions)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Source analysis failed: {str(e)}"
+        )
+
 

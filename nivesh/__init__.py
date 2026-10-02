@@ -6,6 +6,8 @@ structured representation for downstream security engines.
 
 from .engine import ContentIntelligenceEngine, ENGINE_VERSION
 from .claims import ClaimIntelligenceEngine
+from .actions import ActionIntelligenceEngine
+from .sources import SourceIntelligenceEngine
 from .schemas import (
     ContentInput,
     NormalizedContent,
@@ -28,6 +30,13 @@ from .schemas import (
     ClaimAnalysis,
     CanonicalClaim,
     ClaimRelation,
+    ActionAnalysis,
+    CanonicalAction,
+    ActionRelation,
+    SourceAnalysis,
+    SourceDocument,
+    EvidenceCandidate,
+    ClaimSourceResult,
 )
 
 __version__ = ENGINE_VERSION
@@ -35,6 +44,8 @@ __version__ = ENGINE_VERSION
 __all__ = [
     "ContentIntelligenceEngine",
     "ClaimIntelligenceEngine",
+    "ActionIntelligenceEngine",
+    "SourceIntelligenceEngine",
     "ENGINE_VERSION",
     "ContentInput",
     "NormalizedContent",
@@ -57,4 +68,12 @@ __all__ = [
     "ClaimAnalysis",
     "CanonicalClaim",
     "ClaimRelation",
+    "ActionAnalysis",
+    "CanonicalAction",
+    "ActionRelation",
+    "SourceAnalysis",
+    "SourceDocument",
+    "EvidenceCandidate",
+    "ClaimSourceResult",
 ]
+

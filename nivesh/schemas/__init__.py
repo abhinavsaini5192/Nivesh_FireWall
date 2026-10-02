@@ -90,6 +90,22 @@ __all__ = [
     "CanonicalAction",
     "ActionAnalysisMetadata",
     "ActionAnalysis",
+    "SourceTypeTaxonomy",
+    "AuthorityTier",
+    "RetrievalStatus",
+    "RetrievalMode",
+    "SourceQuery",
+    "SourcePlan",
+    "SourceSearchResult",
+    "RetrievalMetadata",
+    "SourceDocument",
+    "EvidenceRelevance",
+    "EvidenceProvenance",
+    "EvidenceCandidate",
+    "ClaimSourceResult",
+    "SourceAnalysisMetadata",
+    "SourceAnalysis",
+    "SourceCatalogEntry",
 ]
 
 from .actions import (
@@ -110,4 +126,23 @@ from .actions import (
     CanonicalAction,
     ActionAnalysisMetadata,
     ActionAnalysis,
+)
+
+from .sources import (
+    SourceTypeTaxonomy,
+    AuthorityTier,
+    RetrievalStatus,
+    RetrievalMode,
+    SourceQuery,
+    SourcePlan,
+    SourceSearchResult,
+    RetrievalMetadata,
+    SourceDocument,
+    EvidenceRelevance,
+    EvidenceProvenance,
+    EvidenceCandidate,
+    ClaimSourceResult,
+    SourceAnalysisMetadata,
+    SourceAnalysis,
+    SourceCatalogEntry,
 )
