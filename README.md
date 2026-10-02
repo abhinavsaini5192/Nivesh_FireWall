@@ -1496,43 +1496,91 @@ Frontend (Web / Extension / Mobile)
 - **Safe Error Structure (`FirewallApiError`)**: Rejections and pipeline errors return structured JSON (`error_code`, `message`, `analysis_id`, `details`). Internal stack traces, python exceptions, and server filesystem paths are never leaked to clients.
 - **Session Isolation**: Session histories and behavioural event streams are strictly isolated per `session_id`.
 
+### 16.4 Phase 11.5: End-to-End Integration & Validation
+
+Phase 11.5 establishes the complete, production-grade end-to-end integration and architectural boundary validation of the Product Orchestration Layer.
+
+```text
+                 NIVESH FIREWALL
+                       │
+                       ▼
+              UNIFIED FIREWALL API
+                       │
+                       ▼
+               PRODUCT ORCHESTRATOR
+                       │
+                       ▼
+                ANALYSIS CONTEXT
+                       │
+                       ▼
+            DEPENDENCY-AWARE PIPELINE
+                       │
+        ┌──────────────┼──────────────┐
+        ↓              ↓              ↓
+    Intelligence    Identity      Behaviour
+        │              │              │
+        └──────────────┼──────────────┘
+                       ↓
+                   ENGINE 8
+                     POLICY
+                       ↓
+                UNIFIED RESULT
+```
+
+> [!NOTE]
+> Phase 11 creates the complete product backend foundation. Device adapters, browser extension clients, and frontend user interfaces will consume this unified API in subsequent phases.
+
+#### Key Architectural & Validation Guarantees:
+1. **Full API-to-Engine Execution**: HTTP requests to `POST /api/v1/firewall/analyze` pass seamlessly into `ProductOrchestrator`, instantiate a thread-safe `AnalysisContext`, execute the dependency-aware pipeline across Engines 1–7, 9, 10, and conclude at Engine 8.
+2. **Canonical 5-Stage Benchmark Validation**: Multi-stage attack progression (Educational Claim -> Telegram Migration -> APK Install -> Financial Request -> Time Pressure) reliably produces Action Progression (`DOWNLOAD`, `TRANSFER_MONEY`), Threat Signals (`SOFTWARE_INSTALLATION`, `FINANCIAL_REQUEST`), Identity Verification (`NOT_ESTABLISHED`), Behavioural Escalation (`TIME_PRESSURE`, `REPEATED_URGENCY`), and Engine 8 intervention (`PAUSE`/`BLOCK`) without artificial score inflation.
+3. **Benign Scenario Safety**: Purely educational financial content is recognized as financial by Content Intelligence while Claim and Action analysis remain neutral, producing an `ALLOW` decision without synthetic alerts or suspicion.
+4. **Identity & Evidence State Preservation**: Precise analytical states (`ESTABLISHED`, `NOT_ESTABLISHED`, `IDENTITY_MISMATCH`, `AMBIGUOUS`, `INSUFFICIENT_EVIDENCE`, `SUPPORTED`, `CONTRADICTED`, `SOURCE_CONFLICT`, `SOURCE_UNAVAILABLE`) are preserved intact and never coerced into generic "scam" or "fraud" flags.
+5. **Fingerprint Equivalence & Anti-Inflation**: Semantic variants across wording and amounts trigger structural equivalence (`SEMANTIC_VARIANT`) without inflating observation counters upon retries.
+6. **Behavioural Persistence & Session Isolation**: Multi-event interaction streams (e.g. `USER_DECLINED` -> `PAYMENT_REQUEST` -> `URGENCY`) detect `RETRY_AFTER_DECLINE` and `PERSISTENT_PAYMENT_REQUEST`. Session data is strictly isolated; distinct sessions receive zero cross-session behavioral bleed.
+7. **Failure Isolation Across All Engines**: Simulated failures in Engines 1 through 10 are safely isolated. Fatal errors halt downstream execution, source/evidence/identity failures produce valid degraded analytical states without fake evidence, and Engine 8 failure never synthesizes a fake policy decision.
+8. **Strict Policy Authority Boundary**: AST and runtime verification prove that the Product Orchestrator, API transport, and Engines 1–7, 9, and 10 perform zero policy calculations. Engine 8 is the sole, non-bypassable decision authority.
+9. **Explainability & Reason Tracing**: Non-ALLOW decisions expose clear primary reasons, machine-readable reason codes, and supporting findings traceable directly to engine outputs.
+10. **Zero-PII Privacy & Error Sanitization**: Passwords, OTPs, PINs, CVVs, card numbers, and raw credentials are scrubbed at all boundaries. Errors return structured API error objects without exposing Python tracebacks, filesystem paths, or internal credentials.
+11. **Concurrency Safety & Determinism**: Independent parallel analyses execute with isolated contexts, unique IDs, and perfectly correlated, reproducible results.
+
 ---
 
 ## 17. Test Suite Verification
 
-Run all pytest unit, integration, regression, orchestration, context, pipeline, and product API tests across all 10 engines and the product orchestrator:
+Run all pytest unit, integration, regression, orchestration, context, pipeline, product API, and end-to-end validation tests across all 10 engines and the product orchestrator:
 
 ```bash
 python -X utf8 -m pytest -v
 ```
-**Results:** 461 passed (0 failed, 100% pass rate).
+**Results:** 481 passed (0 failed, 100% pass rate).
 - **Existing 10 Intelligence Engines**: 386 tests.
 - **Phase 11.1 Product Orchestrator Core (`tests/test_orchestrator.py`)**: 17 tests.
 - **Phase 11.2 Unified Analysis Context Suite (`tests/test_context.py`)**: 20 tests.
 - **Phase 11.3 Engine Pipeline & Failure Handling (`tests/test_pipeline.py`)**: 18 tests.
 - **Phase 11.4 Unified Firewall API & Result (`tests/test_firewall_api.py`)**: 20 tests.
-  1. Valid text analysis (HTTP 200, unified schema)
-  2. Threat benchmark scenario (detects attack signals, policy PAUSE/BLOCK)
-  3. Final policy decision matches Engine 8 exactly
-  4. No policy duplication in API layer (verified via AST/source inspection)
-  5. Identity result preservation (`NOT_ESTABLISHED`, `IDENTITY_MISMATCH`)
-  6. Behaviour result preservation (time pressure, progression signals)
-  7. Fingerprint result preservation (`NO_MATCH`, structural equivalence)
-  8. Evidence preservation (`SUPPORTED`, `CONTRADICTED`, `INSUFFICIENT_EVIDENCE`)
-  9. Source unavailable handled as analytical result, not 500
-  10. Invalid input returns 400 (`INVALID_REQUEST`, `UNSUPPORTED_INPUT`, `INVALID_URL`)
-  11. Oversized input returns 400 (`INPUT_TOO_LARGE`)
-  12. Missing analysis GET returns 404 (`ANALYSIS_NOT_FOUND`)
-  13. Privacy boundary (forbidden credentials/PII stripped/redacted)
-  14. Session isolation (distinct sessions only receive their own history)
-  15. Provenance exposure without internal credential leakage
-  16. Error sanitization (no stack traces or filesystem paths)
-  17. Deterministic result structure
-  18. Benign content does not trigger false threat escalation
-  19. API Contract freeze test representing frontend consumption
-  20. Full 5-stage benchmark end-to-end test
+- **Phase 11.5 End-to-End Integration & Validation (`tests/test_e2e_validation.py`)**: 20 tests.
+  1. Full API-to-Engine pipeline integration (`POST /api/v1/firewall/analyze`)
+  2. Primary 5-stage threat benchmark end-to-end validation
+  3. Full benign financial content scenario validation
+  4. Identity state preservation (`ESTABLISHED`, `NOT_ESTABLISHED`, `IDENTITY_MISMATCH`)
+  5. Evidence verification state preservation (`SUPPORTED`, `CONTRADICTED`, `INSUFFICIENT_EVIDENCE`)
+  6. Fingerprint semantic variants and anti-inflation on repeated analysis
+  7. Behavioural progression and persistence (`RETRY_AFTER_DECLINE`, `PERSISTENT_PAYMENT_REQUEST`)
+  8. Comprehensive failure injection testing across Engines 1–10
+  9. Partial pipeline analytical state validation (valid degraded states vs HTTP 500)
+  10. Strict session isolation (Session A and Session B context isolation)
+  11. Concurrency safety (concurrent independent analyses with isolated contexts)
+  12. Privacy end-to-end sanitization (zero secret/credential leakage)
+  13. Provenance validation (traceable engine lineage without secret exposure)
+  14. Strict Engine 8 policy authority boundary regression test
+  15. Explainability validation for non-ALLOW policy decisions
+  16. Stable frontend API contract freeze validation
+  17. Analysis retrieval validation (`GET /api/v1/firewall/analysis/{analysis_id}`)
+  18. Structured error response sanitization (no stack traces or filepaths)
+  19. Performance latency and engine execution smoke test
+  20. Pipeline execution determinism test
 
 **Reconciled Arithmetic**:
-386 (Engines 1–10) + 17 (Phase 11.1) + 20 (Phase 11.2) + 18 (Phase 11.3) + 20 (Phase 11.4) = 461 tests (100% match)
+386 (Engines 1–10) + 17 (Phase 11.1) + 20 (Phase 11.2) + 18 (Phase 11.3) + 20 (Phase 11.4) + 20 (Phase 11.5) = 481 tests (100% match)
 *(Zero regressions across all existing suites, zero skipped, 0 failed across consecutive fresh-process runs).*
 
