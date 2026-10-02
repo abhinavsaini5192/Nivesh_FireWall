@@ -12,9 +12,16 @@ from fastapi.responses import JSONResponse
 
 from nivesh.engine import ContentIntelligenceEngine, ENGINE_VERSION
 from nivesh.claims.engine import ClaimIntelligenceEngine
+from nivesh.actions.engine import ActionIntelligenceEngine
 from nivesh.schemas.input import ContentInput, ChannelType
 from nivesh.schemas.normalized import NormalizedContent
 from nivesh.schemas.claims import ClaimAnalysis
+from nivesh.schemas.actions import ActionAnalysis
+from pydantic import BaseModel
+
+class ActionAnalysisPayload(BaseModel):
+    content: NormalizedContent
+    claims: Optional[ClaimAnalysis] = None
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -35,6 +42,7 @@ app.add_middleware(
 # Instantiate singleton engines
 content_engine = ContentIntelligenceEngine()
 claims_engine = ClaimIntelligenceEngine()
+actions_engine = ActionIntelligenceEngine()
 
 
 @app.get("/health", tags=["System"])
@@ -47,6 +55,7 @@ async def health_check():
         "engines": [
             "Engine 1: Content Intelligence Engine",
             "Engine 2: Claim Intelligence Engine",
+            "Engine 3: Action Intelligence Engine",
         ],
         "version": ENGINE_VERSION,
     }
@@ -109,5 +118,36 @@ async def analyze_claims(content: NormalizedContent):
         raise HTTPException(
             status_code=400,
             detail=f"Claim analysis failed: {str(e)}"
+        )
+
+
+@app.post(
+    "/api/v1/actions/analyze",
+    response_model=ActionAnalysis,
+    tags=["Action Intelligence (Engine 3)"],
+    summary="Extract atomic canonical actions from NormalizedContent and ClaimAnalysis"
+)
+async def analyze_actions(request: Request):
+    """Consumes NormalizedContent and optional ClaimAnalysis, producing structured ActionAnalysis."""
+    try:
+        body = await request.json()
+        if "content" in body:
+            payload = ActionAnalysisPayload(**body)
+            content = payload.content
+            claims = payload.claims
+        else:
+            # Direct NormalizedContent payload
+            content = NormalizedContent(**body)
+            claims = None
+
+        # If claims not provided, automatically generate via Engine 2
+        if claims is None:
+            claims = claims_engine.analyze(content)
+
+        return actions_engine.analyze(content, claims)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Action analysis failed: {str(e)}"
         )
 
