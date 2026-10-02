@@ -1160,31 +1160,149 @@ print(analysis.signals)       # [LOW_TO_HIGH_IMPACT_TRANSITION, CHANNEL_MIGRATIO
 print(analysis.policy_hints)  # high_impact_action_progression=True, ...
 ```
 
+
 ---
 
-## 12. Test Suite Verification
+## 13. Phase 11.1: Product Orchestrator Core
 
-Run all pytest unit, integration, and regression tests across all 10 engines:
+The central **Product Orchestrator Core** (`nivesh.orchestrator`) coordinates all 10 intelligence engines into a single, cohesive analysis system. It acts as the application-level coordinator sitting above the intelligence engines, without duplicating, replacing, or overriding engine intelligence.
+
+### 13.1 Architectural Position & Principles
+
+```text
+Raw User Input (Text, URL, Image)
+          │
+          ▼
+┌────────────────────────────────────────────────────────┐
+│             Product Orchestrator Core                  │
+│               (nivesh.orchestrator)                    │
+└────────────────────────────────────────────────────────┘
+          │
+          ├─► Engine 1: Content Intelligence
+          │        ↓
+          ├─► Engine 2: Claim Intelligence
+          │        ↓
+          ├─► Engine 3: Action Intelligence
+          │        ↓
+          ├─► Engine 4: Source Intelligence
+          │        ↓
+          ├─► Engine 5: Evidence Verification
+          │        ↓
+          ├─► [Downstream Intelligence Branches]
+          │   ├── Engine 6: Threat & Attack-Path Intelligence
+          │   ├── Engine 7: Scam Fingerprint & Collective Intelligence
+          │   ├── Engine 9: Identity Verification & Entity Resolution
+          │   └── Engine 10: Behavioural Signal Intelligence
+          │        ↓
+          ├─► Engine 8: Policy & Intervention Engine (SOLE FINAL AUTHORITY)
+          │        ↓
+          ▼
+┌────────────────────────────────────────────────────────┐
+│        Unified OrchestrationResult                     │
+│  (analysis_id, pipeline_status, policy_decision, ...)  │
+└────────────────────────────────────────────────────────┘
+```
+
+- **Strict Coordination, Zero Duplicate Intelligence**: The orchestrator contains no scam classification keywords, threat heuristic rules, or risk scores. It only routes canonical inputs and outputs between engines.
+- **Engine 8 Remains the Sole Policy Authority**: The orchestrator never decides `ALLOW`, `INFORM`, `WARN`, `PAUSE`, or `BLOCK`. It delegates 100% of policy evaluation to Engine 8.
+- **Deterministic Pipeline**: Identical inputs and upstream conditions produce identical engine invocation sequences, policy decisions, and reason codes.
+
+### 13.2 Canonical Execution Flow & Dependency Model
+
+1. **Step 1 (Engine 1: Content)**: Ingests raw text, URL, or image bytes and normalizes it into `NormalizedContent`. Missing input or fatal Engine 1 failure triggers `FatalOrchestrationError`.
+2. **Step 2 (Engine 2: Claims)**: Extracts atomic assertions from `content`.
+3. **Step 3 (Engine 3: Actions)**: Categorizes requested actions conditioned on `content` and `claims`.
+4. **Step 4 (Engine 4: Sources)**: Retrieves official filings and registry records conditioned on `content`, `claims`, and `actions`.
+5. **Step 5 (Engine 5: Evidence)**: Evaluates claim verification conditioned on `content`, `claims`, and `sources`.
+6. **Downstream Intelligence Branches**:
+   - **Engine 6 (Threat)**: Analyzes multi-stage attack paths (`content`, `claims`, `actions`, `sources`, `evidence`).
+   - **Engine 7 (Fingerprint)**: Matches or generates collective structural fingerprints (`content`, `claims`, `actions`, `sources`, `evidence`, `threat`).
+   - **Engine 9 (Identity)**: Resolves entity credentials and authority claims (`content`, `claims`, `sources`, `evidence`, `threat`).
+   - **Engine 10 (Behaviour)**: Analyzes sequence progression and urgency signals (`content`, `claims`, `actions`, `threat`, `fingerprint`, `identity`, `interaction_history`).
+7. **Step 10 (Engine 8: Policy & Intervention)**: Evaluates all gathered intelligence and emits the final intervention decision (`PolicyDecision`).
+
+### 13.3 Error Classification & Failure Isolation
+
+The orchestrator classifies engine outcomes into four distinct categories (`EngineOutcomeType`):
+
+| Error Category | Classification | Orchestrator Handling |
+| :--- | :--- | :--- |
+| **Engine Success** | `SUCCESS` | Normal progression; records output ID and duration in telemetry. |
+| **Expected Analytical Result** | `EXPECTED_ANALYTICAL_RESULT` | Non-failure analytical findings (`NO_MATCH`, `NOT_ESTABLISHED`, `INSUFFICIENT_EVIDENCE`, `SOURCE_UNAVAILABLE`). Preserved without fabricating evidence or crashing. Counted in `engines_succeeded`. |
+| **Recoverable Engine Failure** | `RECOVERABLE_FAILURE` | Engine raises a runtime exception. In default mode (`fail_fast=False`), the pipeline degrades gracefully (`status="DEGRADED"`), passes safe empty structures downstream, records warnings, and allows Engine 8 to decide with available context. |
+| **Fatal Orchestration Failure** | `FATAL_FAILURE` | Critical failure (e.g. invalid input, Engine 1 crash, or failure under `fail_fast=True`). Pipeline halts immediately with `FatalOrchestrationError`. |
+
+### 13.4 Analysis Identity, Provenance & Privacy Boundary
+
+- **Analysis Correlation**: Every analysis request is assigned a unique `analysis_id` (e.g., `ORCH-XXXXXXXXXXXX`). Intermediate output IDs (`content_id`, `claims_id`, `fingerprint_id`, `decision_id`, etc.) are mapped in `engine_output_ids`.
+- **Session Handling & Isolation**: When `session_id` is supplied, `ProductOrchestrator` maintains session histories in separate namespaces, guaranteeing that interactions in Session A never contaminate Session B.
+- **Privacy Boundary**: Prohibited credentials and PII (`password`, `otp`, `pin`, `cvv`, `card_number`, `account_number`, `api_key`, `token`, `bearer`, etc.) are automatically stripped from `request_metadata` during initialization and never retained in telemetry or provenance.
+
+### 13.5 Python Usage Example
+
+```python
+from nivesh.orchestrator import ProductOrchestrator, OrchestratorConfig
+from nivesh.behaviour.event_model import InteractionEvent, InteractionEventType
+
+orchestrator = ProductOrchestrator()
+
+# Record an observable session event
+orchestrator.record_interaction_event(
+    "SESSION-001",
+    InteractionEvent(
+        event_id="EVT-01",
+        timestamp="10:00:00",
+        event_type=InteractionEventType.CHANNEL_CHANGED,
+        channel="telegram",
+    ),
+)
+
+# Analyze incoming content
+result = orchestrator.analyze(
+    text="Guaranteed 40% returns on private Telegram VIP group. Pay ₹5,000 now.",
+    session_id="SESSION-001",
+)
+
+print(result.pipeline_status)      # "COMPLETED"
+print(result.decision)             # PolicyDecisionType.PAUSE
+print(result.primary_reason)        # "Pause before proceeding: This payment request..."
+print(result.engine_output_ids)     # {'analysis_id': 'ORCH-...', 'content_id': '...', ...}
+print(result.telemetry.engines_executed) # ['engine_1_content', ..., 'engine_8_policy']
+```
+
+---
+
+## 14. Test Suite Verification
+
+Run all pytest unit, integration, regression, and orchestration tests across all 10 engines and the product orchestrator:
 
 ```bash
 python -X utf8 -m pytest -v
 ```
 
-**Results:** `386 passed in 31.36s` (0 failed, 100% pass rate).
-- **Engine 1 Unit Tests**: Text normalizer (7), URL extractor (8), Social extractor (6), Contact extractor (4), Financial extractor (6), Entity extractor (5), CTA extractor (7), Language detector (4), Financial relevance (4), OCR adapter (6), URL adapter (3), Primary fixture (3), API (4) -> **67 tests**.
-- **Engine 2 Unit Tests**: Claim canonicalizer (7), Modality and Temporal (8), Claim segmenter & Action filtering (5), Verification requirements & Relations (5), Benchmark cases (12), Primary fixture (1), Engine 1 -> Engine 2 integration (3), Claim API (3) -> **44 tests**.
-- **Engine 3 Unit Tests**: Schemas & validation (2), Classifier & hierarchy (4), Parameter extractor & privacy (3), Benchmark cases (6), Primary fixture benchmark (1), Engine 1 -> Engine 2 -> Engine 3 integration (2), Action API (4) -> **22 tests**.
-- **Engine 4 Unit Tests**: Schemas & validation (4), SSRF protection (24), Source routing (4), Adapters & caching (7), Evidence candidates (1), Primary fixture (1), Full 4-engine integration (1), Source API (3) -> **45 tests**.
-- **Engine 5 Unit Tests**: Schemas & validation (2), Regulatory & identity matching (6), Numerical, ratios, & debt verification (6), Opinions & predictions (2), Source conflicts & absence handling (3), Prompt injection defense (1), Primary fixture benchmark (1), Full 5-engine end-to-end integration (1), Evidence API (3) -> **25 tests**.
-- **Engine 6 Unit Tests**: Schemas & validation (5), Threat signal detector (5), Attack path & transitions (1), Claim-to-action linker (3), Semantic correction tests (6), High-impact actions & evidence weaknesses (2), Multi-signal combinations & threat families (2), Negative guardrails (5), Primary fixture benchmark (1), Full 6-engine end-to-end integration (2), Threat API (4) -> **36 tests**.
-- **Engine 7 Unit & Regression Tests**: Schemas & validation (5), Feature extraction & canonical ordering (2), Multi-dimensional matcher (3), Lifecycle, disputes & relationships (5), Copy-amplification defense & observation counting (2), Primary benchmark fixture & secondary demo (1), Adversarial false-match & false-split tests (2), Privacy preservation & boundary guardrails (1), Full 7-engine end-to-end integration (1), FastAPI endpoints (3), Regression suite (5) -> **30 tests**.
-- **Engine 8 Unit & Integration Tests**: Schemas & validation (5), Individual rules (5), Precedence & user overrides (7), Negative guardrails (9), Neutral explainability (2), Privacy preservation & safety boundaries (2), FastAPI endpoints (4), Primary benchmark fixture & determinism (4), Full 8-engine end-to-end integration (2) -> **40 tests**.
-- **Engine 9 Unit, Integration & Regression Tests**: Schemas & validation (5), Entity & domain normalizer (6), Registration resolver (5), Domain & brand alignment (3), Authority & social channel resolution (4), Negative guardrails & safety boundaries (5), Core benchmarks: primary, positive, mismatch, ambiguous (4), Privacy preservation & provenance integrity (3), FastAPI endpoints (4), Full 9-engine end-to-end integration (2), Downstream ordering & Policy integration regression suite (8) -> **49 tests**.
-- **Engine 10 Unit, Integration & Benchmark Tests**: Schemas & validation (6), Pressure, escalation, persistence, and channel detectors (11), Primary, persistence, and benign benchmarks (3), Full 10-engine end-to-end pipeline (4), FastAPI endpoints (4) -> **28 tests**.
+**Results:** `403 passed in 20.79s` (0 failed, 100% pass rate).
+- **Existing 10 Intelligence Engines**: 386 tests.
+- **Phase 11.1 Product Orchestrator Suite (`tests/test_orchestrator.py`)**: 17 tests.
+  - Test A: Basic orchestration through all 10 engines (1)
+  - Test B: Correct canonical dependency flow (1)
+  - Test C: Policy receives complete available context (1)
+  - Test D: Engine failure handling (fatal, recoverable degraded, fail-fast) (3)
+  - Test E: Source unavailable remains an analytical result (1)
+  - Test F: Identity not established preserved (1)
+  - Test G: Behaviour integration without orchestrator inference (1)
+  - Test H: Fingerprint integration and provenance (1)
+  - Test I: Analysis correlation across all engine output IDs (1)
+  - Test J: Session isolation without cross-contamination (1)
+  - Test K: Policy authority boundary (1)
+  - Test L: No duplicated intelligence inside orchestrator (1)
+  - Test M: Privacy preservation and metadata scrubbing (1)
+  - Test N: Deterministic coordination (1)
+  - Full Integration Benchmark: Canonical 5-stage progression scenario (1)
 
 **Reconciled Arithmetic**:
-$$67 + 44 + 22 + 45 + 25 + 36 + 30 + 40 + 49 + 28 = 386 \text{ tests (100\% match)}$$
-*(Zero regressions across all existing suites, zero skipped, 0 failed across two consecutive fresh-process runs).*
+$$386 \text{ (Engines 1--10)} + 17 \text{ (Product Orchestrator Core)} = 403 \text{ tests (100\% match)}$$
+*(Zero regressions across all existing suites, zero skipped, 0 failed across consecutive fresh-process runs).*
+
 
 
 

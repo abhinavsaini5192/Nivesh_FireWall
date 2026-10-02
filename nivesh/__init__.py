@@ -50,6 +50,12 @@ from .behaviour import (
     InteractionHistory,
     TemporalThresholds,
 )
+from .orchestrator import (
+    ProductOrchestrator,
+    OrchestratorConfig,
+    OrchestrationResult,
+    OrchestrationState,
+)
 from .schemas import (
 
     ContentInput,
@@ -208,6 +214,10 @@ __all__ = [
     "InteractionEventType",
     "InteractionHistory",
     "TemporalThresholds",
+    "ProductOrchestrator",
+    "OrchestratorConfig",
+    "OrchestrationResult",
+    "OrchestrationState",
 ]
 
 
