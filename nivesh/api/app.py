@@ -15,12 +15,14 @@ from nivesh.claims.engine import ClaimIntelligenceEngine
 from nivesh.actions.engine import ActionIntelligenceEngine
 from nivesh.sources.engine import SourceIntelligenceEngine
 from nivesh.evidence.engine import EvidenceVerificationEngine
+from nivesh.threat.engine import ThreatIntelligenceEngine
 from nivesh.schemas.input import ContentInput, ChannelType
 from nivesh.schemas.normalized import NormalizedContent
 from nivesh.schemas.claims import ClaimAnalysis
 from nivesh.schemas.actions import ActionAnalysis
 from nivesh.schemas.sources import SourceAnalysis
 from nivesh.schemas.evidence import EvidenceAnalysis
+from nivesh.schemas.threat import ThreatAnalysis
 from pydantic import BaseModel
 
 class ActionAnalysisPayload(BaseModel):
@@ -36,6 +38,13 @@ class EvidenceVerificationPayload(BaseModel):
     content: NormalizedContent
     claims: Optional[ClaimAnalysis] = None
     sources: Optional[SourceAnalysis] = None
+
+class ThreatAnalysisPayload(BaseModel):
+    content: NormalizedContent
+    claims: Optional[ClaimAnalysis] = None
+    actions: Optional[ActionAnalysis] = None
+    sources: Optional[SourceAnalysis] = None
+    evidence: Optional[EvidenceAnalysis] = None
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -59,6 +68,7 @@ claims_engine = ClaimIntelligenceEngine()
 actions_engine = ActionIntelligenceEngine()
 sources_engine = SourceIntelligenceEngine()
 evidence_engine = EvidenceVerificationEngine()
+threat_engine = ThreatIntelligenceEngine()
 
 
 @app.get("/health", tags=["System"])
@@ -74,6 +84,7 @@ async def health_check():
             "Engine 3: Action Intelligence Engine",
             "Engine 4: Source Intelligence Engine",
             "Engine 5: Evidence Verification Engine",
+            "Engine 6: Threat & Attack-Path Intelligence Engine",
         ],
         "version": ENGINE_VERSION,
     }
@@ -241,6 +252,49 @@ async def verify_evidence(request: Request):
             status_code=400,
             detail=f"Evidence verification failed: {str(e)}"
         )
+
+
+@app.post(
+    "/api/v1/threat/analyze",
+    response_model=ThreatAnalysis,
+    tags=["Threat Intelligence (Engine 6)"],
+    summary="Construct attack path, detect threat signals, and classify threat families"
+)
+async def analyze_threat(request: Request):
+    """Consumes NormalizedContent, ClaimAnalysis, ActionAnalysis, SourceAnalysis, and EvidenceAnalysis to construct an attack path."""
+    try:
+        body = await request.json()
+        if "content" in body:
+            payload = ThreatAnalysisPayload(**body)
+            content = payload.content
+            claims = payload.claims
+            actions = payload.actions
+            sources = payload.sources
+            evidence = payload.evidence
+        else:
+            content = NormalizedContent(**body)
+            claims = None
+            actions = None
+            sources = None
+            evidence = None
+
+        # Auto-pipeline cascading if upstream stages omitted
+        if claims is None:
+            claims = claims_engine.analyze(content)
+        if actions is None:
+            actions = actions_engine.analyze(content, claims)
+        if sources is None:
+            sources = sources_engine.discover_and_retrieve(content, claims, actions)
+        if evidence is None:
+            evidence = evidence_engine.verify(content, claims, sources)
+
+        return threat_engine.analyze(content, claims, actions, sources, evidence)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Threat analysis failed: {str(e)}"
+        )
+
 
 
 

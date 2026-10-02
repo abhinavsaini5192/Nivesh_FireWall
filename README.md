@@ -1,6 +1,6 @@
 # Nivesh Firewall — Backend Core
 
-Production-quality implementations of **Engine 1 (Content Intelligence)**, **Engine 2 (Claim Intelligence)**, **Engine 3 (Action Intelligence)**, **Engine 4 (Source Intelligence)**, and **Engine 5 (Evidence Verification Engine)** for the **Nivesh Firewall** backend.
+Production-quality implementations of **Engine 1 (Content Intelligence)**, **Engine 2 (Claim Intelligence)**, **Engine 3 (Action Intelligence)**, **Engine 4 (Source Intelligence)**, **Engine 5 (Evidence Verification)**, and **Engine 6 (Threat & Attack-Path Intelligence Engine)** for the **Nivesh Firewall** backend.
 
 ```
 RAW CONTENT (Text, URL, Image)
@@ -46,9 +46,16 @@ RAW CONTENT (Text, URL, Image)
      EvidenceAnalysis (VerificationResult[])
           │
           ▼
+┌───────────────────────────────────────────────┐
+│ ENGINE 6: Threat & Attack-Path Intelligence   │
+└───────────────────────────────────────────────┘
+          │ (Answers: "How do claims, actions, identity signals, and evidence combine into a harmful path?")
+          ▼
+     ThreatAnalysis (AttackPath, ThreatSignal[], ClaimActionLink[], ThreatFamily[])
+          │
+          ▼
 ┌─────────────────────────────────────────────────────────┐
-│ DOWNSTREAM ENGINES (Engine 6+):                         │
-│ - Threat / Attack-Path Engine (Engine 6)                │
+│ DOWNSTREAM ENGINES (Engine 7+):                         │
 │ - Scam Fingerprint Engine (Engine 7)                    │
 │ - Policy & Safety Intervention Engine (Engine 8)        │
 └─────────────────────────────────────────────────────────┘
@@ -61,7 +68,8 @@ RAW CONTENT (Text, URL, Image)
 > - **Engine 3** structures requested user actions into canonical actions with action types, progression hierarchy, targets, parameters, sequence, modality, and rationale claim linkage.
 > - **Engine 4** routes claims to authoritative source taxonomies, queries official registries/filings (SEBI, NSE, etc.), normalizes retrieved documents, and generates structured evidence candidates with full provenance while keeping verification status strictly `UNVERIFIED`.
 > - **Engine 5** evaluates claim-level evidence relationships (`SUPPORTED`, `PARTIALLY_SUPPORTED`, `CONTRADICTED`, `INSUFFICIENT_EVIDENCE`, `NOT_VERIFIABLE`, `SOURCE_CONFLICT`), strictly separating source retrieval status from claim truth, and distinguishing absence of evidence from falsity.
-> - **Engines 1 through 5 NEVER** recommend buying/selling/holding investments, predict future market outcomes, calculate general "scam probabilities", determine overall attack paths, or create final blocking decisions. Those decisions belong strictly to later threat and policy engines.
+> - **Engine 6** constructs structured attack paths, identifies threat stages & transitions, links claims to actions (`RATIONALE_FOR`, `JUSTIFIES`), surfaces evidence weaknesses, evaluates high-impact actions with reversibility ratings, and detects multi-signal combinations without predicting prices or calculating generic scam probabilities.
+> - **Engines 1 through 6 NEVER** recommend buying/selling/holding investments, predict future market outcomes, calculate general "scam probabilities" (e.g. 0.94), or create final ALLOW/BLOCK decisions. Final intervention policy belongs strictly to Engine 8.
 
 
 ---
@@ -255,7 +263,43 @@ Evaluates whether retrieved source material supports, contradicts, partially sup
 
 ---
 
-## 6. Benchmark Fixture Execution
+## 6. Engine 6: Threat & Attack-Path Intelligence Engine
+
+Constructs an auditable, structured **attack path** connecting claims, requested actions, identity signals, and evidence verification findings into an explainable threat model (`ThreatAnalysis`).
+
+Engine 6 answers:
+> *"How do the claims, requested actions, identity signals, and evidence relationships combine into a potentially harmful financial interaction?"*
+
+It does NOT simply ask "Is this a scam?", but systematically models:
+```
+CLAIM ──▶ TRUST / JUSTIFICATION ──▶ ACTION ──▶ NEXT ACTION ──▶ POTENTIAL HARM TRANSITION
+```
+
+### Capabilities
+1. **Threat Signal Detection (`ThreatSignalDetector`)**:
+   - Detects 15+ structured, auditable signals with explicit provenance (`content`, `claim`, `action`, `source_verification`, `evidence_verification`, `fingerprint_database`, `combination`).
+   - Signal types include: `AUTHORITY_IMPERSONATION`, `IDENTITY_NOT_ESTABLISHED`, `IDENTITY_MISMATCH`, `UNSUPPORTED_CLAIM`, `REGULATORY_CONFLICT`, `GUARANTEED_RETURN_LANGUAGE`, `URGENCY`, `FOMO`, `PRIVATE_CHANNEL_MIGRATION`, `EXTERNAL_DOMAIN`, `LOOKALIKE_DOMAIN`, `EXTERNAL_APP`, `CREDENTIAL_REQUEST`, `IDENTITY_DOCUMENT_REQUEST`, `ACCOUNT_ACCESS_REQUEST`, `PAYMENT_REQUEST`, `UPFRONT_FEE`, `OTP_REQUEST`, `ISOLATION_LANGUAGE`, `SECRECY_REQUEST`.
+   - Never infers malicious intent solely from a single weak signal.
+2. **Attack Path Modeling (`AttackPathBuilder`)**:
+   - Models interactions as ordered graph sequences across a normalized 10-stage taxonomy:
+     `DISCOVERY` ➔ `TRUST_BUILDING` ➔ `CHANNEL_MIGRATION` ➔ `NAVIGATION` ➔ `SOFTWARE_INSTALLATION` ➔ `DATA_COLLECTION` ➔ `CREDENTIAL_CAPTURE` ➔ `ACCOUNT_ACCESS` ➔ `FINANCIAL_REQUEST` ➔ `FINANCIAL_TRANSFER`.
+   - Captures stage transitions with supporting actions, supporting claims, and transition confidence.
+3. **Claim ➔ Action Semantic Linking (`ClaimActionLinker`)**:
+   - Identifies how claims justify or serve as rationale for actions (`RATIONALE_FOR`, `JUSTIFIES`, `ENABLES`, `PRECEDES`, `LEADS_TO`, `REQUESTS`).
+4. **High-Impact Action & Evidence Weakness Evaluation (`ImpactEvaluator`)**:
+   - Evaluates high-consequence actions by impact category (`CREDENTIAL`, `IDENTITY`, `DEVICE`, `FINANCIAL`) and reversibility (`REVERSIBLE`, `DIFFICULT_TO_REVERSE`, `IRREVERSIBLE`).
+   - Translates Engine 5 verification outcomes into structured evidentiary limits without legal overclaiming (`IDENTITY_NOT_ESTABLISHED`, `REGULATORY_CONFLICT`).
+5. **Multi-Signal Combination Logic (`CombinationEngine`)**:
+   - Combines independently observable signals into structured mechanisms (`unsubstantiated_regulatory_authority`, `trust_migration_to_payment_transition`, `external_app_monetary_solicitation`, `private_channel_credential_harvesting`).
+   - Maps observed structures into recognized threat families: `IDENTITY_IMPERSONATION`, `INVESTMENT_PROMOTION_SCAM`, `CREDENTIAL_HARVESTING`, `PAYMENT_FRAUD`, `MALICIOUS_SOFTWARE`, `ACCOUNT_TAKEOVER`, `REGULATORY_IMPERSONATION`, `SOCIAL_ENGINEERING`.
+   - Strict negative guardrails prevent false escalation on weak signals alone (e.g. Telegram alone, research recommendations alone, regulatory circular mentions alone, isolated course fees).
+6. **Non-Accusatory Structural Explanation (`ThreatExplainer`)**:
+   - Synthesizes auditable structural narratives and lists explicit uncertainties (e.g. absence of registry records establishes lack of public verification, not legal proof of fraud).
+   - Generates normalized components ready for Engine 7 Scam Fingerprinting (`normalized_claim_patterns`, `normalized_action_patterns`, `normalized_identity_patterns`, `normalized_channel_patterns`, `normalized_threat_families`, `normalized_attack_stages`, `normalized_transitions`).
+
+---
+
+## 7. Benchmark Fixture Execution
 
 ### Benchmark Input:
 ```
@@ -497,9 +541,145 @@ Raw Text ──▶ Engine 1 (Content) ──▶ Engine 2 (Claims) ──▶ Engi
 }
 ```
 
+### Engine 6 (ThreatAnalysis):
+```json
+{
+  "content_id": "b68255d2-133f-4bcc-8625-fa5ab0cdc5ca",
+  "threat_signals": [
+    {
+      "signal_id": "SIG-001",
+      "type": "AUTHORITY_IMPERSONATION",
+      "source": "claim",
+      "evidence": "Claim 'Rahul Sharma' asserts registration/licensing with 'SEBI'",
+      "confidence": 0.9,
+      "description": "Content leverages regulatory authority by asserting association with SEBI.",
+      "claim_id": "CLAIM-001"
+    },
+    {
+      "signal_id": "SIG-002",
+      "type": "IDENTITY_NOT_ESTABLISHED",
+      "source": "evidence_verification",
+      "evidence": "Official registry verification for 'Rahul Sharma' returned status 'INSUFFICIENT_EVIDENCE'",
+      "confidence": 0.95,
+      "description": "Claimed regulatory authority for 'Rahul Sharma' was not established by official database records.",
+      "claim_id": "CLAIM-001"
+    },
+    {
+      "signal_id": "SIG-003",
+      "type": "GUARANTEED_RETURN_LANGUAGE",
+      "source": "claim",
+      "evidence": "Claim asserts guaranteed return: '40% returns'",
+      "confidence": 0.95,
+      "description": "Content uses deterministic guaranteed return promises, an anomalous risk factor in securities markets.",
+      "claim_id": "CLAIM-002"
+    },
+    {
+      "signal_id": "SIG-004",
+      "type": "REGULATORY_CLAIM_CONFLICT",
+      "source": "evidence_verification",
+      "evidence": "SEBI Code of Conduct prohibits intermediaries from assuring returns",
+      "confidence": 0.9,
+      "description": "The guaranteed return promise directly conflicts with applicable statutory regulations prohibiting assured returns.",
+      "claim_id": "CLAIM-002"
+    },
+    {
+      "signal_id": "SIG-005",
+      "type": "PRIVATE_CHANNEL_MIGRATION",
+      "source": "action",
+      "evidence": "Action requests joining private communication channel: 'Telegram'",
+      "confidence": 0.92,
+      "description": "Interaction encourages moving communication to private, encrypted messaging platforms (e.g. Telegram/WhatsApp).",
+      "action_id": "ACTION-001"
+    },
+    {
+      "signal_id": "SIG-006",
+      "type": "EXTERNAL_APP",
+      "source": "action",
+      "evidence": "Action solicits download of external app/APK: 'app'",
+      "confidence": 0.88,
+      "description": "Interaction requests installation or downloading of external software outside standard public directories.",
+      "action_id": "ACTION-002"
+    },
+    {
+      "signal_id": "SIG-007",
+      "type": "PAYMENT_REQUEST",
+      "source": "action",
+      "evidence": "Action requests monetary payment/transfer: 'INR 5000.0'",
+      "confidence": 0.94,
+      "description": "Interaction solicits direct monetary payments or financial account transfers.",
+      "action_id": "ACTION-003"
+    },
+    {
+      "signal_id": "SIG-008",
+      "type": "FOMO",
+      "source": "content",
+      "evidence": "Text leverages FOMO cues: ['vip']",
+      "confidence": 0.78,
+      "description": "Content utilizes exclusive opportunity language to induce fear of missing out."
+    }
+  ],
+  "attack_path": {
+    "nodes": [
+      { "node_id": "NODE-01", "stage": "DISCOVERY", "type": "financial_content_ingestion", "label": "Content Discovery & Initial Exposure" },
+      { "node_id": "NODE-02", "stage": "TRUST_BUILDING", "type": "trust_building_stage", "label": "Regulatory Authority & Return Guarantee Claims", "linked_claim_ids": ["CLAIM-001", "CLAIM-002"] },
+      { "node_id": "NODE-03", "stage": "CHANNEL_MIGRATION", "type": "channel_migration_stage", "label": "Migration to Private Channel", "linked_action_ids": ["ACTION-001"] },
+      { "node_id": "NODE-04", "stage": "SOFTWARE_INSTALLATION", "type": "software_installation_stage", "label": "Installation of External Application", "linked_action_ids": ["ACTION-002"] },
+      { "node_id": "NODE-05", "stage": "FINANCIAL_REQUEST", "type": "financial_request_stage", "label": "Direct Financial Solicitations", "linked_action_ids": ["ACTION-003"] }
+    ],
+    "transitions": [
+      { "from_stage": "TRUST_BUILDING", "to_stage": "CHANNEL_MIGRATION", "confidence": 0.88 },
+      { "from_stage": "CHANNEL_MIGRATION", "to_stage": "SOFTWARE_INSTALLATION", "confidence": 0.88 },
+      { "from_stage": "SOFTWARE_INSTALLATION", "to_stage": "FINANCIAL_REQUEST", "confidence": 0.88 }
+    ],
+    "entry_stage": "TRUST_BUILDING",
+    "terminal_stage": "FINANCIAL_REQUEST"
+  },
+  "claim_action_links": [
+    { "link_id": "CAL-001", "claim_id": "CLAIM-001", "action_id": "ACTION-001", "type": "JUSTIFIES", "confidence": 0.88 },
+    { "link_id": "CAL-002", "claim_id": "CLAIM-001", "action_id": "ACTION-002", "type": "JUSTIFIES", "confidence": 0.88 },
+    { "link_id": "CAL-003", "claim_id": "CLAIM-001", "action_id": "ACTION-003", "type": "JUSTIFIES", "confidence": 0.88 },
+    { "link_id": "CAL-004", "claim_id": "CLAIM-002", "action_id": "ACTION-003", "type": "JUSTIFIES", "confidence": 0.85 }
+  ],
+  "evidence_weaknesses": [
+    { "weakness_id": "EW-001", "claim_id": "CLAIM-001", "weakness_type": "IDENTITY_NOT_ESTABLISHED", "evidence_status": "INSUFFICIENT_EVIDENCE", "severity": "HIGH" },
+    { "weakness_id": "EW-002", "claim_id": "CLAIM-002", "weakness_type": "REGULATORY_CONFLICT", "evidence_status": "INSUFFICIENT_EVIDENCE", "severity": "HIGH" }
+  ],
+  "high_impact_actions": [
+    { "action_id": "ACTION-002", "action_type": "DOWNLOAD", "impact_category": "DEVICE", "reversibility": "DIFFICULT_TO_REVERSE" },
+    { "action_id": "ACTION-003", "action_type": "PAYMENT", "impact_category": "FINANCIAL", "reversibility": "IRREVERSIBLE" }
+  ],
+  "threat_families": [
+    "IDENTITY_IMPERSONATION",
+    "INVESTMENT_PROMOTION_SCAM",
+    "MALICIOUS_SOFTWARE",
+    "PAYMENT_FRAUD",
+    "REGULATORY_IMPERSONATION",
+    "SOCIAL_ENGINEERING"
+  ],
+  "fingerprint_prep": {
+    "normalized_claim_patterns": ["claim:regulatory:registered_with:sebi", "claim:financial:guaranteed_return:40% returns"],
+    "normalized_action_patterns": ["action:join_channel:https://t.me/rahulinvest", "action:download:app", "action:payment:unknown"],
+    "normalized_identity_patterns": ["identity:person:rahul sharma", "identity:regulator:securities and exchange board of india"],
+    "normalized_channel_patterns": ["channel:telegram:rahulinvest"],
+    "normalized_attack_stages": ["TRUST_BUILDING", "CHANNEL_MIGRATION", "SOFTWARE_INSTALLATION", "FINANCIAL_REQUEST"],
+    "normalized_transitions": ["TRUST_BUILDING->CHANNEL_MIGRATION", "CHANNEL_MIGRATION->SOFTWARE_INSTALLATION", "SOFTWARE_INSTALLATION->FINANCIAL_REQUEST"]
+  },
+  "explanation": {
+    "summary": "Observed interaction follows an attack path through 4 active stages: [TRUST_BUILDING ➔ CHANNEL_MIGRATION ➔ SOFTWARE_INSTALLATION ➔ FINANCIAL_REQUEST]. Regulatory authority claims were not substantiated by official public registry records. Financial promises conflict directly with statutory regulatory prohibitions.",
+    "mechanisms": ["trust_migration_to_payment_transition", "prohibited_return_app_distribution", "unsubstantiated_regulatory_authority", "external_app_monetary_solicitation"]
+  },
+  "uncertainty": [
+    "Analysis describes observed behavioral and structural patterns, not a legal adjudication of criminality.",
+    "Actual intent of the content creator cannot be verified from published text and public records alone.",
+    "Absence of matching registry records establishes lack of public verification, but does not definitively prove fraud."
+  ],
+  "confidence": 0.90
+}
+```
+
 ---
 
-## 7. API Endpoints
+## 8. API Endpoints
 
 Start the server:
 ```bash
@@ -507,7 +687,7 @@ uvicorn nivesh.api.app:app --host 0.0.0.0 --port 8000
 ```
 
 1. **`GET /health`** / **`GET /api/v1/health`**:
-   Returns system status and active engines (`content_intelligence`, `claim_intelligence`, `action_intelligence`, `source_intelligence`, `evidence_verification`).
+   Returns system status and active engines (`content_intelligence`, `claim_intelligence`, `action_intelligence`, `source_intelligence`, `evidence_verification`, `threat_intelligence`).
 2. **`POST /api/v1/content/analyze`** (Engine 1):
    - Body: `{"text": "...", "url": "...", "channel": "telegram"}`
    - Form-Data: `file=@screenshot.png`, `channel=whatsapp`
@@ -522,12 +702,15 @@ uvicorn nivesh.api.app:app --host 0.0.0.0 --port 8000
    - Body: `{"content": NormalizedContent, "claims": ClaimAnalysis, "actions": ActionAnalysis (optional)}` or directly `NormalizedContent`
    - Output: `SourceAnalysis`
 6. **`POST /api/v1/evidence/verify`** (Engine 5):
-   - Body: `{"content": NormalizedContent, "claims": ClaimAnalysis, "sources": SourceAnalysis}`
+   - Body: `{"content": NormalizedContent, "claims": ClaimAnalysis, "sources": SourceAnalysis}` or directly `NormalizedContent`
    - Output: `EvidenceAnalysis`
+7. **`POST /api/v1/threat/analyze`** (Engine 6):
+   - Body: `{"content": NormalizedContent, "claims": ClaimAnalysis, "actions": ActionAnalysis, "sources": SourceAnalysis, "evidence": EvidenceAnalysis}` or directly `NormalizedContent` (with auto-cascading pipeline execution)
+   - Output: `ThreatAnalysis`
 
 ---
 
-## 8. Direct Python Service Interface
+## 9. Direct Python Service Interface
 
 ```python
 from nivesh import (
@@ -536,6 +719,7 @@ from nivesh import (
     ActionIntelligenceEngine,
     SourceIntelligenceEngine,
     EvidenceVerificationEngine,
+    ThreatIntelligenceEngine,
 )
 
 # Initialize engines
@@ -544,9 +728,10 @@ claims_engine = ClaimIntelligenceEngine()
 actions_engine = ActionIntelligenceEngine()
 sources_engine = SourceIntelligenceEngine()
 evidence_engine = EvidenceVerificationEngine()
+threat_engine = ThreatIntelligenceEngine()
 
 raw_text = (
-    "SEBI registered advisor Rahul Sharma! Guaranteed 40% returns. "
+    "🚨 SEBI registered advisor Rahul Sharma! Guaranteed 40% returns. "
     "Join our Telegram VIP group: https://t.me/rahulinvest. "
     "Download our app and pay ₹5,000. Contact rahul@example.com."
 )
@@ -566,25 +751,20 @@ sources = sources_engine.discover_and_retrieve(normalized, claims, actions)
 # Step 5: Engine 5 (What does the retrieved evidence actually establish?)
 evidence = evidence_engine.verify(normalized, claims, sources)
 
-print(f"Content ID: {normalized.content_id}")
-print(f"Claims Evaluated: {evidence.analysis_metadata.total_claims_evaluated}")
+# Step 6: Engine 6 (How do claims, actions, and evidence combine into a threat path?)
+threat = threat_engine.analyze(normalized, claims, actions, sources, evidence)
 
-for verification in evidence.verifications:
-    print(f"\n[Verification for {verification.claim_id}]")
-    print(f"  Status: {verification.status}")
-    print(f"  Confidence: {verification.confidence} | Evidence Strength: {verification.evidence_strength}")
-    print(f"  Trace: {' -> '.join(verification.reasoning_trace[:2])}")
-    if verification.supporting_evidence:
-        print(f"  Supporting Citations: {[e.source_url for e in verification.supporting_evidence]}")
-    if verification.contradicting_evidence:
-        print(f"  Contradicting Citations: {[e.source_url for e in verification.contradicting_evidence]}")
-    if verification.missing_elements:
-        print(f"  Missing Elements: {verification.missing_elements}")
+print(f"Content ID: {threat.content_id}")
+print(f"Attack Stages: {[n.stage for n in threat.attack_path.nodes if n.stage != 'DISCOVERY']}")
+print(f"Transitions: {[' -> '.join([t.from_stage, t.to_stage]) for t in threat.transitions]}")
+print(f"Threat Families: {threat.threat_families}")
+print(f"High-Impact Actions: {[(hia.action_type, hia.impact_category, hia.reversibility) for hia in threat.high_impact_actions]}")
+print(f"Summary: {threat.explanation.summary}")
 ```
 
 ---
 
-## 9. Test Suite Verification
+## 10. Test Suite Verification
 
 Run all pytest unit and integration tests:
 
@@ -592,10 +772,12 @@ Run all pytest unit and integration tests:
 python -X utf8 -m pytest -v
 ```
 
-**Results:** `203 passed in 7.98s` (0 failed, 100% pass rate).
+**Results:** `231 passed in 8.36s` (0 failed, 100% pass rate).
 - **Engine 1 Unit Tests**: Text normalizer (7), URL extractor (8), Social extractor (6), Contact extractor (4), Financial extractor (6), Entity extractor (5), CTA extractor (7), Language detector (4), Financial relevance (4), OCR adapter (6), URL adapter (3), Primary fixture (3), API (4) -> **67 tests**.
 - **Engine 2 Unit Tests**: Claim canonicalizer (7), Modality and Temporal (8), Claim segmenter & Action filtering (5), Verification requirements & Relations (5), Benchmark cases (7), Primary fixture (1), Engine 1 -> Engine 2 integration (3), Claim API (3), Correction tests (5) -> **44 tests**.
 - **Engine 3 Unit Tests**: Schemas & validation (3), Classifier & hierarchy (3), Parameter extractor & privacy (4), Benchmark cases (6), Primary fixture benchmark (2), Engine 1 -> Engine 2 -> Engine 3 integration (2), Action API (2) -> **22 tests**.
 - **Engine 4 Unit Tests**: Schemas & validation (4), SSRF protection (20), Source routing (4), Adapters & caching (7), Evidence candidates (1), Primary fixture (1), Full 4-engine integration (1), Source API (3), Correction & boundaries -> **45 tests**.
 - **Engine 5 Unit Tests**: Schemas & validation (2), Regulatory & identity matching (6), Numerical, ratios, & debt verification (6), Opinions & predictions (2), Source conflicts & absence handling (3), Prompt injection defense (1), Primary fixture benchmark (1), Full 5-engine end-to-end integration (1), Evidence API (3) -> **25 tests**.
+- **Engine 6 Unit Tests**: Schemas & validation (5), Threat signal detector (4), Attack path & transitions (1), Claim-to-action linker (2), High-impact actions & evidence weaknesses (2), Multi-signal combinations & threat families (2), Negative guardrails (5), Primary fixture benchmark (1), Full 6-engine end-to-end integration (2), Threat API (4) -> **28 tests**.
+
 
