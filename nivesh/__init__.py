@@ -55,6 +55,12 @@ from .orchestrator import (
     OrchestratorConfig,
     OrchestrationResult,
     OrchestrationState,
+    AnalysisContext,
+    PipelineStatus,
+    EngineStatus,
+    ContextLifecycleStage,
+    EngineExecutionState,
+    ContextSnapshot,
 )
 from .schemas import (
 
@@ -218,6 +224,12 @@ __all__ = [
     "OrchestratorConfig",
     "OrchestrationResult",
     "OrchestrationState",
+    "AnalysisContext",
+    "PipelineStatus",
+    "EngineStatus",
+    "ContextLifecycleStage",
+    "EngineExecutionState",
+    "ContextSnapshot",
 ]
 
 

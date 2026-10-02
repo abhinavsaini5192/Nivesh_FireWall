@@ -55,6 +55,12 @@ from .errors import (
 from .telemetry import EngineExecutionRecord, PipelineTelemetry
 from .state import OrchestrationState
 from .result import OrchestrationResult
+from .context import (
+    AnalysisContext,
+    PipelineStatus,
+    EngineStatus,
+    ContextLifecycleStage,
+)
 
 
 class ProductOrchestrator:
@@ -119,7 +125,19 @@ class ProductOrchestrator:
         started_at_iso = datetime.now(timezone.utc).isoformat()
         analysis_id = f"ORCH-{uuid.uuid4().hex[:12].upper()}"
 
-        # Initialize shared execution state
+        # Initialize shared execution state & unified analysis context
+        input_type = "text" if text is not None else "url" if url is not None else "image"
+        context = AnalysisContext(
+            analysis_id=analysis_id,
+            session_id=session_id,
+            input_type=input_type,
+            channel=channel,
+            request_metadata=metadata or {},
+            created_at=started_at_iso,
+            updated_at=started_at_iso,
+            status=PipelineStatus.RUNNING,
+        )
+
         state = OrchestrationState(
             analysis_id=analysis_id,
             session_id=session_id,
@@ -133,6 +151,7 @@ class ProductOrchestrator:
         # ----------------------------------------------------------------------
         # Step 1: Engine 1 — Content Intelligence
         # ----------------------------------------------------------------------
+        context.mark_engine_started("engine_1_content")
         t0 = time.perf_counter()
         rec_e1 = EngineExecutionRecord(
             engine_name="Engine 1: Content Intelligence Engine",
@@ -165,6 +184,13 @@ class ProductOrchestrator:
             rec_e1.status = EngineOutcomeType.SUCCESS
             rec_e1.output_id = content.content_id
             telemetry.record_engine(rec_e1)
+
+            context.set_content_result(content)
+            context.mark_engine_completed(
+                "engine_1_content",
+                result_id=content.content_id,
+                duration_ms=rec_e1.duration_ms,
+            )
         except Exception as e:
             rec_e1.completed_at = datetime.now(timezone.utc).isoformat()
             rec_e1.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
@@ -177,11 +203,14 @@ class ProductOrchestrator:
             state.completed_at = datetime.now(timezone.utc).isoformat()
             telemetry.completed_at = state.completed_at
             telemetry.total_duration_ms = round((time.perf_counter() - pipe_start_perf) * 1000, 2)
+            context.mark_engine_failed("engine_1_content", str(e), duration_ms=rec_e1.duration_ms)
+            context.finalize_pipeline()
             raise FatalOrchestrationError(f"Engine 1 failed: {e}", engine_name="engine_1_content") from e
 
         # ----------------------------------------------------------------------
         # Step 2: Engine 2 — Claim Intelligence
         # ----------------------------------------------------------------------
+        context.mark_engine_started("engine_2_claims")
         t0 = time.perf_counter()
         rec_e2 = EngineExecutionRecord(
             engine_name="Engine 2: Claim Intelligence Engine",
@@ -197,14 +226,26 @@ class ProductOrchestrator:
             rec_e2.output_id = getattr(claims, "analysis_id", getattr(claims, "content_id", None))
             rec_e2.metadata["claim_count"] = len(claims.claims)
             telemetry.record_engine(rec_e2)
+
+            context.set_claim_result(claims)
+            context.mark_engine_completed(
+                "engine_2_claims",
+                result_id=rec_e2.output_id,
+                duration_ms=rec_e2.duration_ms,
+                metadata=rec_e2.metadata,
+            )
         except Exception as e:
             self._handle_engine_error("engine_2_claims", rec_e2, t0, e, state)
             if state.claims is None and state.content is not None:
                 state.claims = ClaimAnalysis(content_id=state.content.content_id, claims=[])
+            context.mark_engine_failed("engine_2_claims", str(e), duration_ms=round((time.perf_counter() - t0) * 1000, 2))
+            if state.claims:
+                context.set_claim_result(state.claims)
 
         # ----------------------------------------------------------------------
         # Step 3: Engine 3 — Action Intelligence
         # ----------------------------------------------------------------------
+        context.mark_engine_started("engine_3_actions")
         t0 = time.perf_counter()
         rec_e3 = EngineExecutionRecord(
             engine_name="Engine 3: Action Intelligence Engine",
@@ -220,14 +261,26 @@ class ProductOrchestrator:
             rec_e3.output_id = getattr(actions, "analysis_id", getattr(actions, "content_id", None))
             rec_e3.metadata["action_count"] = len(actions.actions)
             telemetry.record_engine(rec_e3)
+
+            context.set_action_result(actions)
+            context.mark_engine_completed(
+                "engine_3_actions",
+                result_id=rec_e3.output_id,
+                duration_ms=rec_e3.duration_ms,
+                metadata=rec_e3.metadata,
+            )
         except Exception as e:
             self._handle_engine_error("engine_3_actions", rec_e3, t0, e, state)
             if state.actions is None and state.content is not None:
                 state.actions = ActionAnalysis(content_id=state.content.content_id, actions=[])
+            context.mark_engine_failed("engine_3_actions", str(e), duration_ms=round((time.perf_counter() - t0) * 1000, 2))
+            if state.actions:
+                context.set_action_result(state.actions)
 
         # ----------------------------------------------------------------------
         # Step 4: Engine 4 — Source Intelligence
         # ----------------------------------------------------------------------
+        context.mark_engine_started("engine_4_sources")
         t0 = time.perf_counter()
         rec_e4 = EngineExecutionRecord(
             engine_name="Engine 4: Source Intelligence Engine",
@@ -253,6 +306,15 @@ class ProductOrchestrator:
             else:
                 rec_e4.status = EngineOutcomeType.SUCCESS
             telemetry.record_engine(rec_e4)
+
+            context.set_source_result(sources)
+            context.mark_engine_completed(
+                "engine_4_sources",
+                result_id=rec_e4.output_id,
+                analytical_result=rec_e4.analytical_result,
+                duration_ms=rec_e4.duration_ms,
+                metadata=rec_e4.metadata,
+            )
         except Exception as e:
             self._handle_engine_error("engine_4_sources", rec_e4, t0, e, state)
             if state.sources is None and state.content is not None:
@@ -261,10 +323,14 @@ class ProductOrchestrator:
                     claim_sources=[],
                     analysis_metadata=SourceAnalysisMetadata(retrieval_failures=1),
                 )
+            context.mark_engine_failed("engine_4_sources", str(e), duration_ms=round((time.perf_counter() - t0) * 1000, 2))
+            if state.sources:
+                context.set_source_result(state.sources)
 
         # ----------------------------------------------------------------------
         # Step 5: Engine 5 — Evidence Verification
         # ----------------------------------------------------------------------
+        context.mark_engine_started("engine_5_evidence")
         t0 = time.perf_counter()
         rec_e5 = EngineExecutionRecord(
             engine_name="Engine 5: Evidence Verification Engine",
@@ -289,6 +355,15 @@ class ProductOrchestrator:
             else:
                 rec_e5.status = EngineOutcomeType.SUCCESS
             telemetry.record_engine(rec_e5)
+
+            context.set_evidence_result(evidence)
+            context.mark_engine_completed(
+                "engine_5_evidence",
+                result_id=rec_e5.output_id,
+                analytical_result=rec_e5.analytical_result,
+                duration_ms=rec_e5.duration_ms,
+                metadata=rec_e5.metadata,
+            )
         except Exception as e:
             self._handle_engine_error("engine_5_evidence", rec_e5, t0, e, state)
             if state.evidence is None and state.content is not None:
@@ -297,11 +372,15 @@ class ProductOrchestrator:
                     verifications=[],
                     analysis_metadata=EvidenceAnalysisMetadata(),
                 )
+            context.mark_engine_failed("engine_5_evidence", str(e), duration_ms=round((time.perf_counter() - t0) * 1000, 2))
+            if state.evidence:
+                context.set_evidence_result(state.evidence)
 
         # ----------------------------------------------------------------------
         # Downstream Intelligence: Engine 6 — Threat Intelligence
         # ----------------------------------------------------------------------
         if self.config.enable_threat:
+            context.mark_engine_started("engine_6_threat")
             t0 = time.perf_counter()
             rec_e6 = EngineExecutionRecord(
                 engine_name="Engine 6: Threat & Attack-Path Intelligence",
@@ -319,15 +398,27 @@ class ProductOrchestrator:
                 rec_e6.output_id = threat.content_id
                 rec_e6.metadata["threat_signal_count"] = len(threat.threat_signals)
                 telemetry.record_engine(rec_e6)
+
+                context.set_threat_result(threat)
+                context.mark_engine_completed(
+                    "engine_6_threat",
+                    result_id=threat.content_id,
+                    duration_ms=rec_e6.duration_ms,
+                    metadata=rec_e6.metadata,
+                )
             except Exception as e:
                 self._handle_engine_error("engine_6_threat", rec_e6, t0, e, state)
                 if state.threat is None and state.content is not None:
                     state.threat = ThreatAnalysis(content_id=state.content.content_id)
+                context.mark_engine_failed("engine_6_threat", str(e), duration_ms=round((time.perf_counter() - t0) * 1000, 2))
+        else:
+            context.mark_engine_skipped("engine_6_threat", "Disabled in orchestrator config")
 
         # ----------------------------------------------------------------------
         # Downstream Intelligence: Engine 7 — Scam Fingerprint Intelligence
         # ----------------------------------------------------------------------
         if self.config.enable_fingerprint and state.threat is not None:
+            context.mark_engine_started("engine_7_fingerprint")
             t0 = time.perf_counter()
             rec_e7 = EngineExecutionRecord(
                 engine_name="Engine 7: Scam Fingerprint & Collective Intelligence",
@@ -350,13 +441,26 @@ class ProductOrchestrator:
                 else:
                     rec_e7.status = EngineOutcomeType.SUCCESS
                 telemetry.record_engine(rec_e7)
+
+                context.set_fingerprint_result(fingerprint)
+                context.mark_engine_completed(
+                    "engine_7_fingerprint",
+                    result_id=fingerprint.fingerprint.fingerprint_id,
+                    analytical_result=rec_e7.analytical_result,
+                    duration_ms=rec_e7.duration_ms,
+                    metadata=rec_e7.metadata,
+                )
             except Exception as e:
                 self._handle_engine_error("engine_7_fingerprint", rec_e7, t0, e, state)
+                context.mark_engine_failed("engine_7_fingerprint", str(e), duration_ms=round((time.perf_counter() - t0) * 1000, 2))
+        else:
+            context.mark_engine_skipped("engine_7_fingerprint", "Skipped or threat analysis unavailable")
 
         # ----------------------------------------------------------------------
         # Downstream Intelligence: Engine 9 — Identity Verification
         # ----------------------------------------------------------------------
         if self.config.enable_identity:
+            context.mark_engine_started("engine_9_identity")
             t0 = time.perf_counter()
             rec_e9 = EngineExecutionRecord(
                 engine_name="Engine 9: Identity Verification & Entity Resolution",
@@ -388,13 +492,26 @@ class ProductOrchestrator:
                 else:
                     rec_e9.status = EngineOutcomeType.SUCCESS
                 telemetry.record_engine(rec_e9)
+
+                context.set_identity_result(identity)
+                context.mark_engine_completed(
+                    "engine_9_identity",
+                    result_id=identity.analysis_id,
+                    analytical_result=rec_e9.analytical_result,
+                    duration_ms=rec_e9.duration_ms,
+                    metadata=rec_e9.metadata,
+                )
             except Exception as e:
                 self._handle_engine_error("engine_9_identity", rec_e9, t0, e, state)
+                context.mark_engine_failed("engine_9_identity", str(e), duration_ms=round((time.perf_counter() - t0) * 1000, 2))
+        else:
+            context.mark_engine_skipped("engine_9_identity", "Disabled in orchestrator config")
 
         # ----------------------------------------------------------------------
         # Downstream Intelligence: Engine 10 — Behavioural Signal Intelligence
         # ----------------------------------------------------------------------
         if self.config.enable_behaviour:
+            context.mark_engine_started("engine_10_behaviour")
             t0 = time.perf_counter()
             rec_e10 = EngineExecutionRecord(
                 engine_name="Engine 10: Behavioural Signal Intelligence",
@@ -423,12 +540,24 @@ class ProductOrchestrator:
                 rec_e10.output_id = behaviour.analysis_id
                 rec_e10.metadata["behaviour_signal_count"] = len(behaviour.signals)
                 telemetry.record_engine(rec_e10)
+
+                context.set_behaviour_result(behaviour)
+                context.mark_engine_completed(
+                    "engine_10_behaviour",
+                    result_id=behaviour.analysis_id,
+                    duration_ms=rec_e10.duration_ms,
+                    metadata=rec_e10.metadata,
+                )
             except Exception as e:
                 self._handle_engine_error("engine_10_behaviour", rec_e10, t0, e, state)
+                context.mark_engine_failed("engine_10_behaviour", str(e), duration_ms=round((time.perf_counter() - t0) * 1000, 2))
+        else:
+            context.mark_engine_skipped("engine_10_behaviour", "Disabled in orchestrator config")
 
         # ----------------------------------------------------------------------
         # Step 10: Engine 8 — Policy & Intervention Engine (SOLE FINAL AUTHORITY)
         # ----------------------------------------------------------------------
+        context.mark_engine_started("engine_8_policy")
         t0 = time.perf_counter()
         rec_e8 = EngineExecutionRecord(
             engine_name="Engine 8: Policy & Intervention Engine",
@@ -489,6 +618,15 @@ class ProductOrchestrator:
             rec_e8.output_id = policy.decision_id
             rec_e8.metadata["decision"] = policy.decision.value
             telemetry.record_engine(rec_e8)
+
+            context.set_policy_result(policy)
+            context.mark_engine_completed(
+                "engine_8_policy",
+                result_id=policy.decision_id,
+                duration_ms=rec_e8.duration_ms,
+                metadata=rec_e8.metadata,
+            )
+            context.finalize_pipeline()
         except Exception as e:
             rec_e8.completed_at = datetime.now(timezone.utc).isoformat()
             rec_e8.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
@@ -498,6 +636,8 @@ class ProductOrchestrator:
             telemetry.record_engine(rec_e8)
             state.status = "FAILED"
             state.errors.append(f"Engine 8 Policy Failure: {e}")
+            context.mark_engine_failed("engine_8_policy", str(e), duration_ms=round((time.perf_counter() - t0) * 1000, 2))
+            context.finalize_pipeline()
             raise FatalOrchestrationError(f"Engine 8 policy failed: {e}", engine_name="engine_8_policy") from e
 
         # Finalize pipeline execution state
@@ -524,12 +664,19 @@ class ProductOrchestrator:
             "completed_at": completed_at_iso,
         }
 
+        context.provenance = provenance
+        context.warnings = list(state.warnings)
+        context.errors = list(state.errors)
+        context.execution_metadata["total_duration_ms"] = telemetry.total_duration_ms
+        context.finalize_pipeline()
+
         return OrchestrationResult(
             analysis_id=analysis_id,
             session_id=session_id,
             pipeline_status=state.status,
             policy_decision=state.policy,
             state=state,
+            context=context,
             engine_output_ids=state.get_output_ids(),
             telemetry=telemetry,
             provenance=provenance,

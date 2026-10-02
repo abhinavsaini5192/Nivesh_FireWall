@@ -25,7 +25,7 @@ FORBIDDEN_METADATA_KEYS = frozenset({
     "password", "passwd", "pwd", "otp", "pin", "cvv", "cvv2", "card_number",
     "card_numbers", "account_number", "account_numbers", "bank_account",
     "bank_account_number", "bank_account_numbers", "secret", "token", "auth_token",
-    "api_key", "apikey", "access_token", "bearer", "authorization",
+    "api_key", "apikey", "access_token", "bearer", "bearer_token", "authorization",
     "private_key", "credential", "credentials", "raw_credentials",
     "keystrokes", "keystroke", "raw_message", "message_body", "sms_body", "contact_list",
 })

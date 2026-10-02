@@ -1272,37 +1272,112 @@ print(result.telemetry.engines_executed) # ['engine_1_content', ..., 'engine_8_p
 
 ---
 
-## 14. Test Suite Verification
+## 14. Phase 11.2: Canonical Unified Analysis Context (AnalysisContext)
 
-Run all pytest unit, integration, regression, and orchestration tests across all 10 engines and the product orchestrator:
+The **Unified Analysis Context** (
+ivesh.orchestrator.AnalysisContext) serves as the single, canonical case record for one complete Nivesh Firewall analysis from input ingestion through final policy decision.
 
-```bash
+`
+       Engines (1–7, 9, 10)
+               │
+               ▼
+┌──────────────────────────────┐
+│       AnalysisContext        │  ◄── Single canonical case record
+└──────────────────────────────┘      Strongly typed engine outputs
+               │                      Execution states & durations
+               ▼                      Traceability & provenance
+┌──────────────────────────────┐
+│     Product Orchestrator     │
+└──────────────────────────────┘
+               │
+               ▼
+┌──────────────────────────────┐
+│    Engine 8: Policy Engine   │
+└──────────────────────────────┘
+`
+
+### 14.1 Architectural Purpose & Case Record
+
+The AnalysisContext answers all audit and correlation queries for a single financial interaction:
+- **What was analyzed?** Input type, channel, content reference, sanitized metadata.
+- **Which analysis does this belong to?** Traceable nalysis_id and optional session_id.
+- **What did each engine produce?** Strongly typed, unflattened canonical models (NormalizedContent, ClaimAnalysis, ActionAnalysis, SourceAnalysis, EvidenceAnalysis, ThreatAnalysis, FingerprintAnalysis, IdentityAnalysis, BehaviouralAnalysis, PolicyDecision).
+- **Which engines succeeded vs failed?** Explicit EngineExecutionState per engine with ISO timestamps, duration in ms, and sanitized error messages.
+- **Which results were partial or negative?** Explicit distinction between analytical findings (e.g. SOURCE_UNAVAILABLE, NOT_ESTABLISHED, INSUFFICIENT_EVIDENCE, NO_MATCH) and system crashes (FAILED).
+- **How are all outputs correlated?** engine_result_ids mapping all canonical output IDs to the common nalysis_id.
+
+### 14.2 Structure & Fields
+
+| Field Group | Fields | Description |
+| :--- | :--- | :--- |
+| **Identity & Status** | nalysis_id, session_id, created_at, updated_at, status, stage | Request identifiers, timestamps, overall PipelineStatus, and ContextLifecycleStage |
+| **Input Information** | input_type, channel, content_reference, 
+equest_metadata | Ingestion channel and sanitized request metadata (PII/credentials stripped) |
+| **Canonical Outputs** | content, claims, ctions, sources, evidence, 	hreat, ingerprint, identity, ehaviour, policy | Strongly typed canonical engine models preserved without type dilution |
+| **Execution Telemetry** | engine_states, execution_metadata, warnings, errors | Per-engine EngineExecutionState, warnings, and errors |
+| **Traceability** | upstream_references, engine_result_ids, provenance | Map of consumed upstream IDs, correlated result IDs, and execution audit trail |
+
+### 14.3 Lifecycle Stages & State Transitions
+
+The context lifecycle transitions strictly through:
+\text{CREATED} \to \text{CONTENT\_READY} \to \text{CLAIMS\_READY} \to \text{ACTIONS\_READY} \to \text{SOURCES\_READY} \to \text{EVIDENCE\_READY} \to \text{DOWNSTREAM\_INTELLIGENCE\_READY} \to \text{BEHAVIOUR\_READY} \to \text{POLICY\_READY} \to \text{COMPLETED}
+
+Each engine follows structured transitions:
+- PENDING: Initial state upon context creation.
+- RUNNING: Transitioned upon mark_engine_started(engine_key).
+- COMPLETED: Transitioned upon mark_engine_completed(...).
+- SKIPPED: Transitioned upon mark_engine_skipped(...) with recorded skip reason.
+- FAILED: Transitioned upon mark_engine_failed(...) with recorded error code and message.
+
+### 14.4 Sensitive Data Boundary
+
+The AnalysisContext enforces zero storage of sensitive credentials, OTPs, or financial secrets:
+- Automatic metadata scrubbing on initialization (model_post_init).
+- Prohibited key matching (password, otp, pin, cvv, card_number, ccount_number, earer, secret, pi_key, private_key, 	oken, credential, keystroke).
+- Recursive sanitization during serialization via context.to_safe_dict().
+
+### 14.5 Immutability & Validation Rules
+
+- **Upstream Prerequisite Validation**: set_policy_result(...) enforces that Engines 1 through 5 results are present before policy can be finalized.
+- **Session Correlation Validation**: set_behaviour_result(...) asserts that the behavioural session ID matches context.session_id.
+- **Mutation Protection**: Attaching downstream results never mutates previously stored upstream engine results.
+- **Consistency Verification**: context.validate_consistency() validates that no engine is simultaneously COMPLETED and FAILED, and verifies result ID alignment.
+
+---
+
+## 15. Test Suite Verification
+
+Run all pytest unit, integration, regression, orchestration, and analysis context tests across all 10 engines and the product orchestrator:
+
+`ash
 python -X utf8 -m pytest -v
-```
+`
 
-**Results:** `403 passed in 20.79s` (0 failed, 100% pass rate).
+**Results:** 423 passed in 32.09s (0 failed, 100% pass rate).
 - **Existing 10 Intelligence Engines**: 386 tests.
-- **Phase 11.1 Product Orchestrator Suite (`tests/test_orchestrator.py`)**: 17 tests.
-  - Test A: Basic orchestration through all 10 engines (1)
-  - Test B: Correct canonical dependency flow (1)
-  - Test C: Policy receives complete available context (1)
-  - Test D: Engine failure handling (fatal, recoverable degraded, fail-fast) (3)
-  - Test E: Source unavailable remains an analytical result (1)
-  - Test F: Identity not established preserved (1)
-  - Test G: Behaviour integration without orchestrator inference (1)
-  - Test H: Fingerprint integration and provenance (1)
-  - Test I: Analysis correlation across all engine output IDs (1)
-  - Test J: Session isolation without cross-contamination (1)
-  - Test K: Policy authority boundary (1)
-  - Test L: No duplicated intelligence inside orchestrator (1)
-  - Test M: Privacy preservation and metadata scrubbing (1)
-  - Test N: Deterministic coordination (1)
-  - Full Integration Benchmark: Canonical 5-stage progression scenario (1)
+- **Phase 11.1 Product Orchestrator Core (	ests/test_orchestrator.py)**: 17 tests.
+- **Phase 11.2 Unified Analysis Context Suite (	ests/test_context.py)**: 20 tests.
+  1. Context creation & default state
+  2. Session correlation match
+  3. Session correlation mismatch detection
+  4. Canonical engine outputs attachment (all 10 engines strongly typed)
+  5. Engine execution state transitions (PENDING -> RUNNING -> COMPLETED/FAILED/SKIPPED)
+  6. Partial / analytical results vs execution failure
+  7. Failure representation & pipeline degradation
+  8. Fatal failure aborts pipeline
+  9. Analysis correlation across engine result IDs
+  10. Upstream references tracking
+  11. Sensitive data boundary stripping
+  12. Mutation protection across engine boundaries
+  13. Session isolation across distinct contexts
+  14. Safe serialization & round-trip deserialization
+  15. Context determinism
+  16. Policy requires upstream intelligence
+  17. Inconsistent state validation raises
+  18. Context snapshot generation
+  19. ProductOrchestrator populates analysis context
+  20. Full Integration Benchmark: case reconstruction from AnalysisContext
 
 **Reconciled Arithmetic**:
-$$386 \text{ (Engines 1--10)} + 17 \text{ (Product Orchestrator Core)} = 403 \text{ tests (100\% match)}$$
+386 \text{ (Engines 1--10)} + 17 \text{ (Product Orchestrator Core)} + 20 \text{ (Unified Analysis Context)} = 423 \text{ tests (100\% match)}
 *(Zero regressions across all existing suites, zero skipped, 0 failed across consecutive fresh-process runs).*
-
-
-
-

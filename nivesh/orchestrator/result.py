@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from nivesh.policy.schemas import PolicyDecision, PolicyDecisionType
 from .state import OrchestrationState
 from .telemetry import PipelineTelemetry
+from .context import AnalysisContext
 
 
 class OrchestrationResult(BaseModel):
@@ -26,6 +27,10 @@ class OrchestrationResult(BaseModel):
     )
     state: OrchestrationState = Field(
         description="Full structured execution state holding intermediate engine objects",
+    )
+    context: Optional[AnalysisContext] = Field(
+        default=None,
+        description="Canonical Unified Analysis Context representing the complete case record",
     )
     engine_output_ids: dict[str, str] = Field(
         default_factory=dict,
