@@ -1,6 +1,6 @@
 # Nivesh Firewall — Backend Core
 
-Production-quality implementations of **Engine 1 (Content Intelligence)**, **Engine 2 (Claim Intelligence)**, **Engine 3 (Action Intelligence)**, **Engine 4 (Source Intelligence)**, **Engine 5 (Evidence Verification)**, **Engine 6 (Threat & Attack-Path Intelligence)**, and **Engine 7 (Scam Fingerprint & Collective Threat Intelligence)** for the **Nivesh Firewall** backend.
+Production-quality implementations of **Engine 1 (Content Intelligence)**, **Engine 2 (Claim Intelligence)**, **Engine 3 (Action Intelligence)**, **Engine 4 (Source Intelligence)**, **Engine 5 (Evidence Verification)**, **Engine 6 (Threat & Attack-Path Intelligence)**, **Engine 7 (Scam Fingerprint & Collective Threat Intelligence)**, and **Engine 8 (Policy & Intervention Engine)** for the **Nivesh Firewall** backend.
 
 ```
 RAW CONTENT (Text, URL, Image)
@@ -63,8 +63,15 @@ RAW CONTENT (Text, URL, Image)
           │
           ▼
 ┌─────────────────────────────────────────────────────────┐
-│ DOWNSTREAM ENGINES (Engine 8+):                         │
-│ - Policy & Safety Intervention Engine (Engine 8)        │
+│ ENGINE 8: Policy & Intervention Engine                  │
+└─────────────────────────────────────────────────────────┘
+          │ (Answers: "What safety response should be presented before/during the user's action?")
+          ▼
+     PolicyDecision (ALLOW | INFORM | WARN | PAUSE | BLOCK)
+          │
+          ▼
+┌─────────────────────────────────────────────────────────┐
+│ Browser / Desktop Local Enforcement Adapter             │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -77,7 +84,8 @@ RAW CONTENT (Text, URL, Image)
 > - **Engine 5** evaluates claim-level evidence relationships (`SUPPORTED`, `PARTIALLY_SUPPORTED`, `CONTRADICTED`, `INSUFFICIENT_EVIDENCE`, `NOT_VERIFIABLE`, `SOURCE_CONFLICT`), strictly separating source retrieval status from claim truth, and distinguishing absence of evidence from falsity.
 > - **Engine 6** constructs structured attack paths, identifies threat stages & transitions, links claims to actions (`RATIONALE_FOR`, `JUSTIFIES`), surfaces evidence weaknesses, evaluates high-impact actions with reversibility ratings, and detects multi-signal combinations without predicting prices or calculating generic scam probabilities.
 > - **Engine 7** creates privacy-preserving structural scam fingerprints, normalizes threat patterns across multiple observations, detects exact and semantic variants, maintains observation counts with copy-amplification protection, and provides collective intelligence without storing raw PII, declaring criminality, or predicting scam probability.
-> - **Engines 1 through 7 NEVER** recommend buying/selling/holding investments, predict future market outcomes, calculate general "scam probabilities" (e.g. 0.94), declare individuals criminals, or create final ALLOW/BLOCK decisions. Final intervention policy belongs strictly to downstream Engine 8.
+> - **Engine 8** evaluates multi-engine structured intelligence against explicit, deterministic policy rules and precedence hierarchies to emit intervention decisions (`ALLOW`, `INFORM`, `WARN`, `PAUSE`, `BLOCK`) with machine-readable reason codes, non-accusatory user explanations, and zero PII or investment advice.
+> - **Engines 1 through 8 NEVER** recommend buying/selling/holding investments, predict future market outcomes, calculate general "scam probabilities" (e.g. 0.94), declare individuals criminals, or directly manipulate the host OS/browser (device-level enforcement is delegated to downstream adapters).
 
 
 ---
@@ -772,15 +780,94 @@ Shared Threat Family / Structural Fingerprint (SFP-001, count = 2)
 
 ---
 
-## 8. API Endpoints
+## 8. Engine 8: Policy & Intervention Engine
 
-Start the server:
+Engine 8 is the **decision and safety support engine** of the Nivesh Firewall. It consumes the structured intelligence produced by Engines 1 through 7 and determines the appropriate safety intervention before or during a user's potentially harmful financial action.
+
+```
+Engine 1 (Content) ──► Engine 2 (Claims) ──► Engine 3 (Actions)
+       │                      │                      │
+       ▼                      ▼                      ▼
+Engine 4 (Sources) ──► Engine 5 (Evidence) ──► Engine 6 (Threats)
+                                                     │
+                                                     ▼
+                                              Engine 7 (Fingerprints)
+                                                     │
+                                                     ▼
+                                              ┌─────────────────────────────────────┐
+                                              │ ENGINE 8: Policy & Intervention     │
+                                              │ - Explicit Rule Evaluator           │
+                                              │ - Deterministic Precedence Resolver │
+                                              │ - Dual-Channel Explainability       │
+                                              │ - Privacy-Preserving Audit Engine   │
+                                              └─────────────────────────────────────┘
+                                                     │
+                                                     ▼
+                                              PolicyDecision
+                                              (ALLOW | INFORM | WARN | PAUSE | BLOCK)
+                                                     │
+                                                     ▼
+                                              Browser/Desktop Enforcement Adapter
+```
+
+### Core Architecture & Principles
+
+1. **Strict Decision Boundary**:
+   - Engine 8 answers: *"What safety response should be presented before or during the user's potentially harmful financial action?"*
+   - Engine 8 **never** directly manipulates the host operating system, browser, network connections, payments, or files. It returns a typed `PolicyDecision` object for downstream client enforcement adapters.
+   - Engine 8 **never** provides investment advice (no `BUY`, `SELL`, `HOLD`, `INVEST`, price targets, or return predictions).
+   - Engine 8 **never** issues criminal or fraud accusations (no *"scammer detected"* or legal adjudication labels).
+
+2. **Five Intervention Levels (`PolicyDecisionType`)**:
+   - `ALLOW`: No meaningful threat indicators; content is informational or benign; no high-impact action is occurring. *(ALLOW does not mean a financial claim is factually true; it means the firewall has no policy reason to intervene).*
+   - `INFORM`: Neutral contextual guidance for relevant financial topics, market opinions, or unverifiable forward-looking claims without high-impact actions.
+   - `WARN`: Advisory notice when meaningful risk indicators exist (unverified regulatory status, guaranteed-return language, private channel migration) but immediate consequential action is not yet occurring.
+   - `PAUSE`: Temporary interaction interruption requesting explicit user confirmation before high-impact or irreversible actions (payments, external software downloads, credential disclosures) linked to unverified authority or threat patterns.
+   - `BLOCK`: Strongest protection intervention. Reserved strictly for critical high-impact actions combined with confirmed structural threat patterns or direct factual contradictions.
+
+3. **Explicit Rule-Based Reasoning (No Black-Box 0–100 Scores)**:
+   - Evaluates explicit, transparent boolean predicates across upstream outputs:
+     - `RULE-BLOCK-01`: Critical Credential Access Request with Confirmed Threat Match.
+     - `RULE-BLOCK-02`: Irreversible Payment Request with Factual Contradiction or Known Exploit.
+     - `RULE-PAUSE-01`: Payment Request with Multi-Signal Threat Pattern (`PAYMENT` + unverified authority / guaranteed returns / threat match).
+     - `RULE-PAUSE-02`: External Software Installation with Unverified Financial Context (`DOWNLOAD` / `INSTALL` + unverified claims).
+     - `RULE-PAUSE-03`: Sensitive Data or Credential Request by Unverified Entity.
+     - `RULE-WARN-01`: Private Channel Migration with Unverified Authority (`TELEGRAM` / `WHATSAPP` + unverified regulatory claim).
+     - `RULE-WARN-02`: Guaranteed Return Language in Financial Promotion.
+     - `RULE-WARN-03`: Unverified Regulatory Status Claim (`SEBI registered` with `NO_MATCH` in official registry).
+     - `RULE-WARN-04`: Interaction Resembles Previously Observed Threat Structure (`SEMANTIC_VARIANT` / `STRUCTURAL_MATCH`).
+     - `RULE-INFORM-01`: Market Opinion or Prediction Disclosure.
+     - `RULE-INFORM-02`: General Financial Content Informational Context.
+     - `RULE-ALLOW-01`: Benign Educational or Low-Risk Content Baseline.
+
+4. **Deterministic Precedence Hierarchy**:
+   $$\text{BLOCK} \succ \text{PAUSE} \succ \text{WARN} \succ \text{INFORM} \succ \text{ALLOW}$$
+   - When multiple rules trigger, the highest severity decision wins deterministically.
+   - All triggered reason codes and signals are aggregated and deduplicated.
+   - If an optional `UserOverride` is supplied for a `PAUSE` decision, the decision is demoted to `WARN` with `USER_OVERRIDE_APPLIED` recorded in audit metadata. User overrides **cannot** bypass a `BLOCK` decision.
+
+5. **Stable Machine-Readable Reason Codes (`ReasonCode`)**:
+   - `NO_INTERVENTION_REQUIRED`, `FINANCIAL_CONTENT_DETECTED`, `UNVERIFIED_REGULATORY_CLAIM`, `IDENTITY_NOT_ESTABLISHED`, `REGULATORY_CONFLICT`, `INSUFFICIENT_EVIDENCE`, `SOURCE_UNAVAILABLE`, `SOURCE_CONFLICT`, `GUARANTEED_RETURN_LANGUAGE`, `PRIVATE_CHANNEL_MIGRATION`, `EXTERNAL_APP_INSTALLATION`, `CREDENTIAL_ACCESS_REQUEST`, `ACCOUNT_AUTHORIZATION_REQUEST`, `PAYMENT_REQUEST`, `HIGH_IMPACT_ACTION`, `KNOWN_THREAT_STRUCTURAL_MATCH`, `KNOWN_THREAT_SEMANTIC_VARIANT`, `KNOWN_THREAT_RELATED_PATTERN`, `MULTI_SIGNAL_THREAT_PATTERN`, `DANGEROUS_ACTION_SEQUENCE`, `IRREVERSIBLE_ACTION_DETECTED`, `USER_CONFIRMATION_REQUIRED`, `POLICY_ESCALATION`, `USER_OVERRIDE_APPLIED`, `OPINION_OR_PREDICTION_DISCLOSED`.
+
+6. **Dual-Channel Neutral Explainability**:
+   - `user_message`: Objective, non-accusatory guidance designed for non-technical users (e.g., *"Pause before continuing. This interaction combines an unverified financial identity claim, private channel migration, external software installation, and an irreversible payment request."*).
+   - `technical_message`: Formatted, reproducible pipeline trace detailing rule IDs, decision, reason codes, triggered signals, and cooldown parameters.
+
+7. **Privacy Preservation & Auditability**:
+   - Policy decisions and audit metadata strictly redact and exclude passwords, OTPs, bank accounts, UPI PINs, and raw unscrubbed content.
+   - Every decision is stamped with `decision_id`, immutable `created_at` timestamp, and centralized `policy_version` (`8.0.0`).
+
+---
+
+## 9. API Endpoints
+
+Start the FastAPI server:
 ```bash
 uvicorn nivesh.api.app:app --host 0.0.0.0 --port 8000
 ```
 
 1. **`GET /health`** / **`GET /api/v1/health`**:
-   Returns system status and all 7 active engines.
+   Returns system status and all 8 active engines.
 2. **`POST /api/v1/content/analyze`** (Engine 1):
    - Body: `{"text": "...", "url": "...", "channel": "telegram"}`
    - Form-Data: `file=@screenshot.png`, `channel=whatsapp`
@@ -802,7 +889,7 @@ uvicorn nivesh.api.app:app --host 0.0.0.0 --port 8000
    - Output: `ThreatAnalysis`
 8. **`POST /api/v1/fingerprints/match`** (Engine 7):
    - Body: Full payload or `NormalizedContent` (with auto-cascading execution through Engine 6)
-   - Output: `FingerprintAnalysis` (containing match type, match confidence, primary fingerprint, observations, collective threat context)
+   - Output: `FingerprintAnalysis`
 9. **`POST /api/v1/fingerprints/create`** (Engine 7):
    - Body: Direct `ScamFingerprint` or content payload
    - Output: `ScamFingerprint`
@@ -814,10 +901,20 @@ uvicorn nivesh.api.app:app --host 0.0.0.0 --port 8000
 12. **`POST /api/v1/fingerprints/{fingerprint_id}/dispute`** (Engine 7):
     - Body: `{"reason": "...", "actor": "compliance_officer"}`
     - Output: `ScamFingerprint` with `status="DISPUTED"`
+13. **`POST /api/v1/policy/decide`** (Engine 8):
+    - Body: Multi-engine structured outputs or `NormalizedContent` (with auto-cascading pipeline execution)
+    - Output: `PolicyDecision` (with `decision`, `severity`, `reason_codes`, `user_message`, `technical_message`, `required_user_confirmation`, `cooldown_seconds`)
+14. **`GET /api/v1/policy/rules`** (Engine 8):
+    - Output: `list[dict]` of all active policy rules, scopes, and target decisions.
+15. **`GET /api/v1/policy/{decision_id}`** (Engine 8):
+    - Output: Stored `PolicyDecision` record.
+16. **`POST /api/v1/policy/explain`** (Engine 8):
+    - Body: `PolicyDecision` JSON
+    - Output: `{"decision_id": "...", "decision": "PAUSE", "user_message": "...", "technical_message": "...", "reason_codes": [...]}`
 
 ---
 
-## 9. Direct Python Service Interface
+## 10. Direct Python Service Interface
 
 ```python
 from nivesh import (
@@ -828,9 +925,11 @@ from nivesh import (
     EvidenceVerificationEngine,
     ThreatIntelligenceEngine,
     ScamFingerprintEngine,
+    PolicyInterventionEngine,
+    PolicyDecisionType,
 )
 
-# Initialize all 7 engines
+# Initialize all 8 engines
 content_engine = ContentIntelligenceEngine()
 claims_engine = ClaimIntelligenceEngine()
 actions_engine = ActionIntelligenceEngine()
@@ -838,6 +937,7 @@ sources_engine = SourceIntelligenceEngine(default_mode="FIXTURE")
 evidence_engine = EvidenceVerificationEngine()
 threat_engine = ThreatIntelligenceEngine()
 fingerprint_engine = ScamFingerprintEngine()
+policy_engine = PolicyInterventionEngine()
 
 # Observation 1: Standard benchmark threat
 raw_text_1 = (
@@ -846,75 +946,80 @@ raw_text_1 = (
     "Download our app and pay ₹5,000."
 )
 
-# Process Observation 1 through Pipeline
+# Process Observation 1 through Engines 1-7
 c1 = content_engine.process_text(raw_text_1)
 cl1 = claims_engine.analyze(c1)
 a1 = actions_engine.analyze(c1, cl1)
 s1 = sources_engine.discover_and_retrieve(c1, cl1, a1)
 e1 = evidence_engine.verify(c1, cl1, s1)
 t1 = threat_engine.analyze(c1, cl1, a1, s1, e1)
-res1 = fingerprint_engine.create_or_match(c1, cl1, a1, s1, e1, t1)
+fp1 = fingerprint_engine.create_or_match(c1, cl1, a1, s1, e1, t1)
 
-print(f"Observation 1 Fingerprint ID: {res1.fingerprint.fingerprint_id}")  # SFP-001
-print(f"Observation 1 Status: {res1.fingerprint.status}")                  # NEW
-print(f"Observation 1 Count: {res1.fingerprint.observation_count}")        # 1
-
-# Observation 2: Mutated wording, WhatsApp, ₹4,999, same threat structure
-raw_text_2 = (
-    "SEBI certified financial expert Vijay Kumar! Assured 40% returns. "
-    "Join our VIP WhatsApp group: https://chat.whatsapp.com/inv99. "
-    "Install our mobile software and pay ₹4,999 subscription fee."
+# Engine 8: Decide Intervention Policy
+decision_1 = policy_engine.decide(
+    content=c1,
+    claims=cl1,
+    actions=a1,
+    sources=s1,
+    evidence=e1,
+    threat=t1,
+    fingerprint=fp1,
 )
 
+print(f"Policy Decision: {decision_1.decision}")                   # PolicyDecisionType.PAUSE
+print(f"Severity: {decision_1.severity}")                         # PolicySeverity.HIGH
+print(f"Requires Confirmation: {decision_1.required_user_confirmation}") # True
+print(f"Cooldown Seconds: {decision_1.cooldown_seconds}")         # 30
+print(f"Reason Codes: {decision_1.reason_codes}")                 # [PAYMENT_REQUEST, IDENTITY_NOT_ESTABLISHED, GUARANTEED_RETURN_LANGUAGE, ...]
+print(f"User Message: {decision_1.user_message}")
+
+# Observation 2: Benign educational content
+raw_text_2 = "Learn what mutual funds are and how diversification protects your capital over the long term."
 c2 = content_engine.process_text(raw_text_2)
 cl2 = claims_engine.analyze(c2)
 a2 = actions_engine.analyze(c2, cl2)
 s2 = sources_engine.discover_and_retrieve(c2, cl2, a2)
 e2 = evidence_engine.verify(c2, cl2, s2)
 t2 = threat_engine.analyze(c2, cl2, a2, s2, e2)
-res2 = fingerprint_engine.create_or_match(c2, cl2, a2, s2, e2, t2)
+fp2 = fingerprint_engine.create_or_match(c2, cl2, a2, s2, e2, t2)
 
-print(f"Observation 2 Match Type: {res2.match_type}")                      # SEMANTIC_VARIANT
-print(f"Observation 2 Structural Equivalence: {res2.structural_equivalence}") # True
-print(f"Observation 2 Match Confidence: {res2.match_confidence}")          # 0.91
-print(f"Consolidated Observation Count: {res2.fingerprint.observation_count}") # 2
-print(f"Distinct Channels: {res2.fingerprint.distinct_channels}")          # ['telegram', 'whatsapp']
-print(f"Collective Context: {res2.collective_context['pattern_summary']}")
+decision_2 = policy_engine.decide(
+    content=c2,
+    claims=cl2,
+    actions=a2,
+    sources=s2,
+    evidence=e2,
+    threat=t2,
+    fingerprint=fp2,
+)
 
-# Observation 3: Benign informational content
-raw_text_3 = "Learn what mutual funds are and how diversification protects your capital over the long term."
-c3 = content_engine.process_text(raw_text_3)
-cl3 = claims_engine.analyze(c3)
-a3 = actions_engine.analyze(c3, cl3)
-s3 = sources_engine.discover_and_retrieve(c3, cl3, a3)
-e3 = evidence_engine.verify(c3, cl3, s3)
-t3 = threat_engine.analyze(c3, cl3, a3, s3, e3)
-res3 = fingerprint_engine.create_or_match(c3, cl3, a3, s3, e3, t3)
-
-print(f"Observation 3 Match Type: {res3.match_type}")                      # NO_MATCH
+print(f"Benign Decision: {decision_2.decision}")                   # PolicyDecisionType.ALLOW
+print(f"Requires Confirmation: {decision_2.required_user_confirmation}") # False
 ```
 
 ---
 
-## 10. Test Suite Verification
+## 11. Test Suite Verification
 
-Run all pytest unit, integration, and regression tests across all 7 engines:
+Run all pytest unit, integration, and regression tests across all 8 engines:
 
 ```bash
 python -X utf8 -m pytest -v
 ```
 
-**Results:** `269 passed in 9.06s` (0 failed, 100% pass rate).
+**Results:** `303 passed in 14.65s` (0 failed, 100% pass rate).
 - **Engine 1 Unit Tests**: Text normalizer (7), URL extractor (8), Social extractor (6), Contact extractor (4), Financial extractor (6), Entity extractor (5), CTA extractor (7), Language detector (4), Financial relevance (4), OCR adapter (6), URL adapter (3), Primary fixture (3), API (4) -> **67 tests**.
 - **Engine 2 Unit Tests**: Claim canonicalizer (7), Modality and Temporal (8), Claim segmenter & Action filtering (5), Verification requirements & Relations (5), Benchmark cases (12), Primary fixture (1), Engine 1 -> Engine 2 integration (3), Claim API (3) -> **44 tests**.
 - **Engine 3 Unit Tests**: Schemas & validation (2), Classifier & hierarchy (4), Parameter extractor & privacy (3), Benchmark cases (6), Primary fixture benchmark (1), Engine 1 -> Engine 2 -> Engine 3 integration (2), Action API (4) -> **22 tests**.
 - **Engine 4 Unit Tests**: Schemas & validation (4), SSRF protection (24), Source routing (4), Adapters & caching (7), Evidence candidates (1), Primary fixture (1), Full 4-engine integration (1), Source API (3) -> **45 tests**.
 - **Engine 5 Unit Tests**: Schemas & validation (2), Regulatory & identity matching (6), Numerical, ratios, & debt verification (6), Opinions & predictions (2), Source conflicts & absence handling (3), Prompt injection defense (1), Primary fixture benchmark (1), Full 5-engine end-to-end integration (1), Evidence API (3) -> **25 tests**.
 - **Engine 6 Unit Tests**: Schemas & validation (5), Threat signal detector (5), Attack path & transitions (1), Claim-to-action linker (3), Semantic correction tests (6), High-impact actions & evidence weaknesses (2), Multi-signal combinations & threat families (2), Negative guardrails (5), Primary fixture benchmark (1), Full 6-engine end-to-end integration (2), Threat API (4) -> **36 tests**.
-- **Engine 7 Unit & Regression Tests**: Schemas & validation (5), Feature extraction & canonical ordering (2), Multi-dimensional matcher (3), Lifecycle, disputes & relationships (5), Copy-amplification defense & observation counting (2), Primary benchmark fixture & secondary demo (1), Adversarial false-match & false-split tests (2), Privacy preservation & boundary guardrails (1), Full 7-engine end-to-end integration (1), FastAPI endpoints (3), + Targeted Regression Suite (5 tests: single-valued determinism, copy-amplification defense with tracking links, complete PII/raw text serialization sanitization, non-destructive dispute audit trails, and end-to-end Observations A/B/C verification) -> **30 tests**.
+- **Engine 7 Unit & Regression Tests**: Schemas & validation (5), Feature extraction & canonical ordering (2), Multi-dimensional matcher (3), Lifecycle, disputes & relationships (5), Copy-amplification defense & observation counting (2), Primary benchmark fixture & secondary demo (1), Adversarial false-match & false-split tests (2), Privacy preservation & boundary guardrails (1), Full 7-engine end-to-end integration (1), FastAPI endpoints (3), Regression suite (5) -> **30 tests**.
+- **Engine 8 Unit & Integration Tests**: Schemas & validation (5), Individual rules (5), Precedence & user overrides (7), Negative guardrails (5), Neutral explainability (2), Privacy preservation & safety boundaries (2), FastAPI endpoints (4), Primary benchmark fixture (2), Full 8-engine end-to-end integration (2) -> **34 tests**.
 
 **Reconciled Arithmetic**:
-$$67 + 44 + 22 + 45 + 25 + 36 + 30 = 269 \text{ tests (100\% match)}$$
-*(Note on previous discrepancy: the previous test summary listed Engine 6 as 28 instead of its actual 36 collected tests [a difference of 8 tests], leading to an undercount in the written sum. The corrected sum is exactly 269).*
+$$67 + 44 + 22 + 45 + 25 + 36 + 30 + 34 = 303 \text{ tests (100\% match)}$$
+*(Zero regressions across all existing suites, zero skipped, 0 failed).*
+
 
 

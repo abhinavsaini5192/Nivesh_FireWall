@@ -17,6 +17,8 @@ from nivesh.sources.engine import SourceIntelligenceEngine
 from nivesh.evidence.engine import EvidenceVerificationEngine
 from nivesh.threat.engine import ThreatIntelligenceEngine
 from nivesh.fingerprints.engine import ScamFingerprintEngine
+from nivesh.policy.engine import PolicyInterventionEngine
+from nivesh.policy.schemas import PolicyDecision, PolicyContext
 from nivesh.schemas.input import ContentInput, ChannelType
 from nivesh.schemas.normalized import NormalizedContent
 from nivesh.schemas.claims import ClaimAnalysis
@@ -66,6 +68,17 @@ class FingerprintDisputePayload(BaseModel):
     reason: str
     actor: Optional[str] = "user"
 
+class PolicyDecidePayload(BaseModel):
+    content: NormalizedContent
+    claims: Optional[ClaimAnalysis] = None
+    actions: Optional[ActionAnalysis] = None
+    sources: Optional[SourceAnalysis] = None
+    evidence: Optional[EvidenceAnalysis] = None
+    threat: Optional[ThreatAnalysis] = None
+    fingerprint: Optional[FingerprintAnalysis] = None
+    context: Optional[PolicyContext] = None
+
+
 # Initialize FastAPI application
 app = FastAPI(
     title="Nivesh Firewall — Backend API",
@@ -90,6 +103,7 @@ sources_engine = SourceIntelligenceEngine()
 evidence_engine = EvidenceVerificationEngine()
 threat_engine = ThreatIntelligenceEngine()
 fingerprint_engine = ScamFingerprintEngine()
+policy_engine = PolicyInterventionEngine()
 
 
 @app.get("/health", tags=["System"])
@@ -107,6 +121,7 @@ async def health_check():
             "Engine 5: Evidence Verification Engine",
             "Engine 6: Threat & Attack-Path Intelligence Engine",
             "Engine 7: Scam Fingerprint & Collective Threat Intelligence Engine",
+            "Engine 8: Policy & Intervention Engine",
         ],
         "version": ENGINE_VERSION,
     }
@@ -481,6 +496,149 @@ async def dispute_fingerprint(fingerprint_id: str, payload: FingerprintDisputePa
             detail=f"Fingerprint '{fingerprint_id}' not found."
         )
     return fp
+
+
+# ==============================================================================
+# Engine 8: Policy & Intervention API Endpoints
+# ==============================================================================
+
+@app.post(
+    "/api/v1/policy/decide",
+    response_model=PolicyDecision,
+    tags=["Policy & Intervention (Engine 8)"],
+    summary="Evaluate safety policy and determine intervention level",
+)
+async def evaluate_policy(request: Request):
+    """Determines the appropriate safety intervention based on multi-engine intelligence."""
+    try:
+        body = await request.json()
+        if "content" in body:
+            payload = PolicyDecidePayload(**body)
+            content = payload.content
+            claims = payload.claims
+            actions = payload.actions
+            sources = payload.sources
+            evidence = payload.evidence
+            threat = payload.threat
+            fingerprint = payload.fingerprint
+            context = payload.context
+        else:
+            content = NormalizedContent(**body)
+            claims = None
+            actions = None
+            sources = None
+            evidence = None
+            threat = None
+            fingerprint = None
+            context = None
+
+        if claims is None:
+            claims = claims_engine.analyze(content)
+        if actions is None:
+            actions = actions_engine.analyze(content, claims)
+        if sources is None:
+            sources = sources_engine.discover_and_retrieve(content, claims, actions)
+        if evidence is None:
+            evidence = evidence_engine.verify(content, claims, sources)
+        if threat is None:
+            threat = threat_engine.analyze(content, claims, actions, sources, evidence)
+        if fingerprint is None:
+            fingerprint = fingerprint_engine.create_or_match(content, claims, actions, sources, evidence, threat)
+
+        decision = policy_engine.decide(
+            content=content,
+            claims=claims,
+            actions=actions,
+            sources=sources,
+            evidence=evidence,
+            threat=threat,
+            fingerprint=fingerprint,
+            context=context,
+        )
+        return decision
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Policy evaluation failed: {str(e)}"
+        )
+
+
+@app.get(
+    "/api/v1/policy/rules",
+    tags=["Policy & Intervention (Engine 8)"],
+    summary="List registered safety policy rules",
+)
+async def list_policy_rules():
+    """Lists all active investor-protection policy rules."""
+    return policy_engine.list_rules()
+
+
+@app.get(
+    "/api/v1/policy/{decision_id}",
+    response_model=PolicyDecision,
+    tags=["Policy & Intervention (Engine 8)"],
+    summary="Retrieve a stored policy decision by ID",
+)
+async def get_policy_decision(decision_id: str):
+    """Retrieves an existing policy decision record."""
+    decision = policy_engine.get_decision(decision_id)
+    if not decision:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Policy decision '{decision_id}' not found."
+        )
+    return decision
+
+
+@app.post(
+    "/api/v1/policy/explain",
+    tags=["Policy & Intervention (Engine 8)"],
+    summary="Get detailed user-facing and technical policy explanations",
+)
+async def explain_policy(request: Request):
+    """Provides non-accusatory user and technical explanations for a decision or interaction."""
+    try:
+        body = await request.json()
+        if "decision_id" in body:
+            decision = policy_engine.get_decision(body["decision_id"])
+            if not decision:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Policy decision '{body['decision_id']}' not found."
+                )
+            return {
+                "decision_id": decision.decision_id,
+                "decision": decision.decision,
+                "severity": decision.severity,
+                "primary_reason": decision.primary_reason,
+                "user_message": decision.user_message,
+                "technical_message": decision.technical_message,
+                "reason_codes": decision.reason_codes,
+                "supporting_reasons": decision.supporting_reasons,
+                "required_user_confirmation": decision.required_user_confirmation,
+            }
+        
+        # If payload is provided directly, evaluate and explain
+        decision = await evaluate_policy(request)
+        return {
+            "decision_id": decision.decision_id,
+            "decision": decision.decision,
+            "severity": decision.severity,
+            "primary_reason": decision.primary_reason,
+            "user_message": decision.user_message,
+            "technical_message": decision.technical_message,
+            "reason_codes": decision.reason_codes,
+            "supporting_reasons": decision.supporting_reasons,
+            "required_user_confirmation": decision.required_user_confirmation,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Policy explanation failed: {str(e)}"
+        )
+
 
 
 
