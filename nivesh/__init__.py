@@ -20,7 +20,22 @@ from .policy import (
     ReasonCode,
     POLICY_VERSION,
 )
+from .identity import (
+    IdentityVerificationEngine,
+    IdentityAnalysis,
+    IdentityStatus,
+    IdentityMatchStatus,
+    IdentityFindingType,
+    ClaimedEntity,
+    ResolvedEntity,
+    IdentityMatch,
+    AuthorityAlignment,
+    DomainAlignment,
+    IdentityFinding,
+    IdentityProvenance,
+)
 from .schemas import (
+
     ContentInput,
     NormalizedContent,
     SourceInfo,
@@ -151,6 +166,19 @@ __all__ = [
     "PolicySeverity",
     "ReasonCode",
     "POLICY_VERSION",
+    "IdentityVerificationEngine",
+    "IdentityAnalysis",
+    "IdentityStatus",
+    "IdentityMatchStatus",
+    "IdentityFindingType",
+    "ClaimedEntity",
+    "ResolvedEntity",
+    "IdentityMatch",
+    "AuthorityAlignment",
+    "DomainAlignment",
+    "IdentityFinding",
+    "IdentityProvenance",
 ]
+
 
 

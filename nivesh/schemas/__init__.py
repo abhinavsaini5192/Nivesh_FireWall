@@ -116,7 +116,21 @@ __all__ = [
     "VerificationResult",
     "EvidenceAnalysisMetadata",
     "EvidenceAnalysis",
+    "IdentityEntityType",
+    "IdentityStatus",
+    "IdentityMatchStatus",
+    "IdentityFindingType",
+    "IdentityRelationshipType",
+    "ClaimedEntity",
+    "ResolvedEntity",
+    "IdentityMatch",
+    "AuthorityAlignment",
+    "DomainAlignment",
+    "IdentityFinding",
+    "IdentityProvenance",
+    "IdentityAnalysis",
 ]
+
 
 from .actions import (
     ActionType,
@@ -212,6 +226,22 @@ from nivesh.policy.schemas import (
     PolicyContext,
     PolicyRuleResult,
     PolicyDecision,
+)
+
+from nivesh.identity.schemas import (
+    IdentityEntityType,
+    IdentityStatus,
+    IdentityMatchStatus,
+    IdentityFindingType,
+    IdentityRelationshipType,
+    ClaimedEntity,
+    ResolvedEntity,
+    IdentityMatch,
+    AuthorityAlignment,
+    DomainAlignment,
+    IdentityFinding,
+    IdentityProvenance,
+    IdentityAnalysis,
 )
 
 

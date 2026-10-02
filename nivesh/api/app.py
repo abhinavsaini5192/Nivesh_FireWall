@@ -19,6 +19,8 @@ from nivesh.threat.engine import ThreatIntelligenceEngine
 from nivesh.fingerprints.engine import ScamFingerprintEngine
 from nivesh.policy.engine import PolicyInterventionEngine
 from nivesh.policy.schemas import PolicyDecision, PolicyContext
+from nivesh.identity.engine import IdentityVerificationEngine
+from nivesh.identity.schemas import IdentityAnalysis, ClaimedEntity
 from nivesh.schemas.input import ContentInput, ChannelType
 from nivesh.schemas.normalized import NormalizedContent
 from nivesh.schemas.claims import ClaimAnalysis
@@ -34,6 +36,14 @@ from nivesh.schemas.fingerprint import (
 )
 from pydantic import BaseModel
 from datetime import datetime, timezone
+
+class IdentityVerificationPayload(BaseModel):
+    content: Optional[NormalizedContent] = None
+    text: Optional[str] = None
+    claims: Optional[ClaimAnalysis] = None
+    sources: Optional[SourceAnalysis] = None
+    evidence: Optional[EvidenceAnalysis] = None
+    threat: Optional[ThreatAnalysis] = None
 
 class ActionAnalysisPayload(BaseModel):
     content: NormalizedContent
@@ -104,6 +114,7 @@ evidence_engine = EvidenceVerificationEngine()
 threat_engine = ThreatIntelligenceEngine()
 fingerprint_engine = ScamFingerprintEngine()
 policy_engine = PolicyInterventionEngine()
+identity_engine = IdentityVerificationEngine()
 
 
 @app.get("/health", tags=["System"])
@@ -122,9 +133,11 @@ async def health_check():
             "Engine 6: Threat & Attack-Path Intelligence Engine",
             "Engine 7: Scam Fingerprint & Collective Threat Intelligence Engine",
             "Engine 8: Policy & Intervention Engine",
+            "Engine 9: Identity Verification & Entity Resolution Engine",
         ],
         "version": ENGINE_VERSION,
     }
+
 
 
 
@@ -638,6 +651,98 @@ async def explain_policy(request: Request):
             status_code=400,
             detail=f"Policy explanation failed: {str(e)}"
         )
+
+
+# ============================================================================
+# Engine 9: Identity Verification & Entity Resolution Endpoints
+# ============================================================================
+
+@app.post(
+    "/api/v1/identity/verify",
+    response_model=IdentityAnalysis,
+    tags=["Identity Verification (Engine 9)"],
+    summary="Verify entity identity consistency against authoritative evidence",
+)
+async def verify_identity(request: Request):
+    """Verifies claimed entity identity consistency against authoritative registry records."""
+    try:
+        body = await request.json()
+        payload = IdentityVerificationPayload(**body)
+
+        content = payload.content
+        if not content:
+            raw_text = payload.text or body.get("raw_text") or body.get("text")
+            if not raw_text:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Either 'content' or 'text' must be provided in payload."
+                )
+            content = content_engine.process_text(raw_text)
+
+        claims = payload.claims
+        if not claims:
+            claims = claims_engine.analyze(content)
+
+        sources = payload.sources
+        if not sources:
+            actions = actions_engine.analyze(content, claims)
+            sources = sources_engine.discover_and_retrieve(content, claims, actions)
+
+        evidence = payload.evidence
+        if not evidence:
+            evidence = evidence_engine.verify(content, claims, sources)
+
+        threat = payload.threat
+
+        analysis = identity_engine.verify(
+            content=content,
+            claims=claims,
+            sources=sources,
+            evidence=evidence,
+            threat=threat,
+        )
+        return analysis
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Identity verification failed: {str(e)}"
+        )
+
+
+@app.get(
+    "/api/v1/identity/{analysis_id}",
+    response_model=IdentityAnalysis,
+    tags=["Identity Verification (Engine 9)"],
+    summary="Retrieve an identity analysis by ID",
+)
+async def get_identity_analysis(analysis_id: str):
+    """Retrieves an existing identity analysis record from in-memory cache."""
+    analysis = identity_engine.get_analysis(analysis_id)
+    if not analysis:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Identity analysis '{analysis_id}' not found."
+        )
+    return analysis
+
+
+@app.get(
+    "/api/v1/identity/entities/{entity_id}",
+    response_model=ClaimedEntity,
+    tags=["Identity Verification (Engine 9)"],
+    summary="Retrieve a claimed entity by ID",
+)
+async def get_identity_entity(entity_id: str):
+    """Retrieves a claimed entity record from in-memory cache."""
+    entity = identity_engine.get_entity(entity_id)
+    if not entity:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Claimed entity '{entity_id}' not found."
+        )
+    return entity
 
 
 

@@ -1,6 +1,6 @@
 # Nivesh Firewall — Backend Core
 
-Production-quality implementations of **Engine 1 (Content Intelligence)**, **Engine 2 (Claim Intelligence)**, **Engine 3 (Action Intelligence)**, **Engine 4 (Source Intelligence)**, **Engine 5 (Evidence Verification)**, **Engine 6 (Threat & Attack-Path Intelligence)**, **Engine 7 (Scam Fingerprint & Collective Threat Intelligence)**, and **Engine 8 (Policy & Intervention Engine)** for the **Nivesh Firewall** backend.
+Production-quality implementations of **Engine 1 (Content Intelligence)**, **Engine 2 (Claim Intelligence)**, **Engine 3 (Action Intelligence)**, **Engine 4 (Source Intelligence)**, **Engine 5 (Evidence Verification)**, **Engine 6 (Threat & Attack-Path Intelligence)**, **Engine 7 (Scam Fingerprint & Collective Threat Intelligence)**, **Engine 8 (Policy & Intervention Engine)**, and **Engine 9 (Identity Verification & Entity Resolution Engine)** for the **Nivesh Firewall** backend.
 
 ```
 RAW CONTENT (Text, URL, Image)
@@ -70,6 +70,14 @@ RAW CONTENT (Text, URL, Image)
      PolicyDecision (ALLOW | INFORM | WARN | PAUSE | BLOCK)
           │
           ▼
+┌───────────────────────────────────────────────────────────────────┐
+│ ENGINE 9: Identity Verification & Entity Resolution Engine        │
+└───────────────────────────────────────────────────────────────────┘
+          │ (Answers: "Does the claimed entity align with authoritative identity evidence?")
+          ▼
+     IdentityAnalysis (IdentityStatus, ClaimedEntity[], IdentityMatch[], AuthorityAlignment[], DomainAlignment[])
+          │
+          ▼
 ┌─────────────────────────────────────────────────────────┐
 │ Browser / Desktop Local Enforcement Adapter             │
 └─────────────────────────────────────────────────────────┘
@@ -85,7 +93,9 @@ RAW CONTENT (Text, URL, Image)
 > - **Engine 6** constructs structured attack paths, identifies threat stages & transitions, links claims to actions (`RATIONALE_FOR`, `JUSTIFIES`), surfaces evidence weaknesses, evaluates high-impact actions with reversibility ratings, and detects multi-signal combinations without predicting prices or calculating generic scam probabilities.
 > - **Engine 7** creates privacy-preserving structural scam fingerprints, normalizes threat patterns across multiple observations, detects exact and semantic variants, maintains observation counts with copy-amplification protection, and provides collective intelligence without storing raw PII, declaring criminality, or predicting scam probability.
 > - **Engine 8** evaluates multi-engine structured intelligence against explicit, deterministic policy rules and precedence hierarchies to emit intervention decisions (`ALLOW`, `INFORM`, `WARN`, `PAUSE`, `BLOCK`) with machine-readable reason codes, non-accusatory user explanations, and zero PII or investment advice.
-> - **Engines 1 through 8 NEVER** recommend buying/selling/holding investments, predict future market outcomes, calculate general "scam probabilities" (e.g. 0.94), declare individuals criminals, or directly manipulate the host OS/browser (device-level enforcement is delegated to downstream adapters).
+> - **Engine 9** resolves entity identities, normalizes organization and person names without over-aggressive merging, verifies registration credentials against official databases, evaluates domain lookalikes vs official domains, validates regulatory authority claims vs actual records, and assesses social handles without assuming ownership—producing structured findings and identity resolution confidence without declaring criminality or fraud.
+> - **Engines 1 through 9 NEVER** recommend buying/selling/holding investments, predict future market outcomes, calculate general "scam probabilities" (e.g. 0.94), declare individuals criminals, or directly manipulate the host OS/browser (device-level enforcement is delegated to downstream adapters).
+
 
 
 ---
@@ -859,7 +869,84 @@ Engine 4 (Sources) ──► Engine 5 (Evidence) ──► Engine 6 (Threats)
 
 ---
 
-## 9. API Endpoints
+## 9. Engine 9: Identity Verification & Entity Resolution Engine
+
+Engine 9 answers the core question:
+
+> *"Does the identity, organization, regulator, intermediary, brand, domain, or other entity being represented in this financial interaction actually align with authoritative identity evidence?"*
+
+The engine focuses strictly on **identity consistency and entity resolution**. It does not declare criminality or fraud, provide investment advice, or make final intervention decisions. It emits structured identity findings (`IdentityAnalysis`) that Engine 6, Engine 7, and Engine 8 consume.
+
+```
+ENTITY EXTRACTION INPUT
+        ↓
+ENTITY NORMALIZATION (Person names without aggressive merging, org legal suffixes, domains, handles)
+        ↓
+IDENTITY CANDIDATE RESOLUTION
+        ↓
+AUTHORITATIVE ENTITY MATCHING (Deterministic attribute-by-attribute comparison)
+        ↓
+IDENTITY ATTRIBUTE COMPARISON (Legal name, registration number, entity type, regulator, domain)
+        ↓
+DOMAIN / BRAND / AUTHORITY ALIGNMENT
+        ↓
+IDENTITY STATUS (ESTABLISHED | PARTIALLY_ESTABLISHED | NOT_ESTABLISHED | IDENTITY_MISMATCH | AMBIGUOUS | SOURCE_UNAVAILABLE)
+        ↓
+IDENTITY FINDINGS (Stable reason codes with complete source/evidence provenance)
+```
+
+### Core Responsibilities & Modules
+
+1. **Entity Extraction & Disambiguation (`entity_resolver.py`)**:
+   - Categorizes entities into typed taxonomy: `PERSON`, `ORGANIZATION`, `REGULATOR`, `FINANCIAL_INTERMEDIARY`, `BROKER`, `ADVISER`, `COMPANY`, `BRAND`, `WEBSITE`, `DOMAIN`, `SOCIAL_ACCOUNT`, `CHANNEL`.
+   - Distinguishes contact points/channels/domains from person entities (e.g. `contact@example.com` or `@handle` is a contact point, never automatically a person).
+   - Associates claimed registrations, domains, and social channels with primary claimed entities.
+
+2. **Deterministic Normalization (`normalizer.py`)**:
+   - **Person Names**: Strips honorifics/titles (`Dr.`, `CA`, `Mr.`), applies Unicode NFKC normalization, but strictly avoids over-aggressive merging (`Rahul Sharma` $\neq$ `Rahul K Sharma` $\neq$ `Rahul Kumar Sharma`).
+   - **Organizations**: Standardizes legal suffixes (`PVT LTD`, `LLP`, `LTD`, `INC`) while preserving original legal representations for provenance.
+   - **Domains**: Normalizes URLs, strips ports, paths, schemes, tracking query parameters (`utm_*`, `ref`), and handles two-part TLDs (`.co.in`, `.gov.in`).
+   - **Registrations**: Normalizes alphanumeric registration identifiers (stripping whitespace, hyphens, slashes).
+   - **Social Handles**: Standardizes handles across Telegram, WhatsApp, Twitter/X, Instagram, and YouTube.
+
+3. **Registration Resolution (`registration_resolver.py`)**:
+   - Connects claimed entity $\rightarrow$ registration identifier $\rightarrow$ authoritative candidate record.
+   - Distinguishes:
+     - `REGISTRATION_ENTITY_MATCH`: Registration exists and officially belongs to the claimed entity (`ESTABLISHED`).
+     - `REGISTRATION_ENTITY_MISMATCH`: Registration exists but officially belongs to a *different* legal entity (`IDENTITY_MISMATCH`).
+     - `REGISTRATION_IDENTIFIER_UNRESOLVED`: Registration claimed but identifier is missing or unverified (`NOT_ESTABLISHED`).
+     - Registry search `NO_MATCH` $\rightarrow$ `NOT_ESTABLISHED` (strictly **never** `IDENTITY_MISMATCH` or fraud).
+     - Source unavailable $\rightarrow$ `SOURCE_UNAVAILABLE`.
+
+4. **Domain and Brand Alignment (`domain_resolver.py`)**:
+   - Compares observed domains against claimed brands and authoritative registry records.
+   - Evaluates:
+     - `ALIGNED` / `DOMAIN_ALIGNMENT_ESTABLISHED`: Observed domain matches official registry record.
+     - `MISMATCH` / `DOMAIN_IDENTITY_MISMATCH`: Authoritative domain is known, but observed domain is a lookalike or different domain.
+     - `NOT_ESTABLISHED` / `DOMAIN_ALIGNMENT_NOT_ESTABLISHED`: Domain unverified in records (unknown domain $\neq$ malicious domain; brand keyword in domain $\neq$ official ownership).
+
+5. **Authority Identity Resolution (`authority_resolver.py`)**:
+   - Handles regulatory authorities (SEBI, RBI, NSE, BSE, IRDAI, PFRDA).
+   - Distinguishes:
+     - `AUTHORITY_CLAIM`: Content makes an explicit regulatory reference.
+     - `AUTHORITY_IDENTITY_NOT_ESTABLISHED`: Asserted registration cannot be established in registry records.
+     - `AUTHORITY_IDENTITY_MISMATCH`: Authoritative records contradict registration details, or interaction improperly purports to be the regulator itself.
+
+6. **Social Channel Resolution (`social_resolver.py`)**:
+   - Evaluates Telegram groups, WhatsApp channels, Twitter handles, etc.
+   - Enforces the core rule: **A matching username or handle does NOT establish official ownership without authoritative evidence** (`SOCIAL_ACCOUNT_NOT_ESTABLISHED`).
+
+7. **Deterministic Attribute Matcher (`matcher.py`)**:
+   - Compares legal name, registration number, entity type, regulator, domain, and jurisdiction.
+   - Detects ambiguity (`AMBIGUOUS`) when multiple candidates match without distinguishing data (does not arbitrarily choose one).
+
+8. **Findings & Traceability (`findings.py`, `provenance.py`)**:
+   - Generates structured, non-accusatory `IdentityFinding` objects with complete upstream provenance links (`source_ids`, `evidence_ids`, `claim_id`, `entity_id`).
+   - Confidence represents **identity resolution confidence** (0.0 to 1.0), strictly **not** scam probability.
+
+---
+
+## 10. API Endpoints
 
 Start the FastAPI server:
 ```bash
@@ -867,7 +954,7 @@ uvicorn nivesh.api.app:app --host 0.0.0.0 --port 8000
 ```
 
 1. **`GET /health`** / **`GET /api/v1/health`**:
-   Returns system status and all 8 active engines.
+   Returns system status and all 9 active engines.
 2. **`POST /api/v1/content/analyze`** (Engine 1):
    - Body: `{"text": "...", "url": "...", "channel": "telegram"}`
    - Form-Data: `file=@screenshot.png`, `channel=whatsapp`
@@ -911,10 +998,17 @@ uvicorn nivesh.api.app:app --host 0.0.0.0 --port 8000
 16. **`POST /api/v1/policy/explain`** (Engine 8):
     - Body: `PolicyDecision` JSON
     - Output: `{"decision_id": "...", "decision": "PAUSE", "user_message": "...", "technical_message": "...", "reason_codes": [...]}`
+17. **`POST /api/v1/identity/verify`** (Engine 9):
+    - Body: `{"text": "..."}` or `{"content": NormalizedContent, "claims": ClaimAnalysis, "sources": SourceAnalysis, "evidence": EvidenceAnalysis}`
+    - Output: `IdentityAnalysis` (with `entities`, `identity_matches`, `identity_findings`, `identity_status`, `authority_alignments`, `domain_alignments`, `confidence`, `provenance`)
+18. **`GET /api/v1/identity/{analysis_id}`** (Engine 9):
+    - Output: Stored `IdentityAnalysis` record.
+19. **`GET /api/v1/identity/entities/{entity_id}`** (Engine 9):
+    - Output: Stored `ClaimedEntity` record.
 
 ---
 
-## 10. Direct Python Service Interface
+## 11. Direct Python Service Interface
 
 ```python
 from nivesh import (
@@ -926,10 +1020,12 @@ from nivesh import (
     ThreatIntelligenceEngine,
     ScamFingerprintEngine,
     PolicyInterventionEngine,
+    IdentityVerificationEngine,
     PolicyDecisionType,
+    IdentityStatus,
 )
 
-# Initialize all 8 engines
+# Initialize all 9 engines
 content_engine = ContentIntelligenceEngine()
 claims_engine = ClaimIntelligenceEngine()
 actions_engine = ActionIntelligenceEngine()
@@ -938,6 +1034,7 @@ evidence_engine = EvidenceVerificationEngine()
 threat_engine = ThreatIntelligenceEngine()
 fingerprint_engine = ScamFingerprintEngine()
 policy_engine = PolicyInterventionEngine()
+identity_engine = IdentityVerificationEngine()
 
 # Observation 1: Standard benchmark threat
 raw_text_1 = (
@@ -966,48 +1063,48 @@ decision_1 = policy_engine.decide(
     fingerprint=fp1,
 )
 
+# Engine 9: Verify Identity & Resolve Entities
+identity_1 = identity_engine.verify(
+    content=c1,
+    claims=cl1,
+    sources=s1,
+    evidence=e1,
+    threat=t1,
+)
+
 print(f"Policy Decision: {decision_1.decision}")                   # PolicyDecisionType.PAUSE
 print(f"Severity: {decision_1.severity}")                         # PolicySeverity.HIGH
 print(f"Requires Confirmation: {decision_1.required_user_confirmation}") # True
-print(f"Cooldown Seconds: {decision_1.cooldown_seconds}")         # 30
-print(f"Reason Codes: {decision_1.reason_codes}")                 # [PAYMENT_REQUEST, IDENTITY_NOT_ESTABLISHED, GUARANTEED_RETURN_LANGUAGE, ...]
-print(f"User Message: {decision_1.user_message}")
+print(f"Identity Status: {identity_1.identity_status}")           # IdentityStatus.NOT_ESTABLISHED
+print(f"Entities: {[e.name for e in identity_1.entities]}")       # ['Rahul Sharma', ...]
+print(f"Authority Alignment: {identity_1.authority_alignments[0].alignment_status}") # NOT_ESTABLISHED
 
-# Observation 2: Benign educational content
-raw_text_2 = "Learn what mutual funds are and how diversification protects your capital over the long term."
+# Observation 2: Verified official entity (Positive Benchmark)
+raw_text_2 = (
+    "ABC Securities Private Limited is a SEBI registered broker (Registration: INZ00012345). "
+    "Visit our official portal at https://www.abcsecurities.com for services."
+)
 c2 = content_engine.process_text(raw_text_2)
 cl2 = claims_engine.analyze(c2)
-a2 = actions_engine.analyze(c2, cl2)
-s2 = sources_engine.discover_and_retrieve(c2, cl2, a2)
+s2 = sources_engine.discover_and_retrieve(c2, cl2)
 e2 = evidence_engine.verify(c2, cl2, s2)
-t2 = threat_engine.analyze(c2, cl2, a2, s2, e2)
-fp2 = fingerprint_engine.create_or_match(c2, cl2, a2, s2, e2, t2)
+identity_2 = identity_engine.verify(content=c2, claims=cl2, sources=s2, evidence=e2)
 
-decision_2 = policy_engine.decide(
-    content=c2,
-    claims=cl2,
-    actions=a2,
-    sources=s2,
-    evidence=e2,
-    threat=t2,
-    fingerprint=fp2,
-)
-
-print(f"Benign Decision: {decision_2.decision}")                   # PolicyDecisionType.ALLOW
-print(f"Requires Confirmation: {decision_2.required_user_confirmation}") # False
+print(f"Verified Identity Status: {identity_2.identity_status}")   # IdentityStatus.ESTABLISHED
+print(f"Identity Resolution Confidence: {identity_2.confidence}")  # >= 0.95
 ```
 
 ---
 
-## 11. Test Suite Verification
+## 12. Test Suite Verification
 
-Run all pytest unit, integration, and regression tests across all 8 engines:
+Run all pytest unit, integration, and regression tests across all 9 engines:
 
 ```bash
 python -X utf8 -m pytest -v
 ```
 
-**Results:** `309 passed in 15.18s` (0 failed, 100% pass rate).
+**Results:** `350 passed in 21.32s` (0 failed, 100% pass rate).
 - **Engine 1 Unit Tests**: Text normalizer (7), URL extractor (8), Social extractor (6), Contact extractor (4), Financial extractor (6), Entity extractor (5), CTA extractor (7), Language detector (4), Financial relevance (4), OCR adapter (6), URL adapter (3), Primary fixture (3), API (4) -> **67 tests**.
 - **Engine 2 Unit Tests**: Claim canonicalizer (7), Modality and Temporal (8), Claim segmenter & Action filtering (5), Verification requirements & Relations (5), Benchmark cases (12), Primary fixture (1), Engine 1 -> Engine 2 integration (3), Claim API (3) -> **44 tests**.
 - **Engine 3 Unit Tests**: Schemas & validation (2), Classifier & hierarchy (4), Parameter extractor & privacy (3), Benchmark cases (6), Primary fixture benchmark (1), Engine 1 -> Engine 2 -> Engine 3 integration (2), Action API (4) -> **22 tests**.
@@ -1016,9 +1113,10 @@ python -X utf8 -m pytest -v
 - **Engine 6 Unit Tests**: Schemas & validation (5), Threat signal detector (5), Attack path & transitions (1), Claim-to-action linker (3), Semantic correction tests (6), High-impact actions & evidence weaknesses (2), Multi-signal combinations & threat families (2), Negative guardrails (5), Primary fixture benchmark (1), Full 6-engine end-to-end integration (2), Threat API (4) -> **36 tests**.
 - **Engine 7 Unit & Regression Tests**: Schemas & validation (5), Feature extraction & canonical ordering (2), Multi-dimensional matcher (3), Lifecycle, disputes & relationships (5), Copy-amplification defense & observation counting (2), Primary benchmark fixture & secondary demo (1), Adversarial false-match & false-split tests (2), Privacy preservation & boundary guardrails (1), Full 7-engine end-to-end integration (1), FastAPI endpoints (3), Regression suite (5) -> **30 tests**.
 - **Engine 8 Unit & Integration Tests**: Schemas & validation (5), Individual rules (5), Precedence & user overrides (7), Negative guardrails (9), Neutral explainability (2), Privacy preservation & safety boundaries (2), FastAPI endpoints (4), Primary benchmark fixture & determinism (4), Full 8-engine end-to-end integration (2) -> **40 tests**.
+- **Engine 9 Unit & Integration Tests**: Schemas & validation (5), Entity & domain normalizer (6), Registration resolver (5), Domain & brand alignment (3), Authority & social channel resolution (4), Negative guardrails & safety boundaries (5), Core benchmarks: primary, positive, mismatch, ambiguous (4), Privacy preservation & provenance integrity (3), FastAPI endpoints (4), Full 9-engine end-to-end integration (2) -> **41 tests**.
 
 **Reconciled Arithmetic**:
-$$67 + 44 + 22 + 45 + 25 + 36 + 30 + 40 = 309 \text{ tests (100\% match)}$$
+$$67 + 44 + 22 + 45 + 25 + 36 + 30 + 40 + 41 = 350 \text{ tests (100\% match)}$$
 *(Zero regressions across all existing suites, zero skipped, 0 failed across two consecutive fresh-process runs).*
 
 
