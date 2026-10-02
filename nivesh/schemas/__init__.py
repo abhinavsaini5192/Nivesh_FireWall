@@ -106,6 +106,16 @@ __all__ = [
     "SourceAnalysisMetadata",
     "SourceAnalysis",
     "SourceCatalogEntry",
+    "ClaimVerificationStatus",
+    "EvidenceRelationType",
+    "EvidenceStrength",
+    "VerificationMethod",
+    "EvidenceItemEvaluation",
+    "SourceAssessmentItem",
+    "VerificationProvenance",
+    "VerificationResult",
+    "EvidenceAnalysisMetadata",
+    "EvidenceAnalysis",
 ]
 
 from .actions import (
@@ -146,3 +156,17 @@ from .sources import (
     SourceAnalysis,
     SourceCatalogEntry,
 )
+
+from .evidence import (
+    ClaimVerificationStatus,
+    EvidenceRelationType,
+    EvidenceStrength,
+    VerificationMethod,
+    EvidenceItemEvaluation,
+    SourceAssessmentItem,
+    VerificationProvenance,
+    VerificationResult,
+    EvidenceAnalysisMetadata,
+    EvidenceAnalysis,
+)
+

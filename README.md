@@ -1,6 +1,6 @@
 # Nivesh Firewall — Backend Core
 
-Production-quality implementations of **Engine 1 (Content Intelligence)**, **Engine 2 (Claim Intelligence)**, **Engine 3 (Action Intelligence)**, and **Engine 4 (Source Intelligence)** for the **Nivesh Firewall** backend.
+Production-quality implementations of **Engine 1 (Content Intelligence)**, **Engine 2 (Claim Intelligence)**, **Engine 3 (Action Intelligence)**, **Engine 4 (Source Intelligence)**, and **Engine 5 (Evidence Verification Engine)** for the **Nivesh Firewall** backend.
 
 ```
 RAW CONTENT (Text, URL, Image)
@@ -38,13 +38,19 @@ RAW CONTENT (Text, URL, Image)
      SourceAnalysis (SourceDocument[], EvidenceCandidate[])
           │
           ▼
+┌───────────────────────────────────────────┐
+│ ENGINE 5: Evidence Verification Engine    │
+└───────────────────────────────────────────┘
+          │ (Answers: "What does the retrieved evidence actually establish about this claim?")
+          ▼
+     EvidenceAnalysis (VerificationResult[])
+          │
+          ▼
 ┌─────────────────────────────────────────────────────────┐
-│ DOWNSTREAM ENGINES (Engine 5+):                         │
-│ - Evidence Verification Engine (Engine 5)               │
-│ - Behavioural Signal Engine                             │
-│ - Threat / Attack-Path Engine                           │
-│ - Scam Fingerprint Engine                               │
-│ - Policy & Decision Engine                              │
+│ DOWNSTREAM ENGINES (Engine 6+):                         │
+│ - Threat / Attack-Path Engine (Engine 6)                │
+│ - Scam Fingerprint Engine (Engine 7)                    │
+│ - Policy & Safety Intervention Engine (Engine 8)        │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -54,7 +60,8 @@ RAW CONTENT (Text, URL, Image)
 > - **Engine 2** structures claims into atomic Subject-Predicate-Object canonical claims with modality, temporal context, fingerprint inputs, and verification requirements.
 > - **Engine 3** structures requested user actions into canonical actions with action types, progression hierarchy, targets, parameters, sequence, modality, and rationale claim linkage.
 > - **Engine 4** routes claims to authoritative source taxonomies, queries official registries/filings (SEBI, NSE, etc.), normalizes retrieved documents, and generates structured evidence candidates with full provenance while keeping verification status strictly `UNVERIFIED`.
-> - **Engines 1, 2, 3, and 4 NEVER** evaluate truth/falsity of claims, assess scam likelihood, calculate risk scores, determine attack paths, or block content. Those responsibilities belong strictly to later verification and decision engines.
+> - **Engine 5** evaluates claim-level evidence relationships (`SUPPORTED`, `PARTIALLY_SUPPORTED`, `CONTRADICTED`, `INSUFFICIENT_EVIDENCE`, `NOT_VERIFIABLE`, `SOURCE_CONFLICT`), strictly separating source retrieval status from claim truth, and distinguishing absence of evidence from falsity.
+> - **Engines 1 through 5 NEVER** recommend buying/selling/holding investments, predict future market outcomes, calculate general "scam probabilities", determine overall attack paths, or create final blocking decisions. Those decisions belong strictly to later threat and policy engines.
 
 
 ---
@@ -216,7 +223,36 @@ Discovers authoritative sources, routes structured claims, retrieves official fi
 
 ---
 
-## 5. Benchmark Fixture Execution
+## 5. Engine 5: Evidence Verification Engine
+
+Evaluates whether retrieved source material supports, contradicts, partially supports, or fails to establish a claim (`EvidenceAnalysis`).
+
+### Capabilities
+1. **Rich Verification Status Model**:
+   - `SUPPORTED`: Authoritative source directly corroborates the claim.
+   - `PARTIALLY_SUPPORTED`: Evidence confirms core aspects (e.g., 1:1 bonus ratio) but leaves other aspects unverified (e.g., announcement date).
+   - `CONTRADICTED`: Authoritative source directly refutes the claim (e.g., debt-free assertion vs reported borrowings; or guaranteed returns vs SEBI statutory prohibition).
+   - `INSUFFICIENT_EVIDENCE`: Available evidence does not establish the claim, or forward-looking predictions cannot be proven as present facts. (Absence of evidence is never falsely marked `FALSE`).
+   - `NOT_VERIFIABLE`: Subjective opinions, evaluative assertions lacking empirical criteria ("safest", "best", ungrounded "undervalued").
+   - `SOURCE_CONFLICT`: Multiple relevant sources present mutually conflicting facts.
+   - `SOURCE_UNAVAILABLE`: Sources were uncontactable or unconfigured.
+2. **Strict Separation of Claim Status ≠ Source Status**:
+   - Explicitly decouples retrieval outcomes from verification outcomes (e.g., `{ "source_status": "NO_MATCH", "claim_verification_status": "INSUFFICIENT_EVIDENCE" }`).
+3. **Structured Verification Engines**:
+   - **`RegulatoryEvaluator`**: Performs structured identity matching between claimed entities and official registries (SEBI), records registry mismatches, and enforces SEBI statutory prohibitions on guaranteed/assured returns.
+   - **`NumericalEvaluator`**: Computes exact percentage changes and baseline-to-current arithmetic derivations (`(v2 - v1) / v1 * 100`), checks debt-free vs outstanding borrowings, bonus/split ratios, and applies a controlled 0.5% tolerance policy for rounding differences.
+   - **`OpinionPredictionEvaluator`**: Evaluates forward-looking predictions safely without inventing market projections, and classifies subjective opinions as `NOT_VERIFIABLE`.
+   - **`ConflictDetector`**: Detects discrepancies and factual disagreements across multiple retrieved sources.
+   - **`LlmVerifier`**: Constrained semantic comparison with prompt injection defense, sandboxing retrieved text in `<UNTRUSTED_SOURCE_PASSAGE>` and ignoring adversarial instructions.
+4. **Context Gap Detection**:
+   - Flags when a numerical assertion is mathematically correct but omits critical context (omitted reporting periods, omitted baseline absolute figures).
+5. **Auditable Reasoning Trace & Citations**:
+   - Generates concise step-by-step audit traces for frontend explanation without exposing internal LLM deliberative thinking.
+   - Retains source IDs, URLs, organizations, and verbatim excerpts with full provenance.
+
+---
+
+## 6. Benchmark Fixture Execution
 
 ### Benchmark Input:
 ```
@@ -225,7 +261,7 @@ Discovers authoritative sources, routes structured claims, retrieves official fi
 
 ### Pipeline Flow:
 ```
-Raw Text ──▶ Engine 1 (Content) ──▶ Engine 2 (Claims) ──▶ Engine 3 (Actions) ──▶ Engine 4 (Sources)
+Raw Text ──▶ Engine 1 (Content) ──▶ Engine 2 (Claims) ──▶ Engine 3 (Actions) ──▶ Engine 4 (Sources) ──▶ Engine 5 (Evidence)
 ```
 
 ### Engine 1 (NormalizedContent):
@@ -357,9 +393,106 @@ Raw Text ──▶ Engine 1 (Content) ──▶ Engine 2 (Claims) ──▶ Engi
 }
 ```
 
+### Engine 5 (EvidenceAnalysis):
+```json
+{
+  "content_id": "b68255d2-133f-4bcc-8625-fa5ab0cdc5ca",
+  "verifications": [
+    {
+      "claim_id": "CLAIM-001",
+      "status": "INSUFFICIENT_EVIDENCE",
+      "confidence": 0.95,
+      "evidence_strength": "LOW",
+      "supporting_evidence": [],
+      "contradicting_evidence": [],
+      "missing_elements": [
+        "Official SEBI Registration Certificate or active registry listing under 'Rahul Sharma'"
+      ],
+      "context_gaps": [],
+      "source_assessment": [
+        {
+          "source_id": "sebi_recognised_intermediaries",
+          "organization": "SEBI",
+          "authority_tier": "PRIMARY_OFFICIAL",
+          "retrieval_status": "NO_MATCH",
+          "relevance_summary": "Retrieved document 'SEBI Recognized Intermediary Registry Search: Rahul Sharma' with status NO_MATCH"
+        }
+      ],
+      "reasoning_trace": [
+        "1. Claim asserts: 'Rahul Sharma' -> 'REGISTERED_WITH' -> 'SEBI'",
+        "2. Consulted official SEBI Recognized Intermediary Registry",
+        "3. Official SEBI database returned 0 matching records for intermediary/advisor name 'Rahul Sharma'",
+        "4. Absence of matching registry record does not establish registration; per evidence standards, recorded as INSUFFICIENT_EVIDENCE (not assumed false)."
+      ],
+      "uncertainty": [
+        "Advisor may operate under an unstated corporate/LLP registered trade name rather than individual personal name"
+      ],
+      "provenance": {
+        "engine_version": "5.0.0",
+        "verification_method": "RULE_BASED",
+        "verified_at": "2026-10-02T16:00:00Z"
+      }
+    },
+    {
+      "claim_id": "CLAIM-002",
+      "status": "CONTRADICTED",
+      "confidence": 0.98,
+      "evidence_strength": "HIGH",
+      "supporting_evidence": [],
+      "contradicting_evidence": [
+        {
+          "evidence_id": "EVID-72D984FA-001",
+          "source_document_id": "DOC-72D984FA",
+          "source_url": "https://www.sebi.gov.in/legal/circulars/sep-2020/guidelines-for-investment-advisers_47640.html",
+          "organization": "REGULATOR",
+          "relation": "CONTRADICTS",
+          "excerpt": "Prohibition on Assured / Guaranteed Returns: No registered Investment Adviser, Research Analyst, or intermediary shall assure, promise, or guarantee any fixed, risk-free, or predetermined percentage of returns on investments in the securities market.",
+          "reasoning": "SEBI statutory regulations explicitly prohibit assuring or guaranteeing returns in securities markets.",
+          "matched_signals": ["guaranteed returns"]
+        }
+      ],
+      "missing_elements": [],
+      "context_gaps": [],
+      "source_assessment": [
+        {
+          "source_id": "sebi_public_regulatory_pages",
+          "organization": "SEBI",
+          "authority_tier": "PRIMARY_OFFICIAL",
+          "retrieval_status": "SUCCESS",
+          "relevance_summary": "Retrieved document 'SEBI (Investment Advisers) Regulations & Code of Conduct — Prohibition on Assured/Guaranteed Returns' with status SUCCESS"
+        }
+      ],
+      "reasoning_trace": [
+        "1. Claim asserts: guaranteed return of '40% returns'",
+        "2. Consulted SEBI statutory code of conduct and regulations",
+        "3. SEBI regulations state: 'Prohibition on Assured / Guaranteed Returns: No registered Investment Adviser, Research Analyst, or intermediary shall assure, promise, or guarantee any fixed, risk-free, or predetermined percentage of returns on investments in the securities market.'",
+        "4. Statutory regulations directly contradict the claim of guaranteed financial returns.",
+        "5. Result: CONTRADICTED."
+      ],
+      "uncertainty": [],
+      "provenance": {
+        "engine_version": "5.0.0",
+        "verification_method": "RULE_BASED",
+        "verified_at": "2026-10-02T16:00:00Z"
+      }
+    }
+  ],
+  "analysis_metadata": {
+    "total_claims_evaluated": 2,
+    "supported_count": 0,
+    "partially_supported_count": 0,
+    "contradicted_count": 1,
+    "insufficient_evidence_count": 1,
+    "not_verifiable_count": 0,
+    "source_conflicts_count": 0,
+    "processing_time_ms": 2.85
+  }
+}
+```
+
 ---
 
-## 6. API Endpoints
+## 7. API Endpoints
 
 Start the server:
 ```bash
@@ -367,7 +500,7 @@ uvicorn nivesh.api.app:app --host 0.0.0.0 --port 8000
 ```
 
 1. **`GET /health`** / **`GET /api/v1/health`**:
-   Returns system status and active engines (`content_intelligence`, `claim_intelligence`, `action_intelligence`, `source_intelligence`).
+   Returns system status and active engines (`content_intelligence`, `claim_intelligence`, `action_intelligence`, `source_intelligence`, `evidence_verification`).
 2. **`POST /api/v1/content/analyze`** (Engine 1):
    - Body: `{"text": "...", "url": "...", "channel": "telegram"}`
    - Form-Data: `file=@screenshot.png`, `channel=whatsapp`
@@ -381,10 +514,13 @@ uvicorn nivesh.api.app:app --host 0.0.0.0 --port 8000
 5. **`POST /api/v1/sources/analyze`** (Engine 4):
    - Body: `{"content": NormalizedContent, "claims": ClaimAnalysis, "actions": ActionAnalysis (optional)}` or directly `NormalizedContent`
    - Output: `SourceAnalysis`
+6. **`POST /api/v1/evidence/verify`** (Engine 5):
+   - Body: `{"content": NormalizedContent, "claims": ClaimAnalysis, "sources": SourceAnalysis}`
+   - Output: `EvidenceAnalysis`
 
 ---
 
-## 7. Direct Python Service Interface
+## 8. Direct Python Service Interface
 
 ```python
 from nivesh import (
@@ -392,6 +528,7 @@ from nivesh import (
     ClaimIntelligenceEngine,
     ActionIntelligenceEngine,
     SourceIntelligenceEngine,
+    EvidenceVerificationEngine,
 )
 
 # Initialize engines
@@ -399,6 +536,7 @@ content_engine = ContentIntelligenceEngine()
 claims_engine = ClaimIntelligenceEngine()
 actions_engine = ActionIntelligenceEngine()
 sources_engine = SourceIntelligenceEngine()
+evidence_engine = EvidenceVerificationEngine()
 
 raw_text = (
     "SEBI registered advisor Rahul Sharma! Guaranteed 40% returns. "
@@ -418,21 +556,28 @@ actions = actions_engine.analyze(normalized, claims)
 # Step 4: Engine 4 (Where is authoritative info & what was retrieved?)
 sources = sources_engine.discover_and_retrieve(normalized, claims, actions)
 
-print(f"Content ID: {normalized.content_id}")
-print(f"Processed {sources.analysis_metadata.claims_processed} claims:")
+# Step 5: Engine 5 (What does the retrieved evidence actually establish?)
+evidence = evidence_engine.verify(normalized, claims, sources)
 
-for claim_res in sources.claim_sources:
-    print(f"\n[Claim: {claim_res.claim_id}]")
-    print(f"  Primary Source: {claim_res.source_plan.primary}")
-    for doc in claim_res.documents:
-        print(f"  -> Retrieved {doc.organization} Document ({doc.document_id}): Status={doc.retrieval.status}")
-    for cand in claim_res.evidence_candidates:
-        print(f"  -> Candidate ({cand.evidence_id}): Tier={cand.authority_tier} | Status={cand.verification_status}")
+print(f"Content ID: {normalized.content_id}")
+print(f"Claims Evaluated: {evidence.analysis_metadata.total_claims_evaluated}")
+
+for verification in evidence.verifications:
+    print(f"\n[Verification for {verification.claim_id}]")
+    print(f"  Status: {verification.status}")
+    print(f"  Confidence: {verification.confidence} | Evidence Strength: {verification.evidence_strength}")
+    print(f"  Trace: {' -> '.join(verification.reasoning_trace[:2])}")
+    if verification.supporting_evidence:
+        print(f"  Supporting Citations: {[e.source_url for e in verification.supporting_evidence]}")
+    if verification.contradicting_evidence:
+        print(f"  Contradicting Citations: {[e.source_url for e in verification.contradicting_evidence]}")
+    if verification.missing_elements:
+        print(f"  Missing Elements: {verification.missing_elements}")
 ```
 
 ---
 
-## 8. Test Suite Verification
+## 9. Test Suite Verification
 
 Run all pytest unit and integration tests:
 
@@ -440,9 +585,10 @@ Run all pytest unit and integration tests:
 python -X utf8 -m pytest -v
 ```
 
-**Results:** `178 passed in 8.51s` (0 failed, 100% pass rate).
+**Results:** `200 passed in 8.03s` (0 failed, 100% pass rate).
 - **Engine 1 Unit Tests**: Text normalizer (7), URL extractor (8), Social extractor (6), Contact extractor (4), Financial extractor (6), Entity extractor (5), CTA extractor (7), Language detector (4), Financial relevance (4), OCR adapter (6), URL adapter (3), Primary fixture (3), API (4) -> **67 tests**.
 - **Engine 2 Unit Tests**: Claim canonicalizer (7), Modality and Temporal (8), Claim segmenter & Action filtering (5), Verification requirements & Relations (5), Benchmark cases (7), Primary fixture (1), Engine 1 -> Engine 2 integration (3), Claim API (3), Correction tests (5) -> **44 tests**.
 - **Engine 3 Unit Tests**: Schemas & validation (3), Classifier & hierarchy (3), Parameter extractor & privacy (4), Benchmark cases (6), Primary fixture benchmark (2), Engine 1 -> Engine 2 -> Engine 3 integration (2), Action API (2) -> **22 tests**.
 - **Engine 4 Unit Tests**: Schemas & validation (4), SSRF protection (20), Source routing (4), Adapters & caching (7), Evidence candidates (1), Primary fixture (1), Full 4-engine integration (1), Source API (3), Correction & boundaries -> **45 tests**.
+- **Engine 5 Unit Tests**: Schemas & validation (2), Regulatory & identity matching (3), Numerical, ratios, & debt verification (6), Opinions & predictions (2), Source conflicts & absence handling (3), Prompt injection defense (1), Primary fixture benchmark (1), Full 5-engine end-to-end integration (1), Evidence API (3) -> **22 tests**.
 

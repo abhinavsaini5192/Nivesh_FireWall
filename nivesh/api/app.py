@@ -14,11 +14,13 @@ from nivesh.engine import ContentIntelligenceEngine, ENGINE_VERSION
 from nivesh.claims.engine import ClaimIntelligenceEngine
 from nivesh.actions.engine import ActionIntelligenceEngine
 from nivesh.sources.engine import SourceIntelligenceEngine
+from nivesh.evidence.engine import EvidenceVerificationEngine
 from nivesh.schemas.input import ContentInput, ChannelType
 from nivesh.schemas.normalized import NormalizedContent
 from nivesh.schemas.claims import ClaimAnalysis
 from nivesh.schemas.actions import ActionAnalysis
 from nivesh.schemas.sources import SourceAnalysis
+from nivesh.schemas.evidence import EvidenceAnalysis
 from pydantic import BaseModel
 
 class ActionAnalysisPayload(BaseModel):
@@ -29,6 +31,11 @@ class SourceAnalysisPayload(BaseModel):
     content: NormalizedContent
     claims: Optional[ClaimAnalysis] = None
     actions: Optional[ActionAnalysis] = None
+
+class EvidenceVerificationPayload(BaseModel):
+    content: NormalizedContent
+    claims: Optional[ClaimAnalysis] = None
+    sources: Optional[SourceAnalysis] = None
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -51,6 +58,7 @@ content_engine = ContentIntelligenceEngine()
 claims_engine = ClaimIntelligenceEngine()
 actions_engine = ActionIntelligenceEngine()
 sources_engine = SourceIntelligenceEngine()
+evidence_engine = EvidenceVerificationEngine()
 
 
 @app.get("/health", tags=["System"])
@@ -65,9 +73,11 @@ async def health_check():
             "Engine 2: Claim Intelligence Engine",
             "Engine 3: Action Intelligence Engine",
             "Engine 4: Source Intelligence Engine",
+            "Engine 5: Evidence Verification Engine",
         ],
         "version": ENGINE_VERSION,
     }
+
 
 
 
@@ -195,5 +205,42 @@ async def analyze_sources(request: Request):
             status_code=400,
             detail=f"Source analysis failed: {str(e)}"
         )
+
+
+@app.post(
+    "/api/v1/evidence/verify",
+    response_model=EvidenceAnalysis,
+    tags=["Evidence Verification (Engine 5)"],
+    summary="Evaluate retrieved source material against canonical claims"
+)
+async def verify_evidence(request: Request):
+    """Consumes NormalizedContent, ClaimAnalysis, and SourceAnalysis to evaluate claim truth/falsity."""
+    try:
+        body = await request.json()
+        if "content" in body:
+            payload = EvidenceVerificationPayload(**body)
+            content = payload.content
+            claims = payload.claims
+            sources = payload.sources
+        else:
+            # Direct NormalizedContent payload
+            content = NormalizedContent(**body)
+            claims = None
+            sources = None
+
+        # Auto-pipeline fallbacks if upstream analyses not supplied
+        if claims is None:
+            claims = claims_engine.analyze(content)
+        if sources is None:
+            actions = actions_engine.analyze(content, claims)
+            sources = sources_engine.discover_and_retrieve(content, claims, actions)
+
+        return evidence_engine.verify(content, claims, sources)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Evidence verification failed: {str(e)}"
+        )
+
 
 

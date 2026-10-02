@@ -8,6 +8,7 @@ from .engine import ContentIntelligenceEngine, ENGINE_VERSION
 from .claims import ClaimIntelligenceEngine
 from .actions import ActionIntelligenceEngine
 from .sources import SourceIntelligenceEngine
+from .evidence import EvidenceVerificationEngine
 from .schemas import (
     ContentInput,
     NormalizedContent,
@@ -37,6 +38,11 @@ from .schemas import (
     SourceDocument,
     EvidenceCandidate,
     ClaimSourceResult,
+    ClaimVerificationStatus,
+    EvidenceRelationType,
+    EvidenceStrength,
+    VerificationResult,
+    EvidenceAnalysis,
 )
 
 __version__ = ENGINE_VERSION
@@ -46,6 +52,7 @@ __all__ = [
     "ClaimIntelligenceEngine",
     "ActionIntelligenceEngine",
     "SourceIntelligenceEngine",
+    "EvidenceVerificationEngine",
     "ENGINE_VERSION",
     "ContentInput",
     "NormalizedContent",
@@ -75,5 +82,11 @@ __all__ = [
     "SourceDocument",
     "EvidenceCandidate",
     "ClaimSourceResult",
+    "ClaimVerificationStatus",
+    "EvidenceRelationType",
+    "EvidenceStrength",
+    "VerificationResult",
+    "EvidenceAnalysis",
 ]
+
 
