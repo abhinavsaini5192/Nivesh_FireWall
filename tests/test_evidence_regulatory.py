@@ -124,7 +124,7 @@ def test_regulatory_unregistered_entity_insufficient_evidence():
     assert not any("fraudulent" in step.lower() for step in res.reasoning_trace)
 
 
-def test_regulatory_guaranteed_return_statutory_prohibition_contradicted():
+def test_regulatory_guaranteed_return_statutory_prohibition_conflict():
     evaluator = ClaimEvidenceEvaluator()
     claim = CanonicalClaim(
         claim_id="CLAIM-003",
@@ -176,7 +176,200 @@ def test_regulatory_guaranteed_return_statutory_prohibition_contradicted():
     )
 
     res = evaluator.evaluate(claim, source_res)
-    assert res.status == "CONTRADICTED"
+    assert res.status != "CONTRADICTED"
+    assert res.status == "INSUFFICIENT_EVIDENCE"
     assert res.evidence_strength == "HIGH"
-    assert len(res.contradicting_evidence) == 1
+    assert len(res.supporting_evidence) == 0
+    assert len(res.contradicting_evidence) == 0
+    assert len(res.regulatory_findings) == 1
+    rf = res.regulatory_findings[0]
+    assert rf.type == "REGULATORY_CONFLICT"
+    assert rf.source_document_id == "DOC-003"
+    assert rf.source_url == "https://www.sebi.gov.in"
+    assert rf.organization == "REGULATOR"
+    assert rf.retrieved_at == "2026-10-02T12:00:00Z"
     assert any("prohibit" in step.lower() for step in res.reasoning_trace)
+
+
+def test_regression_regulatory_prohibition_is_not_factual_contradiction():
+    """Test 1: Regulatory prohibition is not factual contradiction."""
+    evaluator = ClaimEvidenceEvaluator()
+    claim = CanonicalClaim(
+        claim_id="CLAIM-REG-01",
+        source_content_id="c-1",
+        text=ClaimText(original="40% returns are guaranteed.", normalized="40% returns are guaranteed."),
+        claim_type="FINANCIAL",
+        subject="unspecified_offer",
+        predicate="GUARANTEED_RETURN",
+        object="40% returns"
+    )
+
+    candidate = EvidenceCandidate(
+        evidence_id="EVID-REG-01",
+        claim_id="CLAIM-REG-01",
+        source_document_id="DOC-REG-01",
+        excerpt="Covered intermediaries are prohibited from guaranteeing returns in securities market.",
+        relevance=EvidenceRelevance(matched_terms=["prohibited", "guaranteeing"]),
+        source_type="REGULATOR",
+        authority_tier="PRIMARY_OFFICIAL",
+        provenance=EvidenceProvenance(
+            retrieved_at="2026-10-02T12:00:00Z",
+            retrieval_method="SEBIAdapter",
+            source_mode="FIXTURE",
+            source_url="https://www.sebi.gov.in"
+        ),
+        verification_status="UNVERIFIED"
+    )
+
+    doc = SourceDocument(
+        document_id="DOC-REG-01",
+        source_id="sebi_rules",
+        organization="SEBI",
+        source_type="REGULATOR",
+        title="SEBI Prohibition",
+        url="https://www.sebi.gov.in",
+        retrieved_at="2026-10-02T12:00:00Z",
+        published_at="2020-09-23T00:00:00Z",
+        content=candidate.excerpt,
+        content_hash="hreg01",
+        metadata={},
+        retrieval=RetrievalMetadata(status="SUCCESS", method="SEBIAdapter", mode="FIXTURE")
+    )
+
+    res = evaluator.evaluate(
+        claim,
+        ClaimSourceResult(
+            claim_id="CLAIM-REG-01",
+            source_plan=SourcePlan(query=SourceQuery(keywords=["prohibited"])),
+            documents=[doc],
+            evidence_candidates=[candidate]
+        )
+    )
+
+    assert res.status != "CONTRADICTED"
+    assert res.status == "INSUFFICIENT_EVIDENCE"
+    assert any(rf.type == "REGULATORY_CONFLICT" for rf in res.regulatory_findings)
+
+
+def test_regression_direct_factual_contradiction_still_works():
+    """Test 2: Direct factual contradiction still works."""
+    evaluator = ClaimEvidenceEvaluator()
+    claim = CanonicalClaim(
+        claim_id="CLAIM-FACT-01",
+        source_content_id="c-1",
+        text=ClaimText(original="ABC is debt free.", normalized="ABC is debt free."),
+        claim_type="FINANCIAL",
+        subject="ABC",
+        predicate="HAS_DEBT",
+        object="debt free"
+    )
+
+    candidate = EvidenceCandidate(
+        evidence_id="EVID-FACT-01",
+        claim_id="CLAIM-FACT-01",
+        source_document_id="DOC-FACT-01",
+        excerpt="Balance Sheet: Outstanding borrowings as of 31 March: ₹240 crore.",
+        relevance=EvidenceRelevance(matched_terms=["borrowings"]),
+        source_type="FINANCIAL_FILING",
+        authority_tier="PRIMARY_OFFICIAL",
+        provenance=EvidenceProvenance(
+            retrieved_at="2026-10-02T12:00:00Z",
+            retrieval_method="NSEAdapter",
+            source_mode="FIXTURE",
+            source_url="https://www.nseindia.com"
+        ),
+        verification_status="UNVERIFIED"
+    )
+
+    doc = SourceDocument(
+        document_id="DOC-FACT-01",
+        source_id="nse_filing",
+        organization="NSE",
+        source_type="FINANCIAL_FILING",
+        title="ABC Annual Report",
+        url="https://www.nseindia.com",
+        retrieved_at="2026-10-02T12:00:00Z",
+        published_at="2026-03-31T00:00:00Z",
+        content=candidate.excerpt,
+        content_hash="hfact01",
+        metadata={},
+        retrieval=RetrievalMetadata(status="SUCCESS", method="NSEAdapter", mode="FIXTURE")
+    )
+
+    res = evaluator.evaluate(
+        claim,
+        ClaimSourceResult(
+            claim_id="CLAIM-FACT-01",
+            source_plan=SourcePlan(query=SourceQuery(company_symbol="ABC")),
+            documents=[doc],
+            evidence_candidates=[candidate]
+        )
+    )
+
+    assert res.status == "CONTRADICTED"
+    assert len(res.contradicting_evidence) >= 1
+    assert "borrowings" in res.contradicting_evidence[0].excerpt.lower()
+
+
+def test_regression_regulatory_finding_preserves_provenance():
+    """Test 3: Regulatory finding preserves provenance."""
+    evaluator = ClaimEvidenceEvaluator()
+    claim = CanonicalClaim(
+        claim_id="CLAIM-PROV-01",
+        source_content_id="c-1",
+        text=ClaimText(original="Guaranteed 40% returns.", normalized="40% returns are guaranteed."),
+        claim_type="FINANCIAL",
+        subject="unspecified_offer",
+        predicate="GUARANTEED_RETURN",
+        object="40% returns"
+    )
+
+    candidate = EvidenceCandidate(
+        evidence_id="EVID-PROV-01",
+        claim_id="CLAIM-PROV-01",
+        source_document_id="DOC-PROV-01",
+        excerpt="SEBI Prohibition: No intermediary shall guarantee returns.",
+        relevance=EvidenceRelevance(matched_terms=["guarantee"]),
+        source_type="REGULATOR",
+        authority_tier="PRIMARY_OFFICIAL",
+        provenance=EvidenceProvenance(
+            retrieved_at="2026-10-02T12:00:00Z",
+            retrieval_method="SEBIAdapter",
+            source_mode="FIXTURE",
+            source_url="https://www.sebi.gov.in/rules"
+        ),
+        verification_status="UNVERIFIED"
+    )
+
+    doc = SourceDocument(
+        document_id="DOC-PROV-01",
+        source_id="sebi_circular",
+        organization="SEBI",
+        source_type="REGULATOR",
+        title="SEBI Circular",
+        url="https://www.sebi.gov.in/rules",
+        retrieved_at="2026-10-02T12:00:00Z",
+        published_at="2020-09-23T00:00:00Z",
+        content=candidate.excerpt,
+        content_hash="hprov01",
+        metadata={},
+        retrieval=RetrievalMetadata(status="SUCCESS", method="SEBIAdapter", mode="FIXTURE")
+    )
+
+    res = evaluator.evaluate(
+        claim,
+        ClaimSourceResult(
+            claim_id="CLAIM-PROV-01",
+            source_plan=SourcePlan(query=SourceQuery(keywords=["guarantee"])),
+            documents=[doc],
+            evidence_candidates=[candidate]
+        )
+    )
+
+    assert len(res.regulatory_findings) == 1
+    rf = res.regulatory_findings[0]
+    assert rf.source_document_id == "DOC-PROV-01"
+    assert rf.source_url == "https://www.sebi.gov.in/rules"
+    assert rf.organization == "REGULATOR"
+    assert rf.excerpt == "SEBI Prohibition: No intermediary shall guarantee returns."
+    assert rf.retrieved_at == "2026-10-02T12:00:00Z"

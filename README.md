@@ -229,24 +229,27 @@ Evaluates whether retrieved source material supports, contradicts, partially sup
 
 ### Capabilities
 1. **Rich Verification Status Model**:
-   - `SUPPORTED`: Authoritative source directly corroborates the claim.
+   - `SUPPORTED`: Authoritative source directly corroborates the factual assertion.
    - `PARTIALLY_SUPPORTED`: Evidence confirms core aspects (e.g., 1:1 bonus ratio) but leaves other aspects unverified (e.g., announcement date).
-   - `CONTRADICTED`: Authoritative source directly refutes the claim (e.g., debt-free assertion vs reported borrowings; or guaranteed returns vs SEBI statutory prohibition).
+   - `CONTRADICTED`: Authoritative source directly refutes the claim with an incompatible fact (e.g., debt-free assertion vs reported borrowings of ₹240 Cr; claimed 40% growth vs actual calculated 20%).
    - `INSUFFICIENT_EVIDENCE`: Available evidence does not establish the claim, or forward-looking predictions cannot be proven as present facts. (Absence of evidence is never falsely marked `FALSE`).
    - `NOT_VERIFIABLE`: Subjective opinions, evaluative assertions lacking empirical criteria ("safest", "best", ungrounded "undervalued").
    - `SOURCE_CONFLICT`: Multiple relevant sources present mutually conflicting facts.
    - `SOURCE_UNAVAILABLE`: Sources were uncontactable or unconfigured.
-2. **Strict Separation of Claim Status ≠ Source Status**:
+2. **Separation of Factual Contradiction vs. Regulatory Conflict**:
+   - **`FACTUAL_CONTRADICTION` (`CONTRADICTED`)**: Used ONLY when evidence establishes a direct factual state incompatible with the claim (e.g., debt-free vs reported ₹240 Cr borrowings).
+   - **`REGULATORY_CONFLICT`**: When evidence establishes that the described conduct or claim conflicts with an official regulation, circular, or prohibition (e.g., SEBI code of conduct ban on guaranteed returns). The claim status is set to `INSUFFICIENT_EVIDENCE` (the rule does not establish whether the person factually made the claim), and the regulatory violation is captured in a structured `regulatory_findings` field with full provenance.
+3. **Strict Separation of Claim Status ≠ Source Status**:
    - Explicitly decouples retrieval outcomes from verification outcomes (e.g., `{ "source_status": "NO_MATCH", "claim_verification_status": "INSUFFICIENT_EVIDENCE" }`).
-3. **Structured Verification Engines**:
-   - **`RegulatoryEvaluator`**: Performs structured identity matching between claimed entities and official registries (SEBI), records registry mismatches, and enforces SEBI statutory prohibitions on guaranteed/assured returns.
+4. **Structured Verification Engines**:
+   - **`RegulatoryEvaluator`**: Performs structured identity matching between claimed entities and official registries (SEBI), records registry mismatches without baseless fraud accusations, and attaches `REGULATORY_CONFLICT` findings when conduct violates statutory prohibitions.
    - **`NumericalEvaluator`**: Computes exact percentage changes and baseline-to-current arithmetic derivations (`(v2 - v1) / v1 * 100`), checks debt-free vs outstanding borrowings, bonus/split ratios, and applies a controlled 0.5% tolerance policy for rounding differences.
    - **`OpinionPredictionEvaluator`**: Evaluates forward-looking predictions safely without inventing market projections, and classifies subjective opinions as `NOT_VERIFIABLE`.
    - **`ConflictDetector`**: Detects discrepancies and factual disagreements across multiple retrieved sources.
    - **`LlmVerifier`**: Constrained semantic comparison with prompt injection defense, sandboxing retrieved text in `<UNTRUSTED_SOURCE_PASSAGE>` and ignoring adversarial instructions.
-4. **Context Gap Detection**:
+5. **Context Gap Detection**:
    - Flags when a numerical assertion is mathematically correct but omits critical context (omitted reporting periods, omitted baseline absolute figures).
-5. **Auditable Reasoning Trace & Citations**:
+6. **Auditable Reasoning Trace & Citations**:
    - Generates concise step-by-step audit traces for frontend explanation without exposing internal LLM deliberative thinking.
    - Retains source IDs, URLs, organizations, and verbatim excerpts with full provenance.
 
@@ -435,23 +438,25 @@ Raw Text ──▶ Engine 1 (Content) ──▶ Engine 2 (Claims) ──▶ Engi
     },
     {
       "claim_id": "CLAIM-002",
-      "status": "CONTRADICTED",
-      "confidence": 0.98,
+      "status": "INSUFFICIENT_EVIDENCE",
+      "confidence": 0.95,
       "evidence_strength": "HIGH",
       "supporting_evidence": [],
-      "contradicting_evidence": [
+      "contradicting_evidence": [],
+      "regulatory_findings": [
         {
-          "evidence_id": "EVID-72D984FA-001",
+          "type": "REGULATORY_CONFLICT",
           "source_document_id": "DOC-72D984FA",
           "source_url": "https://www.sebi.gov.in/legal/circulars/sep-2020/guidelines-for-investment-advisers_47640.html",
           "organization": "REGULATOR",
-          "relation": "CONTRADICTS",
           "excerpt": "Prohibition on Assured / Guaranteed Returns: No registered Investment Adviser, Research Analyst, or intermediary shall assure, promise, or guarantee any fixed, risk-free, or predetermined percentage of returns on investments in the securities market.",
-          "reasoning": "SEBI statutory regulations explicitly prohibit assuring or guaranteeing returns in securities markets.",
-          "matched_signals": ["guaranteed returns"]
+          "retrieved_at": "2026-10-02T12:00:00Z",
+          "description": "Securities market regulations (SEBI Code of Conduct) strictly prohibit intermediaries from assuring or guaranteeing fixed, risk-free, or predetermined returns. The described guarantee conflicts with this applicable regulatory prohibition."
         }
       ],
-      "missing_elements": [],
+      "missing_elements": [
+        "Direct factual evidence establishing whether the financial return was actually guaranteed, paid, or delivered"
+      ],
       "context_gaps": [],
       "source_assessment": [
         {
@@ -465,11 +470,13 @@ Raw Text ──▶ Engine 1 (Content) ──▶ Engine 2 (Claims) ──▶ Engi
       "reasoning_trace": [
         "1. Claim asserts: guaranteed return of '40% returns'",
         "2. Consulted SEBI statutory code of conduct and regulations",
-        "3. SEBI regulations state: 'Prohibition on Assured / Guaranteed Returns: No registered Investment Adviser, Research Analyst, or intermediary shall assure, promise, or guarantee any fixed, risk-free, or predetermined percentage of returns on investments in the securities market.'",
-        "4. Statutory regulations directly contradict the claim of guaranteed financial returns.",
-        "5. Result: CONTRADICTED."
+        "3. SEBI regulations state: 'Prohibition on Assured / Guaranteed Returns: No registered Investment Adviser, Research Analyst, or intermediary shall assure, promise, or guarantee any fixed, risk-free, or predetermined percentage of returns...'",
+        "4. Regulatory finding: REGULATORY_CONFLICT recorded against statutory regulations.",
+        "5. Distinction preserved: The retrieved regulation establishes that guaranteed returns are prohibited for covered entities; it does not independently establish whether the claimant factually promised or paid such returns. Status recorded as INSUFFICIENT_EVIDENCE with REGULATORY_CONFLICT (not factual contradiction)."
       ],
-      "uncertainty": [],
+      "uncertainty": [
+        "The retrieved regulation prohibits the described guarantee for covered entities; it does not independently establish whether the person/content actually made the claim"
+      ],
       "provenance": {
         "engine_version": "5.0.0",
         "verification_method": "RULE_BASED",
@@ -481,8 +488,8 @@ Raw Text ──▶ Engine 1 (Content) ──▶ Engine 2 (Claims) ──▶ Engi
     "total_claims_evaluated": 2,
     "supported_count": 0,
     "partially_supported_count": 0,
-    "contradicted_count": 1,
-    "insufficient_evidence_count": 1,
+    "contradicted_count": 0,
+    "insufficient_evidence_count": 2,
     "not_verifiable_count": 0,
     "source_conflicts_count": 0,
     "processing_time_ms": 2.85
@@ -585,10 +592,10 @@ Run all pytest unit and integration tests:
 python -X utf8 -m pytest -v
 ```
 
-**Results:** `200 passed in 8.03s` (0 failed, 100% pass rate).
+**Results:** `203 passed in 7.98s` (0 failed, 100% pass rate).
 - **Engine 1 Unit Tests**: Text normalizer (7), URL extractor (8), Social extractor (6), Contact extractor (4), Financial extractor (6), Entity extractor (5), CTA extractor (7), Language detector (4), Financial relevance (4), OCR adapter (6), URL adapter (3), Primary fixture (3), API (4) -> **67 tests**.
 - **Engine 2 Unit Tests**: Claim canonicalizer (7), Modality and Temporal (8), Claim segmenter & Action filtering (5), Verification requirements & Relations (5), Benchmark cases (7), Primary fixture (1), Engine 1 -> Engine 2 integration (3), Claim API (3), Correction tests (5) -> **44 tests**.
 - **Engine 3 Unit Tests**: Schemas & validation (3), Classifier & hierarchy (3), Parameter extractor & privacy (4), Benchmark cases (6), Primary fixture benchmark (2), Engine 1 -> Engine 2 -> Engine 3 integration (2), Action API (2) -> **22 tests**.
 - **Engine 4 Unit Tests**: Schemas & validation (4), SSRF protection (20), Source routing (4), Adapters & caching (7), Evidence candidates (1), Primary fixture (1), Full 4-engine integration (1), Source API (3), Correction & boundaries -> **45 tests**.
-- **Engine 5 Unit Tests**: Schemas & validation (2), Regulatory & identity matching (3), Numerical, ratios, & debt verification (6), Opinions & predictions (2), Source conflicts & absence handling (3), Prompt injection defense (1), Primary fixture benchmark (1), Full 5-engine end-to-end integration (1), Evidence API (3) -> **22 tests**.
+- **Engine 5 Unit Tests**: Schemas & validation (2), Regulatory & identity matching (6), Numerical, ratios, & debt verification (6), Opinions & predictions (2), Source conflicts & absence handling (3), Prompt injection defense (1), Primary fixture benchmark (1), Full 5-engine end-to-end integration (1), Evidence API (3) -> **25 tests**.
 

@@ -51,13 +51,17 @@ def test_primary_benchmark_evidence_verification():
 
     # Verification 2: Guaranteed 40% returns
     v2 = next(v for v in evidence_analysis.verifications if v.claim_id == c2.claim_id)
-    assert v2.status == "CONTRADICTED"
+    assert v2.status != "CONTRADICTED"
+    assert v2.status == "INSUFFICIENT_EVIDENCE"
     assert v2.evidence_strength == "HIGH"
-    assert len(v2.contradicting_evidence) >= 1
+    assert len(v2.supporting_evidence) == 0
+    assert len(v2.contradicting_evidence) == 0
+    assert len(v2.regulatory_findings) >= 1
+    assert v2.regulatory_findings[0].type == "REGULATORY_CONFLICT"
     assert any("prohibit" in step.lower() for step in v2.reasoning_trace)
-    assert any("40%" in cand.excerpt or "guaranteed" in cand.excerpt.lower() for cand in v2.contradicting_evidence)
+    assert any("40%" in rf.excerpt or "guaranteed" in rf.excerpt.lower() for rf in v2.regulatory_findings)
 
     # Check aggregate metadata
     assert evidence_analysis.analysis_metadata.total_claims == 2
-    assert evidence_analysis.analysis_metadata.claims_contradicted == 1
-    assert evidence_analysis.analysis_metadata.claims_insufficient == 1
+    assert evidence_analysis.analysis_metadata.claims_contradicted == 0
+    assert evidence_analysis.analysis_metadata.claims_insufficient == 2

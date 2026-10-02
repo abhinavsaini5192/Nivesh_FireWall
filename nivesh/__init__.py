@@ -41,6 +41,7 @@ from .schemas import (
     ClaimVerificationStatus,
     EvidenceRelationType,
     EvidenceStrength,
+    RegulatoryFinding,
     VerificationResult,
     EvidenceAnalysis,
 )
@@ -85,6 +86,7 @@ __all__ = [
     "ClaimVerificationStatus",
     "EvidenceRelationType",
     "EvidenceStrength",
+    "RegulatoryFinding",
     "VerificationResult",
     "EvidenceAnalysis",
 ]

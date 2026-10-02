@@ -163,6 +163,7 @@ from .evidence import (
     EvidenceStrength,
     VerificationMethod,
     EvidenceItemEvaluation,
+    RegulatoryFinding,
     SourceAssessmentItem,
     VerificationProvenance,
     VerificationResult,

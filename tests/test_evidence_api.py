@@ -72,4 +72,6 @@ def test_api_evidence_verify_envelope_payload(client):
     assert evidence_data["content_id"] == normalized_data["content_id"]
     assert len(evidence_data["verifications"]) == 1
     v = evidence_data["verifications"][0]
-    assert v["status"] == "CONTRADICTED"
+    assert v["status"] == "INSUFFICIENT_EVIDENCE"
+    assert len(v["regulatory_findings"]) >= 1
+    assert v["regulatory_findings"][0]["type"] == "REGULATORY_CONFLICT"

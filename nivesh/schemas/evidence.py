@@ -69,6 +69,20 @@ class VerificationProvenance(BaseModel):
     verified_at: str = Field(description="ISO 8601 timestamp of verification")
 
 
+class RegulatoryFinding(BaseModel):
+    """Structured finding when evidence establishes a regulatory rule or prohibition."""
+    type: Literal["REGULATORY_CONFLICT", "REGULATORY_COMPLIANCE", "REGULATORY_WARNING"] = Field(
+        default="REGULATORY_CONFLICT",
+        description="Type of regulatory finding"
+    )
+    source_document_id: Optional[str] = Field(default=None, description="Referenced source document ID")
+    source_url: Optional[str] = Field(default=None, description="URL of regulatory source")
+    organization: Optional[str] = Field(default=None, description="Regulatory authority e.g. SEBI")
+    excerpt: Optional[str] = Field(default=None, description="Direct regulatory text excerpt")
+    retrieved_at: Optional[str] = Field(default=None, description="Timestamp of retrieval")
+    description: str = Field(description="Explanation of the regulatory conflict or finding")
+
+
 class VerificationResult(BaseModel):
     """Structured claim-level verification result."""
     claim_id: str = Field(description="Target CanonicalClaim ID")
@@ -86,6 +100,10 @@ class VerificationResult(BaseModel):
     contradicting_evidence: list[EvidenceItemEvaluation] = Field(
         default_factory=list,
         description="Evidence candidates contradicting the claim"
+    )
+    regulatory_findings: list[RegulatoryFinding] = Field(
+        default_factory=list,
+        description="Structured regulatory findings (e.g. REGULATORY_CONFLICT) without falsely claiming factual contradiction"
     )
     missing_elements: list[str] = Field(
         default_factory=list,

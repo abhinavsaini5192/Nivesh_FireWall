@@ -15,6 +15,7 @@ from nivesh.schemas.evidence import (
     EvidenceRelationType,
     EvidenceStrength,
     ClaimVerificationStatus,
+    RegulatoryFinding,
 )
 
 
@@ -55,9 +56,17 @@ class RegulatoryEvaluator:
         candidates: list[EvidenceCandidate],
         documents: list[SourceDocument],
     ) -> dict:
-        """Evaluates guaranteed return claims against statutory prohibitions."""
-        supporting_items: list[EvidenceItemEvaluation] = []
-        contradicting_items: list[EvidenceItemEvaluation] = []
+        """Evaluates guaranteed return claims against statutory prohibitions.
+        
+        CRITICAL PRINCIPLE:
+        A regulatory prohibition (e.g. SEBI Code of Conduct prohibiting guaranteed returns)
+        establishes a regulatory rule, not the non-occurrence of the claimed event.
+        Therefore, this constitutes a REGULATORY_CONFLICT, not a factual contradiction.
+        The claim status is INSUFFICIENT_EVIDENCE (factual occurrence unestablished),
+        contradicting_evidence is NOT populated with the regulation, and
+        the regulatory conflict is preserved in regulatory_findings.
+        """
+        regulatory_findings: list[RegulatoryFinding] = []
         reasoning_trace: list[str] = [
             f"1. Claim asserts guaranteed/assured financial return: '{claim.object or 'returns'}'",
             "2. Consulted SEBI (Investment Advisers) Regulations & Code of Conduct (statutory authority)",
@@ -66,37 +75,45 @@ class RegulatoryEvaluator:
         found_prohibition_doc = False
         for cand in candidates:
             excerpt_lower = cand.excerpt.lower()
-            if "prohibition on assured" in excerpt_lower or "prohibit" in excerpt_lower or "regulations" in excerpt_lower:
+            if "prohibition on assured" in excerpt_lower or "prohibit" in excerpt_lower or "regulations" in excerpt_lower or "guaranteed" in excerpt_lower:
                 found_prohibition_doc = True
-                eval_item = EvidenceItemEvaluation(
-                    evidence_id=cand.evidence_id,
+                finding = RegulatoryFinding(
+                    type="REGULATORY_CONFLICT",
                     source_document_id=cand.source_document_id,
-                    source_url=cand.provenance.source_url,
+                    source_url=cand.provenance.source_url if cand.provenance else None,
                     organization=cand.source_type,
-                    relation="CONTRADICTS",
                     excerpt=cand.excerpt,
-                    reasoning="Official statutory regulation strictly prohibits promising or guaranteeing fixed/assured returns in securities market.",
-                    matched_signals=cand.relevance.matched_terms
+                    retrieved_at=cand.provenance.retrieved_at if cand.provenance else None,
+                    description=(
+                        "Securities market regulations (SEBI Code of Conduct) strictly prohibit "
+                        "intermediaries from assuring or guaranteeing fixed, risk-free, or predetermined "
+                        "returns. The described guarantee conflicts with this applicable regulatory prohibition."
+                    )
                 )
-                contradicting_items.append(eval_item)
+                regulatory_findings.append(finding)
 
         if found_prohibition_doc:
             reasoning_trace.extend([
                 "3. Official SEBI statutory circular SEBI/HO/IMD/DF1/CIR/P/2020/182 strictly prohibits offering guaranteed returns.",
-                "4. Claim directly contradicts official statutory regulatory prohibition on assured returns.",
+                "4. Regulatory finding: REGULATORY_CONFLICT recorded against statutory regulations.",
+                "5. Distinction preserved: The retrieved regulation establishes that guaranteed returns are prohibited for covered entities; it does not independently establish whether the claimant factually promised or paid such returns. Status recorded as INSUFFICIENT_EVIDENCE with REGULATORY_CONFLICT (not factual contradiction).",
             ])
             return {
-                "status": "CONTRADICTED",
-                "confidence": 0.98,
+                "status": "INSUFFICIENT_EVIDENCE",
+                "confidence": 0.95,
                 "evidence_strength": "HIGH",
-                "supporting_evidence": supporting_items,
-                "contradicting_evidence": contradicting_items,
-                "missing_elements": [],
+                "supporting_evidence": [],
+                "contradicting_evidence": [],
+                "regulatory_findings": regulatory_findings,
+                "missing_elements": [
+                    "Direct factual evidence establishing whether the financial return was actually guaranteed, paid, or delivered"
+                ],
                 "context_gaps": [],
                 "reasoning_trace": reasoning_trace,
-                "uncertainty": [],
+                "uncertainty": [
+                    "The retrieved regulation prohibits the described guarantee for covered entities; it does not independently establish whether the person/content actually made the claim"
+                ],
             }
-
 
         # If no regulatory document retrieved
         reasoning_trace.append("3. No statutory documentation was successfully retrieved to verify return guarantee.")
@@ -106,6 +123,7 @@ class RegulatoryEvaluator:
             "evidence_strength": "NONE",
             "supporting_evidence": [],
             "contradicting_evidence": [],
+            "regulatory_findings": [],
             "missing_elements": ["Official regulatory policy regarding guaranteed returns"],
             "context_gaps": [],
             "reasoning_trace": reasoning_trace,

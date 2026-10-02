@@ -197,6 +197,7 @@ class ClaimEvidenceEvaluator:
             evidence_strength=res_dict["evidence_strength"],
             supporting_evidence=res_dict.get("supporting_evidence", []),
             contradicting_evidence=res_dict.get("contradicting_evidence", []),
+            regulatory_findings=res_dict.get("regulatory_findings", []),
             missing_elements=res_dict.get("missing_elements", []),
             context_gaps=res_dict.get("context_gaps", []),
             source_assessment=source_assessments,
