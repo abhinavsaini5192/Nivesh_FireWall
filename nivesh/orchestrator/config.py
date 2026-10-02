@@ -34,3 +34,15 @@ class OrchestratorConfig(BaseModel):
         default=None,
         description="Optional maximum pipeline timeout in milliseconds",
     )
+    engine_timeout_ms: Optional[float] = Field(
+        default=None,
+        description="Optional maximum per-engine timeout in milliseconds",
+    )
+    max_retries: int = Field(
+        default=0,
+        description="Maximum retry attempts for transient/recoverable engine failures (0 = disabled)",
+    )
+    retry_delay_ms: float = Field(
+        default=0.0,
+        description="Delay in milliseconds between retry attempts",
+    )

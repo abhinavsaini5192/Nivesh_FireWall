@@ -24,6 +24,14 @@ from .context import (
     ContextSnapshot,
 )
 
+from .pipeline import (
+    CancellationToken,
+    PipelineNode,
+    PipelineGraph,
+    PolicyGate,
+    SafeEngineExecutor,
+)
+
 __all__ = [
     "ProductOrchestrator",
     "OrchestratorConfig",
@@ -42,4 +50,9 @@ __all__ = [
     "FatalOrchestrationError",
     "RecoverableEngineError",
     "InputIngestionError",
+    "CancellationToken",
+    "PipelineNode",
+    "PipelineGraph",
+    "PolicyGate",
+    "SafeEngineExecutor",
 ]

@@ -23,6 +23,7 @@ class EngineExecutionRecord(BaseModel):
     analytical_result: Optional[str] = Field(default=None, description="Expected analytical flag (e.g. NO_MATCH, NOT_ESTABLISHED)")
     error_type: Optional[str] = Field(default=None, description="Exception class name if an error occurred")
     error_message: Optional[str] = Field(default=None, description="Sanitized summary of error message")
+    retry_count: int = Field(default=0, description="Number of execution retries attempted")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Safe structural telemetry metadata")
 
 

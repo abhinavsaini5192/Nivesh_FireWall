@@ -1,6 +1,6 @@
 """Canonical Product Orchestrator Service for Nivesh Firewall.
 
-Coordinates all 10 intelligence engines into a unified analysis pipeline:
+Coordinates all 10 intelligence engines into a unified, dependency-aware pipeline:
 1. Ingests raw multi-modal input through Engine 1.
 2. Segments and canonicalizes assertions through Engine 2.
 3. Structures and categorizes requested actions through Engine 3.
@@ -15,6 +15,7 @@ Coordinates all 10 intelligence engines into a unified analysis pipeline:
 Does NOT duplicate engine logic. Does NOT create an Engine 11.
 """
 
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -38,7 +39,13 @@ from nivesh.schemas.claims import ClaimAnalysis
 from nivesh.schemas.actions import ActionAnalysis
 from nivesh.schemas.sources import SourceAnalysis, SourceAnalysisMetadata
 from nivesh.schemas.evidence import EvidenceAnalysis, EvidenceAnalysisMetadata
-from nivesh.schemas.threat import ThreatAnalysis
+from nivesh.schemas.threat import (
+    ThreatAnalysis,
+    AttackPath,
+    ThreatExplanation,
+    ThreatProvenance,
+    ThreatAnalysisMetadata,
+)
 from nivesh.schemas.fingerprint import (
     FingerprintAnalysis,
     ScamFingerprint,
@@ -61,6 +68,59 @@ from .context import (
     EngineStatus,
     ContextLifecycleStage,
 )
+from .pipeline import (
+    CancellationToken,
+    PipelineGraph,
+    PolicyGate,
+    SafeEngineExecutor,
+)
+
+SENSITIVE_PATTERNS = [
+    # Card numbers (13 to 19 digits)
+    (re.compile(r"\b(?:\d[ -]*?){13,19}\b"), "[REDACTED_CARD]"),
+    # OTP / PIN / CVV / CVC
+    (re.compile(r"(?i)\b(otp|pin|cvv|cvc)\s*[:=]\s*\d+"), r"\1=[REDACTED]"),
+    (re.compile(r"(?i)\b(otp|pin|cvv|cvc)\s+is\s+\d+"), r"\1 is [REDACTED]"),
+    (re.compile(r"(?i)\b(otp|pin|cvv|cvc)\s+(\d{3,8})\b"), r"\1 [REDACTED]"),
+    # Passwords and secrets
+    (re.compile(r"(?i)\b(password|passwd|pwd|secret|token)\s*[:=]\s*\S+"), r"\1=[REDACTED]"),
+    # Bank accounts
+    (re.compile(r"(?i)\b(account|acct|acc)\s*(?:number|num|no)?\s*[:=]\s*\d+"), r"\1=[REDACTED]"),
+    # Keystrokes & raw credentials
+    (re.compile(r"(?i)\b(keystroke[s]?|raw_credential[s]?)\s*[:=]\s*\S+"), r"\1=[REDACTED]"),
+]
+
+
+def sanitize_sensitive_data(val: Any) -> Any:
+    """Sanitize passwords, OTPs, PINs, CVVs, card numbers, accounts, and credentials."""
+    if isinstance(val, str):
+        cleaned = val
+        for pat, repl in SENSITIVE_PATTERNS:
+            cleaned = pat.sub(repl, cleaned)
+        return cleaned
+    elif isinstance(val, dict):
+        return {k: sanitize_sensitive_data(v) for k, v in val.items()}
+    elif isinstance(val, list):
+        return [sanitize_sensitive_data(v) for v in val]
+    return val
+
+
+def create_empty_threat_analysis(content_id: str) -> ThreatAnalysis:
+    """Construct an empty, non-fabricated ThreatAnalysis container for degraded evaluation."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    return ThreatAnalysis(
+        content_id=content_id,
+        attack_path=AttackPath(),
+        explanation=ThreatExplanation(summary="No threat analysis executed or degraded"),
+        confidence=0.0,
+        provenance=ThreatProvenance(
+            engine_version="1.0.0",
+            engine_name="Threat & Attack-Path Intelligence Engine",
+            analysis_method="rule",
+            analyzed_at=now_iso,
+        ),
+        analysis_metadata=ThreatAnalysisMetadata(),
+    )
 
 
 class ProductOrchestrator:
@@ -94,6 +154,11 @@ class ProductOrchestrator:
         self.e10: BehaviouralSignalEngine = injected.get("engine_10") or BehaviouralSignalEngine()
         self.e8: PolicyInterventionEngine = injected.get("engine_8") or PolicyInterventionEngine()
 
+        # Phase 11.3 Pipeline Components
+        self.pipeline_graph = PipelineGraph()
+        self.executor = SafeEngineExecutor()
+        self._idempotency_cache: dict[str, OrchestrationResult] = {}
+
     def record_interaction_event(
         self, session_id: str, event: InteractionEvent
     ) -> InteractionHistory:
@@ -115,24 +180,31 @@ class ProductOrchestrator:
         metadata: Optional[dict[str, Any]] = None,
         channel: str = "unknown",
         policy_context: Optional[PolicyContext] = None,
+        cancellation_token: Optional[CancellationToken] = None,
+        idempotency_key: Optional[str] = None,
     ) -> OrchestrationResult:
         """Execute a complete end-to-end Nivesh Firewall analysis.
 
         Coordinates Engines 1 through 10 in canonical dependency order,
         records telemetry, isolates failures, and returns a unified OrchestrationResult.
         """
+        # Idempotency cache check
+        if idempotency_key and idempotency_key in self._idempotency_cache:
+            return self._idempotency_cache[idempotency_key]
+
         pipe_start_perf = time.perf_counter()
         started_at_iso = datetime.now(timezone.utc).isoformat()
         analysis_id = f"ORCH-{uuid.uuid4().hex[:12].upper()}"
 
-        # Initialize shared execution state & unified analysis context
+        clean_metadata = sanitize_sensitive_data(metadata or {})
         input_type = "text" if text is not None else "url" if url is not None else "image"
+
         context = AnalysisContext(
             analysis_id=analysis_id,
             session_id=session_id,
             input_type=input_type,
             channel=channel,
-            request_metadata=metadata or {},
+            request_metadata=clean_metadata,
             created_at=started_at_iso,
             updated_at=started_at_iso,
             status=PipelineStatus.RUNNING,
@@ -141,390 +213,604 @@ class ProductOrchestrator:
         state = OrchestrationState(
             analysis_id=analysis_id,
             session_id=session_id,
-            request_metadata=metadata or {},
+            request_metadata=clean_metadata,
             started_at=started_at_iso,
             status="RUNNING",
         )
         telemetry = state.telemetry
         telemetry.started_at = started_at_iso
 
+        # Immediate cancellation check before any engine execution
+        if cancellation_token and cancellation_token.is_cancelled:
+            context.cancel_pipeline(cancellation_token.reason or "Cancelled before start")
+            state.status = "CANCELLED"
+            return self._build_result(
+                analysis_id, session_id, state, context, telemetry, pipe_start_perf, started_at_iso, idempotency_key
+            )
+
+        def _handle_blocked_engine(node_key: str, dep_key: Optional[str], reason: Optional[str]) -> None:
+            context.mark_engine_blocked(node_key, failed_dependency=dep_key or "upstream", reason=reason or "Dependency blocked")
+            rec = EngineExecutionRecord(
+                engine_name=self.pipeline_graph.nodes[node_key].engine_name,
+                engine_key=node_key,
+                started_at=datetime.now(timezone.utc).isoformat(),
+                completed_at=datetime.now(timezone.utc).isoformat(),
+                duration_ms=0.0,
+                status=EngineOutcomeType.SKIPPED,
+                error_message=sanitize_sensitive_data(f"Blocked by {dep_key}: {reason}"),
+            )
+            telemetry.record_engine(rec)
+            state.warnings.append(f"{self.pipeline_graph.nodes[node_key].engine_name} skipped: blocked by {dep_key}")
+
         # ----------------------------------------------------------------------
         # Step 1: Engine 1 — Content Intelligence
         # ----------------------------------------------------------------------
+        if cancellation_token and cancellation_token.is_cancelled:
+            context.cancel_pipeline(cancellation_token.reason or "Pipeline cancelled")
+            state.status = "CANCELLED"
+            return self._build_result(
+                analysis_id, session_id, state, context, telemetry, pipe_start_perf, started_at_iso, idempotency_key
+            )
+
         context.mark_engine_started("engine_1_content")
-        t0 = time.perf_counter()
         rec_e1 = EngineExecutionRecord(
             engine_name="Engine 1: Content Intelligence Engine",
             engine_key="engine_1_content",
             engine_version=E1_VERSION,
             started_at=datetime.now(timezone.utc).isoformat(),
         )
-        try:
+
+        def _run_e1():
             if text is not None:
-                content = self.e1.process_text(text, channel=channel)
+                return self.e1.process_text(text, channel=channel)
             elif url is not None:
-                content = self.e1.process_url(url, channel=channel)
+                return self.e1.process_url(url, channel=channel)
             elif image_bytes is not None or image_path is not None:
-                content = self.e1.process_image(
+                return self.e1.process_image(
                     image_bytes=image_bytes, image_path=image_path, channel=channel
                 )
             else:
                 raise InputIngestionError("No valid input provided. Specify text, url, or image.")
 
-            if content.status == "error":
-                raise InputIngestionError(f"Engine 1 failed to process content: {content.error_message}")
+        content, dur_e1, retries_e1, err_e1 = self.executor.execute(
+            _run_e1,
+            engine_key="engine_1_content",
+            engine_name="Engine 1: Content Intelligence Engine",
+            timeout_ms=self.config.engine_timeout_ms,
+            max_retries=self.config.max_retries,
+            retry_delay_ms=self.config.retry_delay_ms,
+            cancellation_token=cancellation_token,
+        )
+        rec_e1.retry_count = retries_e1
 
-            # Attach session_id to content metadata if provided
-            if session_id and hasattr(content, "metadata") and content.metadata is not None:
-                content.metadata["session_id"] = session_id
-
-            state.content = content
+        if err_e1 is not None or (content is not None and getattr(content, "status", None) == "error"):
+            e = err_e1 or InputIngestionError(f"Engine 1 failed to process content: {content.error_message}")
+            clean_err = sanitize_sensitive_data(str(e))
             rec_e1.completed_at = datetime.now(timezone.utc).isoformat()
-            rec_e1.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
-            rec_e1.status = EngineOutcomeType.SUCCESS
-            rec_e1.output_id = content.content_id
-            telemetry.record_engine(rec_e1)
-
-            context.set_content_result(content)
-            context.mark_engine_completed(
-                "engine_1_content",
-                result_id=content.content_id,
-                duration_ms=rec_e1.duration_ms,
-            )
-        except Exception as e:
-            rec_e1.completed_at = datetime.now(timezone.utc).isoformat()
-            rec_e1.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
+            rec_e1.duration_ms = dur_e1
             rec_e1.status = EngineOutcomeType.FATAL_FAILURE
             rec_e1.error_type = type(e).__name__
-            rec_e1.error_message = str(e)
+            rec_e1.error_message = clean_err
             telemetry.record_engine(rec_e1)
             state.status = "FAILED"
-            state.errors.append(f"Engine 1 Fatal Failure: {e}")
+            state.errors.append(f"Engine 1 Fatal Failure: {clean_err}")
             state.completed_at = datetime.now(timezone.utc).isoformat()
             telemetry.completed_at = state.completed_at
             telemetry.total_duration_ms = round((time.perf_counter() - pipe_start_perf) * 1000, 2)
-            context.mark_engine_failed("engine_1_content", str(e), duration_ms=rec_e1.duration_ms)
+            context.mark_engine_failed("engine_1_content", clean_err, duration_ms=dur_e1)
+            context.engine_states["engine_1_content"].retry_count = retries_e1
             context.finalize_pipeline()
-            raise FatalOrchestrationError(f"Engine 1 failed: {e}", engine_name="engine_1_content") from e
+            raise FatalOrchestrationError(f"Engine 1 failed: {clean_err}", engine_name="engine_1_content") from e
+
+        # Attach session_id to content metadata if provided
+        if session_id and hasattr(content, "metadata") and content.metadata is not None:
+            content.metadata["session_id"] = session_id
+
+        state.content = content
+        rec_e1.completed_at = datetime.now(timezone.utc).isoformat()
+        rec_e1.duration_ms = dur_e1
+        rec_e1.status = EngineOutcomeType.SUCCESS
+        rec_e1.output_id = content.content_id
+        telemetry.record_engine(rec_e1)
+
+        context.set_content_result(content)
+        context.mark_engine_completed(
+            "engine_1_content",
+            result_id=content.content_id,
+            duration_ms=dur_e1,
+        )
+        context.engine_states["engine_1_content"].retry_count = retries_e1
 
         # ----------------------------------------------------------------------
         # Step 2: Engine 2 — Claim Intelligence
         # ----------------------------------------------------------------------
-        context.mark_engine_started("engine_2_claims")
-        t0 = time.perf_counter()
-        rec_e2 = EngineExecutionRecord(
-            engine_name="Engine 2: Claim Intelligence Engine",
-            engine_key="engine_2_claims",
-            started_at=datetime.now(timezone.utc).isoformat(),
-        )
-        try:
-            claims = self.e2.analyze(state.content)
-            state.claims = claims
-            rec_e2.completed_at = datetime.now(timezone.utc).isoformat()
-            rec_e2.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
-            rec_e2.status = EngineOutcomeType.SUCCESS
-            rec_e2.output_id = getattr(claims, "analysis_id", getattr(claims, "content_id", None))
-            rec_e2.metadata["claim_count"] = len(claims.claims)
-            telemetry.record_engine(rec_e2)
-
-            context.set_claim_result(claims)
-            context.mark_engine_completed(
-                "engine_2_claims",
-                result_id=rec_e2.output_id,
-                duration_ms=rec_e2.duration_ms,
-                metadata=rec_e2.metadata,
+        if cancellation_token and cancellation_token.is_cancelled:
+            context.cancel_pipeline(cancellation_token.reason or "Pipeline cancelled")
+            state.status = "CANCELLED"
+            return self._build_result(
+                analysis_id, session_id, state, context, telemetry, pipe_start_perf, started_at_iso, idempotency_key
             )
-        except Exception as e:
-            self._handle_engine_error("engine_2_claims", rec_e2, t0, e, state)
-            if state.claims is None and state.content is not None:
-                state.claims = ClaimAnalysis(content_id=state.content.content_id, claims=[])
-            context.mark_engine_failed("engine_2_claims", str(e), duration_ms=round((time.perf_counter() - t0) * 1000, 2))
-            if state.claims:
-                context.set_claim_result(state.claims)
+
+        can_run, dep_key, block_reason = self.pipeline_graph.can_execute("engine_2_claims", context)
+        if not can_run:
+            _handle_blocked_engine("engine_2_claims", dep_key, block_reason)
+        else:
+            context.mark_engine_started("engine_2_claims")
+            rec_e2 = EngineExecutionRecord(
+                engine_name="Engine 2: Claim Intelligence Engine",
+                engine_key="engine_2_claims",
+                started_at=datetime.now(timezone.utc).isoformat(),
+            )
+            claims, dur_e2, retries_e2, err_e2 = self.executor.execute(
+                self.e2.analyze,
+                state.content,
+                engine_key="engine_2_claims",
+                engine_name="Engine 2: Claim Intelligence Engine",
+                timeout_ms=self.config.engine_timeout_ms,
+                max_retries=self.config.max_retries,
+                retry_delay_ms=self.config.retry_delay_ms,
+                cancellation_token=cancellation_token,
+            )
+            rec_e2.retry_count = retries_e2
+
+            if err_e2 is not None:
+                self._handle_engine_error("engine_2_claims", rec_e2, dur_e2, err_e2, state)
+                context.mark_engine_failed("engine_2_claims", sanitize_sensitive_data(str(err_e2)), duration_ms=dur_e2)
+                context.engine_states["engine_2_claims"].retry_count = retries_e2
+                if not self.config.fail_fast and state.content is not None:
+                    state.claims = ClaimAnalysis(content_id=state.content.content_id, claims=[])
+            else:
+                state.claims = claims
+                rec_e2.completed_at = datetime.now(timezone.utc).isoformat()
+                rec_e2.duration_ms = dur_e2
+                rec_e2.status = EngineOutcomeType.SUCCESS
+                rec_e2.output_id = getattr(claims, "analysis_id", getattr(claims, "content_id", None))
+                rec_e2.metadata["claim_count"] = len(claims.claims)
+                telemetry.record_engine(rec_e2)
+
+                context.set_claim_result(claims)
+                context.mark_engine_completed(
+                    "engine_2_claims",
+                    result_id=rec_e2.output_id,
+                    duration_ms=dur_e2,
+                    metadata=rec_e2.metadata,
+                )
+                context.engine_states["engine_2_claims"].retry_count = retries_e2
 
         # ----------------------------------------------------------------------
         # Step 3: Engine 3 — Action Intelligence
         # ----------------------------------------------------------------------
-        context.mark_engine_started("engine_3_actions")
-        t0 = time.perf_counter()
-        rec_e3 = EngineExecutionRecord(
-            engine_name="Engine 3: Action Intelligence Engine",
-            engine_key="engine_3_actions",
-            started_at=datetime.now(timezone.utc).isoformat(),
-        )
-        try:
-            actions = self.e3.analyze(state.content, state.claims)
-            state.actions = actions
-            rec_e3.completed_at = datetime.now(timezone.utc).isoformat()
-            rec_e3.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
-            rec_e3.status = EngineOutcomeType.SUCCESS
-            rec_e3.output_id = getattr(actions, "analysis_id", getattr(actions, "content_id", None))
-            rec_e3.metadata["action_count"] = len(actions.actions)
-            telemetry.record_engine(rec_e3)
-
-            context.set_action_result(actions)
-            context.mark_engine_completed(
-                "engine_3_actions",
-                result_id=rec_e3.output_id,
-                duration_ms=rec_e3.duration_ms,
-                metadata=rec_e3.metadata,
+        if cancellation_token and cancellation_token.is_cancelled:
+            context.cancel_pipeline(cancellation_token.reason or "Pipeline cancelled")
+            state.status = "CANCELLED"
+            return self._build_result(
+                analysis_id, session_id, state, context, telemetry, pipe_start_perf, started_at_iso, idempotency_key
             )
-        except Exception as e:
-            self._handle_engine_error("engine_3_actions", rec_e3, t0, e, state)
-            if state.actions is None and state.content is not None:
-                state.actions = ActionAnalysis(content_id=state.content.content_id, actions=[])
-            context.mark_engine_failed("engine_3_actions", str(e), duration_ms=round((time.perf_counter() - t0) * 1000, 2))
-            if state.actions:
-                context.set_action_result(state.actions)
+
+        can_run, dep_key, block_reason = self.pipeline_graph.can_execute("engine_3_actions", context)
+        if not can_run:
+            _handle_blocked_engine("engine_3_actions", dep_key, block_reason)
+        else:
+            context.mark_engine_started("engine_3_actions")
+            rec_e3 = EngineExecutionRecord(
+                engine_name="Engine 3: Action Intelligence Engine",
+                engine_key="engine_3_actions",
+                started_at=datetime.now(timezone.utc).isoformat(),
+            )
+            actions, dur_e3, retries_e3, err_e3 = self.executor.execute(
+                self.e3.analyze,
+                state.content,
+                state.claims,
+                engine_key="engine_3_actions",
+                engine_name="Engine 3: Action Intelligence Engine",
+                timeout_ms=self.config.engine_timeout_ms,
+                max_retries=self.config.max_retries,
+                retry_delay_ms=self.config.retry_delay_ms,
+                cancellation_token=cancellation_token,
+            )
+            rec_e3.retry_count = retries_e3
+
+            if err_e3 is not None:
+                self._handle_engine_error("engine_3_actions", rec_e3, dur_e3, err_e3, state)
+                context.mark_engine_failed("engine_3_actions", sanitize_sensitive_data(str(err_e3)), duration_ms=dur_e3)
+                context.engine_states["engine_3_actions"].retry_count = retries_e3
+                if not self.config.fail_fast and state.content is not None:
+                    state.actions = ActionAnalysis(content_id=state.content.content_id, actions=[])
+            else:
+                state.actions = actions
+                rec_e3.completed_at = datetime.now(timezone.utc).isoformat()
+                rec_e3.duration_ms = dur_e3
+                rec_e3.status = EngineOutcomeType.SUCCESS
+                rec_e3.output_id = getattr(actions, "analysis_id", getattr(actions, "content_id", None))
+                rec_e3.metadata["action_count"] = len(actions.actions)
+                telemetry.record_engine(rec_e3)
+
+                context.set_action_result(actions)
+                context.mark_engine_completed(
+                    "engine_3_actions",
+                    result_id=rec_e3.output_id,
+                    duration_ms=dur_e3,
+                    metadata=rec_e3.metadata,
+                )
+                context.engine_states["engine_3_actions"].retry_count = retries_e3
 
         # ----------------------------------------------------------------------
         # Step 4: Engine 4 — Source Intelligence
         # ----------------------------------------------------------------------
-        context.mark_engine_started("engine_4_sources")
-        t0 = time.perf_counter()
-        rec_e4 = EngineExecutionRecord(
-            engine_name="Engine 4: Source Intelligence Engine",
-            engine_key="engine_4_sources",
-            started_at=datetime.now(timezone.utc).isoformat(),
-        )
-        try:
-            sources = self.e4.discover_and_retrieve(state.content, state.claims, state.actions)
-            state.sources = sources
-            rec_e4.completed_at = datetime.now(timezone.utc).isoformat()
-            rec_e4.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
-            rec_e4.output_id = getattr(sources, "analysis_id", getattr(sources, "content_id", None))
-            total_docs = sum(len(getattr(cs, "documents", [])) for cs in getattr(sources, "claim_sources", []))
-            total_candidates = sum(len(getattr(cs, "evidence_candidates", [])) for cs in getattr(sources, "claim_sources", []))
-            rec_e4.metadata["source_count"] = total_docs
-            rec_e4.metadata["candidate_count"] = total_candidates
-
-            # Classify analytical outcomes vs errors
-            retrieval_failures = getattr(getattr(sources, "analysis_metadata", None), "retrieval_failures", 0)
-            if total_docs == 0:
-                rec_e4.status = EngineOutcomeType.EXPECTED_ANALYTICAL_RESULT
-                rec_e4.analytical_result = "SOURCE_UNAVAILABLE"
-            else:
-                rec_e4.status = EngineOutcomeType.SUCCESS
-            telemetry.record_engine(rec_e4)
-
-            context.set_source_result(sources)
-            context.mark_engine_completed(
-                "engine_4_sources",
-                result_id=rec_e4.output_id,
-                analytical_result=rec_e4.analytical_result,
-                duration_ms=rec_e4.duration_ms,
-                metadata=rec_e4.metadata,
+        if cancellation_token and cancellation_token.is_cancelled:
+            context.cancel_pipeline(cancellation_token.reason or "Pipeline cancelled")
+            state.status = "CANCELLED"
+            return self._build_result(
+                analysis_id, session_id, state, context, telemetry, pipe_start_perf, started_at_iso, idempotency_key
             )
-        except Exception as e:
-            self._handle_engine_error("engine_4_sources", rec_e4, t0, e, state)
-            if state.sources is None and state.content is not None:
-                state.sources = SourceAnalysis(
-                    content_id=state.content.content_id,
-                    claim_sources=[],
-                    analysis_metadata=SourceAnalysisMetadata(retrieval_failures=1),
+
+        can_run, dep_key, block_reason = self.pipeline_graph.can_execute("engine_4_sources", context)
+        if not can_run:
+            _handle_blocked_engine("engine_4_sources", dep_key, block_reason)
+        else:
+            context.mark_engine_started("engine_4_sources")
+            rec_e4 = EngineExecutionRecord(
+                engine_name="Engine 4: Source Intelligence Engine",
+                engine_key="engine_4_sources",
+                started_at=datetime.now(timezone.utc).isoformat(),
+            )
+            sources, dur_e4, retries_e4, err_e4 = self.executor.execute(
+                self.e4.discover_and_retrieve,
+                state.content,
+                state.claims,
+                state.actions,
+                engine_key="engine_4_sources",
+                engine_name="Engine 4: Source Intelligence Engine",
+                timeout_ms=self.config.engine_timeout_ms,
+                max_retries=self.config.max_retries,
+                retry_delay_ms=self.config.retry_delay_ms,
+                cancellation_token=cancellation_token,
+            )
+            rec_e4.retry_count = retries_e4
+
+            if err_e4 is not None:
+                self._handle_engine_error("engine_4_sources", rec_e4, dur_e4, err_e4, state)
+                context.mark_engine_failed("engine_4_sources", sanitize_sensitive_data(str(err_e4)), duration_ms=dur_e4)
+                context.engine_states["engine_4_sources"].retry_count = retries_e4
+                if not self.config.fail_fast and state.content is not None:
+                    # Provide degraded fallback container for downstream non-null expectations
+                    state.sources = SourceAnalysis(
+                        content_id=state.content.content_id,
+                        claim_sources=[],
+                        analysis_metadata=SourceAnalysisMetadata(retrieval_failures=1),
+                    )
+            else:
+                state.sources = sources
+                rec_e4.completed_at = datetime.now(timezone.utc).isoformat()
+                rec_e4.duration_ms = dur_e4
+                rec_e4.output_id = getattr(sources, "analysis_id", getattr(sources, "content_id", None))
+                total_docs = sum(len(getattr(cs, "documents", [])) for cs in getattr(sources, "claim_sources", []))
+                total_candidates = sum(len(getattr(cs, "evidence_candidates", [])) for cs in getattr(sources, "claim_sources", []))
+                rec_e4.metadata["source_count"] = total_docs
+                rec_e4.metadata["candidate_count"] = total_candidates
+
+                if total_docs == 0:
+                    rec_e4.status = EngineOutcomeType.EXPECTED_ANALYTICAL_RESULT
+                    rec_e4.analytical_result = "SOURCE_UNAVAILABLE"
+                else:
+                    rec_e4.status = EngineOutcomeType.SUCCESS
+                telemetry.record_engine(rec_e4)
+
+                context.set_source_result(sources)
+                context.mark_engine_completed(
+                    "engine_4_sources",
+                    result_id=rec_e4.output_id,
+                    analytical_result=rec_e4.analytical_result,
+                    duration_ms=dur_e4,
+                    metadata=rec_e4.metadata,
                 )
-            context.mark_engine_failed("engine_4_sources", str(e), duration_ms=round((time.perf_counter() - t0) * 1000, 2))
-            if state.sources:
-                context.set_source_result(state.sources)
+                context.engine_states["engine_4_sources"].retry_count = retries_e4
 
         # ----------------------------------------------------------------------
         # Step 5: Engine 5 — Evidence Verification
         # ----------------------------------------------------------------------
-        context.mark_engine_started("engine_5_evidence")
-        t0 = time.perf_counter()
-        rec_e5 = EngineExecutionRecord(
-            engine_name="Engine 5: Evidence Verification Engine",
-            engine_key="engine_5_evidence",
-            started_at=datetime.now(timezone.utc).isoformat(),
-        )
-        try:
-            evidence = self.e5.verify(state.content, state.claims, state.sources)
-            state.evidence = evidence
-            rec_e5.completed_at = datetime.now(timezone.utc).isoformat()
-            rec_e5.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
-            rec_e5.output_id = getattr(evidence, "analysis_id", getattr(evidence, "content_id", None))
-            rec_e5.metadata["verification_count"] = len(evidence.verifications)
-
-            # Check if verifications contain analytical outcomes
-            has_insufficient = any(
-                getattr(v, "status", None) == "INSUFFICIENT_EVIDENCE" for v in evidence.verifications
+        if cancellation_token and cancellation_token.is_cancelled:
+            context.cancel_pipeline(cancellation_token.reason or "Pipeline cancelled")
+            state.status = "CANCELLED"
+            return self._build_result(
+                analysis_id, session_id, state, context, telemetry, pipe_start_perf, started_at_iso, idempotency_key
             )
-            if has_insufficient:
-                rec_e5.status = EngineOutcomeType.EXPECTED_ANALYTICAL_RESULT
-                rec_e5.analytical_result = "INSUFFICIENT_EVIDENCE"
+
+        can_run, dep_key, block_reason = self.pipeline_graph.can_execute("engine_5_evidence", context)
+        if not can_run:
+            _handle_blocked_engine("engine_5_evidence", dep_key, block_reason)
+        else:
+            context.mark_engine_started("engine_5_evidence")
+            rec_e5 = EngineExecutionRecord(
+                engine_name="Engine 5: Evidence Verification Engine",
+                engine_key="engine_5_evidence",
+                started_at=datetime.now(timezone.utc).isoformat(),
+            )
+            evidence, dur_e5, retries_e5, err_e5 = self.executor.execute(
+                self.e5.verify,
+                state.content,
+                state.claims,
+                state.sources,
+                engine_key="engine_5_evidence",
+                engine_name="Engine 5: Evidence Verification Engine",
+                timeout_ms=self.config.engine_timeout_ms,
+                max_retries=self.config.max_retries,
+                retry_delay_ms=self.config.retry_delay_ms,
+                cancellation_token=cancellation_token,
+            )
+            rec_e5.retry_count = retries_e5
+
+            if err_e5 is not None:
+                self._handle_engine_error("engine_5_evidence", rec_e5, dur_e5, err_e5, state)
+                context.mark_engine_failed("engine_5_evidence", sanitize_sensitive_data(str(err_e5)), duration_ms=dur_e5)
+                context.engine_states["engine_5_evidence"].retry_count = retries_e5
+                if not self.config.fail_fast and state.content is not None:
+                    state.evidence = EvidenceAnalysis(
+                        content_id=state.content.content_id,
+                        verifications=[],
+                        analysis_metadata=EvidenceAnalysisMetadata(),
+                    )
             else:
-                rec_e5.status = EngineOutcomeType.SUCCESS
-            telemetry.record_engine(rec_e5)
+                state.evidence = evidence
+                rec_e5.completed_at = datetime.now(timezone.utc).isoformat()
+                rec_e5.duration_ms = dur_e5
+                rec_e5.output_id = getattr(evidence, "analysis_id", getattr(evidence, "content_id", None))
+                rec_e5.metadata["verification_count"] = len(evidence.verifications)
 
-            context.set_evidence_result(evidence)
-            context.mark_engine_completed(
-                "engine_5_evidence",
-                result_id=rec_e5.output_id,
-                analytical_result=rec_e5.analytical_result,
-                duration_ms=rec_e5.duration_ms,
-                metadata=rec_e5.metadata,
-            )
-        except Exception as e:
-            self._handle_engine_error("engine_5_evidence", rec_e5, t0, e, state)
-            if state.evidence is None and state.content is not None:
-                state.evidence = EvidenceAnalysis(
-                    content_id=state.content.content_id,
-                    verifications=[],
-                    analysis_metadata=EvidenceAnalysisMetadata(),
+                has_insufficient = any(
+                    getattr(v, "status", None) == "INSUFFICIENT_EVIDENCE" for v in evidence.verifications
                 )
-            context.mark_engine_failed("engine_5_evidence", str(e), duration_ms=round((time.perf_counter() - t0) * 1000, 2))
-            if state.evidence:
-                context.set_evidence_result(state.evidence)
+                if has_insufficient:
+                    rec_e5.status = EngineOutcomeType.EXPECTED_ANALYTICAL_RESULT
+                    rec_e5.analytical_result = "INSUFFICIENT_EVIDENCE"
+                else:
+                    rec_e5.status = EngineOutcomeType.SUCCESS
+                telemetry.record_engine(rec_e5)
+
+                context.set_evidence_result(evidence)
+                context.mark_engine_completed(
+                    "engine_5_evidence",
+                    result_id=rec_e5.output_id,
+                    analytical_result=rec_e5.analytical_result,
+                    duration_ms=dur_e5,
+                    metadata=rec_e5.metadata,
+                )
+                context.engine_states["engine_5_evidence"].retry_count = retries_e5
 
         # ----------------------------------------------------------------------
         # Downstream Intelligence: Engine 6 — Threat Intelligence
         # ----------------------------------------------------------------------
-        if self.config.enable_threat:
-            context.mark_engine_started("engine_6_threat")
-            t0 = time.perf_counter()
-            rec_e6 = EngineExecutionRecord(
-                engine_name="Engine 6: Threat & Attack-Path Intelligence",
-                engine_key="engine_6_threat",
-                started_at=datetime.now(timezone.utc).isoformat(),
+        if cancellation_token and cancellation_token.is_cancelled:
+            context.cancel_pipeline(cancellation_token.reason or "Pipeline cancelled")
+            state.status = "CANCELLED"
+            return self._build_result(
+                analysis_id, session_id, state, context, telemetry, pipe_start_perf, started_at_iso, idempotency_key
             )
-            try:
-                threat = self.e6.analyze(
-                    state.content, state.claims, state.actions, state.sources, state.evidence
-                )
-                state.threat = threat
-                rec_e6.completed_at = datetime.now(timezone.utc).isoformat()
-                rec_e6.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
-                rec_e6.status = EngineOutcomeType.SUCCESS
-                rec_e6.output_id = threat.content_id
-                rec_e6.metadata["threat_signal_count"] = len(threat.threat_signals)
-                telemetry.record_engine(rec_e6)
 
-                context.set_threat_result(threat)
-                context.mark_engine_completed(
-                    "engine_6_threat",
-                    result_id=threat.content_id,
-                    duration_ms=rec_e6.duration_ms,
-                    metadata=rec_e6.metadata,
-                )
-            except Exception as e:
-                self._handle_engine_error("engine_6_threat", rec_e6, t0, e, state)
-                if state.threat is None and state.content is not None:
-                    state.threat = ThreatAnalysis(content_id=state.content.content_id)
-                context.mark_engine_failed("engine_6_threat", str(e), duration_ms=round((time.perf_counter() - t0) * 1000, 2))
-        else:
+        if not self.config.enable_threat:
             context.mark_engine_skipped("engine_6_threat", "Disabled in orchestrator config")
+        else:
+            can_run, dep_key, block_reason = self.pipeline_graph.can_execute("engine_6_threat", context)
+            if not can_run:
+                _handle_blocked_engine("engine_6_threat", dep_key, block_reason)
+            else:
+                context.mark_engine_started("engine_6_threat")
+                rec_e6 = EngineExecutionRecord(
+                    engine_name="Engine 6: Threat & Attack-Path Intelligence",
+                    engine_key="engine_6_threat",
+                    started_at=datetime.now(timezone.utc).isoformat(),
+                )
+                threat, dur_e6, retries_e6, err_e6 = self.executor.execute(
+                    self.e6.analyze,
+                    state.content,
+                    state.claims,
+                    state.actions,
+                    state.sources,
+                    state.evidence,
+                    engine_key="engine_6_threat",
+                    engine_name="Engine 6: Threat & Attack-Path Intelligence",
+                    timeout_ms=self.config.engine_timeout_ms,
+                    max_retries=self.config.max_retries,
+                    retry_delay_ms=self.config.retry_delay_ms,
+                    cancellation_token=cancellation_token,
+                )
+                rec_e6.retry_count = retries_e6
+
+                if err_e6 is not None:
+                    self._handle_engine_error("engine_6_threat", rec_e6, dur_e6, err_e6, state)
+                    context.mark_engine_failed("engine_6_threat", sanitize_sensitive_data(str(err_e6)), duration_ms=dur_e6)
+                    context.engine_states["engine_6_threat"].retry_count = retries_e6
+                    if not self.config.fail_fast and state.content is not None:
+                        state.threat = create_empty_threat_analysis(state.content.content_id)
+                else:
+                    state.threat = threat
+                    rec_e6.completed_at = datetime.now(timezone.utc).isoformat()
+                    rec_e6.duration_ms = dur_e6
+                    rec_e6.status = EngineOutcomeType.SUCCESS
+                    rec_e6.output_id = threat.content_id
+                    rec_e6.metadata["threat_signal_count"] = len(threat.threat_signals)
+                    telemetry.record_engine(rec_e6)
+
+                    context.set_threat_result(threat)
+                    context.mark_engine_completed(
+                        "engine_6_threat",
+                        result_id=threat.content_id,
+                        duration_ms=dur_e6,
+                        metadata=rec_e6.metadata,
+                    )
+                    context.engine_states["engine_6_threat"].retry_count = retries_e6
 
         # ----------------------------------------------------------------------
         # Downstream Intelligence: Engine 7 — Scam Fingerprint Intelligence
         # ----------------------------------------------------------------------
-        if self.config.enable_fingerprint and state.threat is not None:
-            context.mark_engine_started("engine_7_fingerprint")
-            t0 = time.perf_counter()
-            rec_e7 = EngineExecutionRecord(
-                engine_name="Engine 7: Scam Fingerprint & Collective Intelligence",
-                engine_key="engine_7_fingerprint",
-                started_at=datetime.now(timezone.utc).isoformat(),
+        if cancellation_token and cancellation_token.is_cancelled:
+            context.cancel_pipeline(cancellation_token.reason or "Pipeline cancelled")
+            state.status = "CANCELLED"
+            return self._build_result(
+                analysis_id, session_id, state, context, telemetry, pipe_start_perf, started_at_iso, idempotency_key
             )
-            try:
-                fingerprint = self.e7.create_or_match(
-                    state.content, state.claims, state.actions, state.sources, state.evidence, state.threat
-                )
-                state.fingerprint = fingerprint
-                rec_e7.completed_at = datetime.now(timezone.utc).isoformat()
-                rec_e7.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
-                rec_e7.output_id = fingerprint.fingerprint.fingerprint_id
-                rec_e7.metadata["match_type"] = str(fingerprint.match_type)
 
-                if fingerprint.match_type == "NO_MATCH":
-                    rec_e7.status = EngineOutcomeType.EXPECTED_ANALYTICAL_RESULT
-                    rec_e7.analytical_result = "NO_MATCH"
-                else:
-                    rec_e7.status = EngineOutcomeType.SUCCESS
-                telemetry.record_engine(rec_e7)
-
-                context.set_fingerprint_result(fingerprint)
-                context.mark_engine_completed(
-                    "engine_7_fingerprint",
-                    result_id=fingerprint.fingerprint.fingerprint_id,
-                    analytical_result=rec_e7.analytical_result,
-                    duration_ms=rec_e7.duration_ms,
-                    metadata=rec_e7.metadata,
-                )
-            except Exception as e:
-                self._handle_engine_error("engine_7_fingerprint", rec_e7, t0, e, state)
-                context.mark_engine_failed("engine_7_fingerprint", str(e), duration_ms=round((time.perf_counter() - t0) * 1000, 2))
+        if not self.config.enable_fingerprint:
+            context.mark_engine_skipped("engine_7_fingerprint", "Disabled in orchestrator config")
         else:
-            context.mark_engine_skipped("engine_7_fingerprint", "Skipped or threat analysis unavailable")
+            can_run, dep_key, block_reason = self.pipeline_graph.can_execute("engine_7_fingerprint", context)
+            if not can_run:
+                _handle_blocked_engine("engine_7_fingerprint", dep_key, block_reason)
+            else:
+                context.mark_engine_started("engine_7_fingerprint")
+                rec_e7 = EngineExecutionRecord(
+                    engine_name="Engine 7: Scam Fingerprint & Collective Intelligence",
+                    engine_key="engine_7_fingerprint",
+                    started_at=datetime.now(timezone.utc).isoformat(),
+                )
+                fingerprint, dur_e7, retries_e7, err_e7 = self.executor.execute(
+                    self.e7.create_or_match,
+                    state.content,
+                    state.claims,
+                    state.actions,
+                    state.sources,
+                    state.evidence,
+                    state.threat,
+                    engine_key="engine_7_fingerprint",
+                    engine_name="Engine 7: Scam Fingerprint & Collective Intelligence",
+                    timeout_ms=self.config.engine_timeout_ms,
+                    max_retries=self.config.max_retries,
+                    retry_delay_ms=self.config.retry_delay_ms,
+                    cancellation_token=cancellation_token,
+                )
+                rec_e7.retry_count = retries_e7
+
+                if err_e7 is not None:
+                    self._handle_engine_error("engine_7_fingerprint", rec_e7, dur_e7, err_e7, state)
+                    context.mark_engine_failed("engine_7_fingerprint", sanitize_sensitive_data(str(err_e7)), duration_ms=dur_e7)
+                    context.engine_states["engine_7_fingerprint"].retry_count = retries_e7
+                else:
+                    state.fingerprint = fingerprint
+                    rec_e7.completed_at = datetime.now(timezone.utc).isoformat()
+                    rec_e7.duration_ms = dur_e7
+                    rec_e7.output_id = fingerprint.fingerprint.fingerprint_id
+                    rec_e7.metadata["match_type"] = str(fingerprint.match_type)
+
+                    if fingerprint.match_type == "NO_MATCH":
+                        rec_e7.status = EngineOutcomeType.EXPECTED_ANALYTICAL_RESULT
+                        rec_e7.analytical_result = "NO_MATCH"
+                    else:
+                        rec_e7.status = EngineOutcomeType.SUCCESS
+                    telemetry.record_engine(rec_e7)
+
+                    context.set_fingerprint_result(fingerprint)
+                    context.mark_engine_completed(
+                        "engine_7_fingerprint",
+                        result_id=fingerprint.fingerprint.fingerprint_id,
+                        analytical_result=rec_e7.analytical_result,
+                        duration_ms=dur_e7,
+                        metadata=rec_e7.metadata,
+                    )
+                    context.engine_states["engine_7_fingerprint"].retry_count = retries_e7
 
         # ----------------------------------------------------------------------
         # Downstream Intelligence: Engine 9 — Identity Verification
         # ----------------------------------------------------------------------
-        if self.config.enable_identity:
-            context.mark_engine_started("engine_9_identity")
-            t0 = time.perf_counter()
-            rec_e9 = EngineExecutionRecord(
-                engine_name="Engine 9: Identity Verification & Entity Resolution",
-                engine_key="engine_9_identity",
-                started_at=datetime.now(timezone.utc).isoformat(),
+        if cancellation_token and cancellation_token.is_cancelled:
+            context.cancel_pipeline(cancellation_token.reason or "Pipeline cancelled")
+            state.status = "CANCELLED"
+            return self._build_result(
+                analysis_id, session_id, state, context, telemetry, pipe_start_perf, started_at_iso, idempotency_key
             )
-            try:
-                identity = self.e9.verify(
+
+        if not self.config.enable_identity:
+            context.mark_engine_skipped("engine_9_identity", "Disabled in orchestrator config")
+        else:
+            can_run, dep_key, block_reason = self.pipeline_graph.can_execute("engine_9_identity", context)
+            if not can_run:
+                _handle_blocked_engine("engine_9_identity", dep_key, block_reason)
+            else:
+                context.mark_engine_started("engine_9_identity")
+                rec_e9 = EngineExecutionRecord(
+                    engine_name="Engine 9: Identity Verification & Entity Resolution",
+                    engine_key="engine_9_identity",
+                    started_at=datetime.now(timezone.utc).isoformat(),
+                )
+                identity, dur_e9, retries_e9, err_e9 = self.executor.execute(
+                    self.e9.verify,
                     content=state.content,
                     claims=state.claims,
                     sources=state.sources,
                     evidence=state.evidence,
                     threat=state.threat,
+                    engine_key="engine_9_identity",
+                    engine_name="Engine 9: Identity Verification & Entity Resolution",
+                    timeout_ms=self.config.engine_timeout_ms,
+                    max_retries=self.config.max_retries,
+                    retry_delay_ms=self.config.retry_delay_ms,
+                    cancellation_token=cancellation_token,
                 )
-                state.identity = identity
-                rec_e9.completed_at = datetime.now(timezone.utc).isoformat()
-                rec_e9.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
-                rec_e9.output_id = identity.analysis_id
-                rec_e9.metadata["identity_status"] = str(identity.identity_status)
+                rec_e9.retry_count = retries_e9
 
-                id_status_val = getattr(identity.identity_status, "value", str(identity.identity_status))
-                if identity.identity_status in (
-                    IdentityStatus.NOT_ESTABLISHED,
-                    IdentityStatus.IDENTITY_MISMATCH,
-                    IdentityStatus.AMBIGUOUS,
-                ):
-                    rec_e9.status = EngineOutcomeType.EXPECTED_ANALYTICAL_RESULT
-                    rec_e9.analytical_result = id_status_val
+                if err_e9 is not None:
+                    # Record execution failure without converting to fake analytical IDENTITY_MISMATCH
+                    self._handle_engine_error("engine_9_identity", rec_e9, dur_e9, err_e9, state)
+                    context.mark_engine_failed("engine_9_identity", sanitize_sensitive_data(str(err_e9)), duration_ms=dur_e9)
+                    context.engine_states["engine_9_identity"].retry_count = retries_e9
                 else:
-                    rec_e9.status = EngineOutcomeType.SUCCESS
-                telemetry.record_engine(rec_e9)
+                    state.identity = identity
+                    rec_e9.completed_at = datetime.now(timezone.utc).isoformat()
+                    rec_e9.duration_ms = dur_e9
+                    rec_e9.output_id = identity.analysis_id
+                    rec_e9.metadata["identity_status"] = str(identity.identity_status)
 
-                context.set_identity_result(identity)
-                context.mark_engine_completed(
-                    "engine_9_identity",
-                    result_id=identity.analysis_id,
-                    analytical_result=rec_e9.analytical_result,
-                    duration_ms=rec_e9.duration_ms,
-                    metadata=rec_e9.metadata,
-                )
-            except Exception as e:
-                self._handle_engine_error("engine_9_identity", rec_e9, t0, e, state)
-                context.mark_engine_failed("engine_9_identity", str(e), duration_ms=round((time.perf_counter() - t0) * 1000, 2))
-        else:
-            context.mark_engine_skipped("engine_9_identity", "Disabled in orchestrator config")
+                    id_status_val = getattr(identity.identity_status, "value", str(identity.identity_status))
+                    if identity.identity_status in (
+                        IdentityStatus.NOT_ESTABLISHED,
+                        IdentityStatus.IDENTITY_MISMATCH,
+                        IdentityStatus.AMBIGUOUS,
+                    ):
+                        rec_e9.status = EngineOutcomeType.EXPECTED_ANALYTICAL_RESULT
+                        rec_e9.analytical_result = id_status_val
+                    else:
+                        rec_e9.status = EngineOutcomeType.SUCCESS
+                    telemetry.record_engine(rec_e9)
+
+                    context.set_identity_result(identity)
+                    context.mark_engine_completed(
+                        "engine_9_identity",
+                        result_id=identity.analysis_id,
+                        analytical_result=rec_e9.analytical_result,
+                        duration_ms=dur_e9,
+                        metadata=rec_e9.metadata,
+                    )
+                    context.engine_states["engine_9_identity"].retry_count = retries_e9
 
         # ----------------------------------------------------------------------
         # Downstream Intelligence: Engine 10 — Behavioural Signal Intelligence
         # ----------------------------------------------------------------------
-        if self.config.enable_behaviour:
-            context.mark_engine_started("engine_10_behaviour")
-            t0 = time.perf_counter()
-            rec_e10 = EngineExecutionRecord(
-                engine_name="Engine 10: Behavioural Signal Intelligence",
-                engine_key="engine_10_behaviour",
-                started_at=datetime.now(timezone.utc).isoformat(),
+        if cancellation_token and cancellation_token.is_cancelled:
+            context.cancel_pipeline(cancellation_token.reason or "Pipeline cancelled")
+            state.status = "CANCELLED"
+            return self._build_result(
+                analysis_id, session_id, state, context, telemetry, pipe_start_perf, started_at_iso, idempotency_key
             )
-            try:
-                # Resolve session history without cross-session contamination
+
+        if not self.config.enable_behaviour:
+            context.mark_engine_skipped("engine_10_behaviour", "Disabled in orchestrator config")
+        else:
+            can_run, dep_key, block_reason = self.pipeline_graph.can_execute("engine_10_behaviour", context)
+            if not can_run:
+                _handle_blocked_engine("engine_10_behaviour", dep_key, block_reason)
+            else:
+                context.mark_engine_started("engine_10_behaviour")
+                rec_e10 = EngineExecutionRecord(
+                    engine_name="Engine 10: Behavioural Signal Intelligence",
+                    engine_key="engine_10_behaviour",
+                    started_at=datetime.now(timezone.utc).isoformat(),
+                )
+
                 resolved_history = interaction_history
                 if not resolved_history and session_id:
                     resolved_history = self.e10.get_session(session_id)
 
-                behaviour = self.e10.analyze(
+                behaviour, dur_e10, retries_e10, err_e10 = self.executor.execute(
+                    self.e10.analyze,
                     content=state.content,
                     claims=state.claims,
                     actions=state.actions,
@@ -532,123 +818,216 @@ class ProductOrchestrator:
                     fingerprint=state.fingerprint,
                     identity=state.identity,
                     interaction_history=resolved_history,
+                    engine_key="engine_10_behaviour",
+                    engine_name="Engine 10: Behavioural Signal Intelligence",
+                    timeout_ms=self.config.engine_timeout_ms,
+                    max_retries=self.config.max_retries,
+                    retry_delay_ms=self.config.retry_delay_ms,
+                    cancellation_token=cancellation_token,
                 )
-                state.behaviour = behaviour
-                rec_e10.completed_at = datetime.now(timezone.utc).isoformat()
-                rec_e10.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
-                rec_e10.status = EngineOutcomeType.SUCCESS
-                rec_e10.output_id = behaviour.analysis_id
-                rec_e10.metadata["behaviour_signal_count"] = len(behaviour.signals)
-                telemetry.record_engine(rec_e10)
+                rec_e10.retry_count = retries_e10
 
-                context.set_behaviour_result(behaviour)
-                context.mark_engine_completed(
-                    "engine_10_behaviour",
-                    result_id=behaviour.analysis_id,
-                    duration_ms=rec_e10.duration_ms,
-                    metadata=rec_e10.metadata,
-                )
-            except Exception as e:
-                self._handle_engine_error("engine_10_behaviour", rec_e10, t0, e, state)
-                context.mark_engine_failed("engine_10_behaviour", str(e), duration_ms=round((time.perf_counter() - t0) * 1000, 2))
-        else:
-            context.mark_engine_skipped("engine_10_behaviour", "Disabled in orchestrator config")
+                if err_e10 is not None:
+                    # Record execution failure without creating synthetic signals
+                    self._handle_engine_error("engine_10_behaviour", rec_e10, dur_e10, err_e10, state)
+                    context.mark_engine_failed("engine_10_behaviour", sanitize_sensitive_data(str(err_e10)), duration_ms=dur_e10)
+                    context.engine_states["engine_10_behaviour"].retry_count = retries_e10
+                else:
+                    state.behaviour = behaviour
+                    rec_e10.completed_at = datetime.now(timezone.utc).isoformat()
+                    rec_e10.duration_ms = dur_e10
+                    rec_e10.status = EngineOutcomeType.SUCCESS
+                    rec_e10.output_id = behaviour.analysis_id
+                    rec_e10.metadata["behaviour_signal_count"] = len(behaviour.signals)
+                    telemetry.record_engine(rec_e10)
+
+                    context.set_behaviour_result(behaviour)
+                    context.mark_engine_completed(
+                        "engine_10_behaviour",
+                        result_id=behaviour.analysis_id,
+                        duration_ms=dur_e10,
+                        metadata=rec_e10.metadata,
+                    )
+                    context.engine_states["engine_10_behaviour"].retry_count = retries_e10
 
         # ----------------------------------------------------------------------
-        # Step 10: Engine 8 — Policy & Intervention Engine (SOLE FINAL AUTHORITY)
+        # Step 10: Policy Gate & Engine 8 (SOLE FINAL POLICY AUTHORITY)
         # ----------------------------------------------------------------------
+        if cancellation_token and cancellation_token.is_cancelled:
+            context.cancel_pipeline(cancellation_token.reason or "Pipeline cancelled")
+            state.status = "CANCELLED"
+            return self._build_result(
+                analysis_id, session_id, state, context, telemetry, pipe_start_perf, started_at_iso, idempotency_key
+            )
+
+        # Policy Gate: Verify all required prerequisites before invoking Engine 8
+        gate_passed, gate_reasons = PolicyGate.verify_gate(
+            context, allow_degraded=(not self.config.fail_fast)
+        )
+        if not gate_passed:
+            # Policy Gate blocked! Orchestrator does NOT make policy decisions; does NOT invent fallback decision.
+            context.mark_engine_blocked("engine_8_policy", failed_dependency="prerequisites", reason="; ".join(gate_reasons))
+            rec_e8 = EngineExecutionRecord(
+                engine_name="Engine 8: Policy & Intervention Engine",
+                engine_key="engine_8_policy",
+                started_at=datetime.now(timezone.utc).isoformat(),
+                completed_at=datetime.now(timezone.utc).isoformat(),
+                duration_ms=0.0,
+                status=EngineOutcomeType.SKIPPED,
+                error_message=sanitize_sensitive_data("; ".join(gate_reasons)),
+            )
+            telemetry.record_engine(rec_e8)
+            state.warnings.append(f"Engine 8 Policy Gate blocked: {'; '.join(gate_reasons)}")
+            state.errors.extend(gate_reasons)
+            if state.status != "CANCELLED":
+                state.status = "PARTIAL" if context.content else "FAILED"
+            context.finalize_pipeline()
+            return self._build_result(
+                analysis_id, session_id, state, context, telemetry, pipe_start_perf, started_at_iso, idempotency_key
+            )
+
         context.mark_engine_started("engine_8_policy")
-        t0 = time.perf_counter()
         rec_e8 = EngineExecutionRecord(
             engine_name="Engine 8: Policy & Intervention Engine",
             engine_key="engine_8_policy",
             engine_version=E8_VERSION,
             started_at=datetime.now(timezone.utc).isoformat(),
         )
-        try:
-            fallback_threat = state.threat
-            if fallback_threat is None and state.content is not None:
-                fallback_threat = ThreatAnalysis(content_id=state.content.content_id)
 
-            fallback_fp = state.fingerprint
-            if fallback_fp is None and state.content is not None:
-                fp_obj = ScamFingerprint(
-                    fingerprint_id="SFP-NONE",
-                    exact_signature="",
-                    semantic_signature="",
-                    created_at="",
-                    updated_at="",
-                    first_seen="",
-                    last_seen="",
-                )
-                obs_obj = FingerprintObservation(
-                    observation_id="OBS-NONE",
-                    fingerprint_id="SFP-NONE",
-                    content_id=state.content.content_id,
-                    observed_at="",
-                    channel="unknown",
-                    match_type="NO_MATCH",
-                    match_confidence=0.0,
-                )
-                prov_obj = FingerprintProvenance(analyzed_at="")
-                fallback_fp = FingerprintAnalysis(
-                    content_id=state.content.content_id,
-                    fingerprint=fp_obj,
-                    observation=obs_obj,
-                    provenance=prov_obj,
-                    match_type="NO_MATCH",
-                )
+        # Resolve degraded fallback containers where required for Engine 8 rule evaluation
+        fallback_threat = state.threat
+        if fallback_threat is None and state.content is not None:
+            fallback_threat = create_empty_threat_analysis(state.content.content_id)
 
-            policy = self.e8.decide(
+        fallback_fp = state.fingerprint
+        if fallback_fp is None and state.content is not None:
+            fp_obj = ScamFingerprint(
+                fingerprint_id="SFP-NONE",
+                exact_signature="",
+                semantic_signature="",
+                created_at="",
+                updated_at="",
+                first_seen="",
+                last_seen="",
+            )
+            obs_obj = FingerprintObservation(
+                observation_id="OBS-NONE",
+                fingerprint_id="SFP-NONE",
+                content_id=state.content.content_id,
+                observed_at="",
+                channel="unknown",
+                match_type="NO_MATCH",
+                match_confidence=0.0,
+            )
+            prov_obj = FingerprintProvenance(analyzed_at="")
+            fallback_fp = FingerprintAnalysis(
+                content_id=state.content.content_id,
+                fingerprint=fp_obj,
+                observation=obs_obj,
+                provenance=prov_obj,
+                match_type="NO_MATCH",
+            )
+
+        fallback_sources = state.sources
+        if fallback_sources is None and state.content is not None:
+            fallback_sources = SourceAnalysis(
+                content_id=state.content.content_id,
+                claim_sources=[],
+                analysis_metadata=SourceAnalysisMetadata(retrieval_failures=1),
+            )
+
+        fallback_evidence = state.evidence
+        if fallback_evidence is None and state.content is not None:
+            fallback_evidence = EvidenceAnalysis(
+                content_id=state.content.content_id,
+                verifications=[],
+                analysis_metadata=EvidenceAnalysisMetadata(),
+            )
+
+        def _run_e8():
+            return self.e8.decide(
                 content=state.content,
                 claims=state.claims,
                 actions=state.actions,
-                sources=state.sources,
-                evidence=state.evidence,
+                sources=fallback_sources,
+                evidence=fallback_evidence,
                 threat=fallback_threat,
                 fingerprint=fallback_fp,
                 identity=state.identity,
                 behaviour=state.behaviour,
                 context=policy_context,
             )
-            state.policy = policy
-            rec_e8.completed_at = datetime.now(timezone.utc).isoformat()
-            rec_e8.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
-            rec_e8.status = EngineOutcomeType.SUCCESS
-            rec_e8.output_id = policy.decision_id
-            rec_e8.metadata["decision"] = policy.decision.value
-            telemetry.record_engine(rec_e8)
 
-            context.set_policy_result(policy)
-            context.mark_engine_completed(
-                "engine_8_policy",
-                result_id=policy.decision_id,
-                duration_ms=rec_e8.duration_ms,
-                metadata=rec_e8.metadata,
-            )
-            context.finalize_pipeline()
-        except Exception as e:
+        policy, dur_e8, retries_e8, err_e8 = self.executor.execute(
+            _run_e8,
+            engine_key="engine_8_policy",
+            engine_name="Engine 8: Policy & Intervention Engine",
+            timeout_ms=self.config.engine_timeout_ms,
+            max_retries=self.config.max_retries,
+            retry_delay_ms=self.config.retry_delay_ms,
+            cancellation_token=cancellation_token,
+        )
+        rec_e8.retry_count = retries_e8
+
+        if err_e8 is not None:
             rec_e8.completed_at = datetime.now(timezone.utc).isoformat()
-            rec_e8.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
+            rec_e8.duration_ms = dur_e8
             rec_e8.status = EngineOutcomeType.FATAL_FAILURE
-            rec_e8.error_type = type(e).__name__
-            rec_e8.error_message = str(e)
+            rec_e8.error_type = type(err_e8).__name__
+            clean_err = sanitize_sensitive_data(str(err_e8))
+            rec_e8.error_message = clean_err
             telemetry.record_engine(rec_e8)
             state.status = "FAILED"
-            state.errors.append(f"Engine 8 Policy Failure: {e}")
-            context.mark_engine_failed("engine_8_policy", str(e), duration_ms=round((time.perf_counter() - t0) * 1000, 2))
+            state.errors.append(f"Engine 8 Policy Failure: {clean_err}")
+            context.mark_engine_failed("engine_8_policy", clean_err, duration_ms=dur_e8)
+            context.engine_states["engine_8_policy"].retry_count = retries_e8
             context.finalize_pipeline()
-            raise FatalOrchestrationError(f"Engine 8 policy failed: {e}", engine_name="engine_8_policy") from e
+            raise FatalOrchestrationError(f"Engine 8 policy failed: {clean_err}", engine_name="engine_8_policy") from err_e8
 
-        # Finalize pipeline execution state
+        state.policy = policy
+        rec_e8.completed_at = datetime.now(timezone.utc).isoformat()
+        rec_e8.duration_ms = dur_e8
+        rec_e8.status = EngineOutcomeType.SUCCESS
+        rec_e8.output_id = policy.decision_id
+        rec_e8.metadata["decision"] = policy.decision.value
+        telemetry.record_engine(rec_e8)
+
+        context.set_policy_result(policy, allow_degraded=(not self.config.fail_fast))
+        context.mark_engine_completed(
+            "engine_8_policy",
+            result_id=policy.decision_id,
+            duration_ms=dur_e8,
+            metadata=rec_e8.metadata,
+        )
+        context.engine_states["engine_8_policy"].retry_count = retries_e8
+        context.finalize_pipeline()
+
+        return self._build_result(
+            analysis_id, session_id, state, context, telemetry, pipe_start_perf, started_at_iso, idempotency_key
+        )
+
+    def _build_result(
+        self,
+        analysis_id: str,
+        session_id: Optional[str],
+        state: OrchestrationState,
+        context: AnalysisContext,
+        telemetry: PipelineTelemetry,
+        pipe_start_perf: float,
+        started_at_iso: str,
+        idempotency_key: Optional[str] = None,
+    ) -> OrchestrationResult:
+        """Construct the final OrchestrationResult and cache for idempotency if applicable."""
         completed_at_iso = datetime.now(timezone.utc).isoformat()
         state.completed_at = completed_at_iso
         telemetry.completed_at = completed_at_iso
         telemetry.total_duration_ms = round((time.perf_counter() - pipe_start_perf) * 1000, 2)
 
-        if state.errors and state.status != "FAILED":
+        if context.status == PipelineStatus.CANCELLED or state.status == "CANCELLED":
+            state.status = "CANCELLED"
+        elif state.errors and state.status != "FAILED":
             state.status = "DEGRADED"
-        elif not state.errors:
+        elif not state.errors and state.status not in ("FAILED", "CANCELLED", "PARTIAL"):
             state.status = "COMPLETED"
 
         provenance = {
@@ -670,7 +1049,7 @@ class ProductOrchestrator:
         context.execution_metadata["total_duration_ms"] = telemetry.total_duration_ms
         context.finalize_pipeline()
 
-        return OrchestrationResult(
+        res = OrchestrationResult(
             analysis_id=analysis_id,
             session_id=session_id,
             pipeline_status=state.status,
@@ -684,31 +1063,37 @@ class ProductOrchestrator:
             errors=state.errors,
         )
 
+        if idempotency_key:
+            self._idempotency_cache[idempotency_key] = res
+
+        return res
+
     def _handle_engine_error(
         self,
         engine_key: str,
         record: EngineExecutionRecord,
-        t0: float,
+        dur_ms: float,
         exception: Exception,
         state: OrchestrationState,
     ) -> None:
         """Handle non-fatal or fatal engine errors with graceful degradation."""
         record.completed_at = datetime.now(timezone.utc).isoformat()
-        record.duration_ms = round((time.perf_counter() - t0) * 1000, 2)
+        record.duration_ms = dur_ms
         record.error_type = type(exception).__name__
-        record.error_message = str(exception)
+        clean_msg = sanitize_sensitive_data(str(exception))
+        record.error_message = clean_msg
 
         if self.config.fail_fast:
             record.status = EngineOutcomeType.FATAL_FAILURE
             state.telemetry.record_engine(record)
             state.status = "FAILED"
-            state.errors.append(f"{record.engine_name} failed: {exception}")
+            state.errors.append(f"{record.engine_name} failed: {clean_msg}")
             raise FatalOrchestrationError(
-                f"{record.engine_name} failed: {exception}", engine_name=engine_key
+                f"{record.engine_name} failed: {clean_msg}", engine_name=engine_key
             ) from exception
 
         # Graceful degradation: Record recoverable failure and allow downstream engines to continue
         record.status = EngineOutcomeType.RECOVERABLE_FAILURE
         state.telemetry.record_engine(record)
-        state.warnings.append(f"{record.engine_name} failed recoverably: {exception}")
-        state.errors.append(f"{record.engine_name}: {exception}")
+        state.warnings.append(f"{record.engine_name} failed recoverably: {clean_msg}")
+        state.errors.append(f"{record.engine_name}: {clean_msg}")

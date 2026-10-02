@@ -33,6 +33,7 @@ class PipelineStatus(str, Enum):
     PARTIAL = "PARTIAL"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
 
 
 class EngineStatus(str, Enum):
@@ -43,6 +44,7 @@ class EngineStatus(str, Enum):
     PARTIAL = "PARTIAL"
     FAILED = "FAILED"
     SKIPPED = "SKIPPED"
+    CANCELLED = "CANCELLED"
 
 
 class ContextLifecycleStage(str, Enum):
@@ -98,6 +100,9 @@ class EngineExecutionState(BaseModel):
     analytical_result: Optional[str] = Field(default=None, description="Expected analytical outcome (e.g. NO_MATCH, SOURCE_UNAVAILABLE)")
     error_code: Optional[str] = Field(default=None, description="Machine-readable error code if failed")
     error_message: Optional[str] = Field(default=None, description="Sanitized error description if failed")
+    retry_count: int = Field(default=0, description="Number of execution retries attempted")
+    dependency_blocked: bool = Field(default=False, description="Whether engine was skipped due to prerequisite failure")
+    failed_dependency: Optional[str] = Field(default=None, description="Prerequisite engine key that caused blocking")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Safe execution metadata")
 
 
@@ -111,6 +116,7 @@ class ContextSnapshot(BaseModel):
     pending_engines: list[str] = Field(default_factory=list)
     failed_engines: list[str] = Field(default_factory=list)
     skipped_engines: list[str] = Field(default_factory=list)
+    cancelled_engines: list[str] = Field(default_factory=list)
     partial_engines: list[str] = Field(default_factory=list)
     warnings_count: int = 0
     errors_count: int = 0
@@ -299,6 +305,65 @@ class AnalysisContext(BaseModel):
             self.warnings.append(f"{state.engine_name} skipped: {reason}")
         self.updated_at = now_iso
 
+    def mark_engine_blocked(
+        self,
+        engine_key: str,
+        failed_dependency: str,
+        reason: Optional[str] = None,
+    ) -> None:
+        """Record that an engine was skipped because an upstream prerequisite failed or was blocked."""
+        now_iso = datetime.now(timezone.utc).isoformat()
+        state = self.engine_states.get(engine_key)
+        if not state:
+            state = EngineExecutionState(
+                engine_name=ENGINE_NAMES.get(engine_key, engine_key),
+                engine_key=engine_key,
+            )
+            self.engine_states[engine_key] = state
+
+        state.status = EngineStatus.SKIPPED
+        state.completed_at = now_iso
+        desc = reason or f"Prerequisite {failed_dependency} failed; execution blocked"
+        state.dependency_blocked = True
+        state.failed_dependency = failed_dependency
+        state.metadata["dependency_blocked"] = True
+        state.metadata["failed_dependency"] = failed_dependency
+        state.metadata["skip_reason"] = desc
+        self.warnings.append(f"{state.engine_name} skipped: {desc}")
+        self.updated_at = now_iso
+
+    def mark_engine_cancelled(self, engine_key: str, reason: Optional[str] = None) -> None:
+        """Record that an engine was cancelled before or during execution."""
+        now_iso = datetime.now(timezone.utc).isoformat()
+        state = self.engine_states.get(engine_key)
+        if not state:
+            state = EngineExecutionState(
+                engine_name=ENGINE_NAMES.get(engine_key, engine_key),
+                engine_key=engine_key,
+            )
+            self.engine_states[engine_key] = state
+
+        state.status = EngineStatus.CANCELLED
+        state.completed_at = now_iso
+        desc = reason or "Execution cancelled"
+        state.metadata["cancel_reason"] = desc
+        self.warnings.append(f"{state.engine_name} cancelled: {desc}")
+        self.updated_at = now_iso
+
+    def cancel_pipeline(self, reason: str = "Execution cancelled by caller") -> None:
+        """Safely cancel the entire pipeline request and mark pending/running engines as CANCELLED."""
+        now_iso = datetime.now(timezone.utc).isoformat()
+        self.status = PipelineStatus.CANCELLED
+        self.stage = ContextLifecycleStage.COMPLETED
+        for key in ALL_ENGINE_KEYS:
+            st = self.engine_states.get(key)
+            if st and st.status in (EngineStatus.PENDING, EngineStatus.RUNNING):
+                st.status = EngineStatus.CANCELLED
+                st.completed_at = now_iso
+                st.metadata["cancel_reason"] = reason
+        self.warnings.append(f"Pipeline cancelled: {reason}")
+        self.updated_at = now_iso
+
     # --------------------------------------------------------------------------
     # Controlled Engine Result Setters (Section 15)
     # --------------------------------------------------------------------------
@@ -416,7 +481,7 @@ class AnalysisContext(BaseModel):
         self.stage = ContextLifecycleStage.BEHAVIOUR_READY
         self.updated_at = datetime.now(timezone.utc).isoformat()
 
-    def set_policy_result(self, policy: PolicyDecision) -> None:
+    def set_policy_result(self, policy: PolicyDecision, allow_degraded: bool = False) -> None:
         """Attach Engine 8 PolicyDecision with validation enforcement."""
         # Enforce consistency: Policy cannot be finalized without required upstream intelligence
         if not self.content:
@@ -425,10 +490,11 @@ class AnalysisContext(BaseModel):
             raise ValueError("Policy cannot be finalized: Engine 2 claims are missing.")
         if not self.actions:
             raise ValueError("Policy cannot be finalized: Engine 3 actions are missing.")
-        if not self.sources:
-            raise ValueError("Policy cannot be finalized: Engine 4 sources are missing.")
-        if not self.evidence:
-            raise ValueError("Policy cannot be finalized: Engine 5 evidence is missing.")
+        if not allow_degraded:
+            if not self.sources:
+                raise ValueError("Policy cannot be finalized: Engine 4 sources are missing.")
+            if not self.evidence:
+                raise ValueError("Policy cannot be finalized: Engine 5 evidence is missing.")
 
         self.policy = policy
         self.engine_result_ids["policy_id"] = policy.decision_id
@@ -438,6 +504,11 @@ class AnalysisContext(BaseModel):
 
     def finalize_pipeline(self) -> None:
         """Finalize pipeline lifecycle status."""
+        if self.status == PipelineStatus.CANCELLED:
+            self.stage = ContextLifecycleStage.COMPLETED
+            self.updated_at = datetime.now(timezone.utc).isoformat()
+            return
+
         if self.errors and not self.policy:
             self.status = PipelineStatus.FAILED
         elif self.errors:
@@ -458,6 +529,7 @@ class AnalysisContext(BaseModel):
         pending: list[str] = []
         failed: list[str] = []
         skipped: list[str] = []
+        cancelled: list[str] = []
         partial: list[str] = []
 
         for key in ALL_ENGINE_KEYS:
@@ -470,6 +542,8 @@ class AnalysisContext(BaseModel):
                 failed.append(key)
             elif st.status == EngineStatus.SKIPPED:
                 skipped.append(key)
+            elif st.status == EngineStatus.CANCELLED:
+                cancelled.append(key)
             elif st.status == EngineStatus.PARTIAL:
                 partial.append(key)
 
@@ -484,6 +558,7 @@ class AnalysisContext(BaseModel):
             pending_engines=pending,
             failed_engines=failed,
             skipped_engines=skipped,
+            cancelled_engines=cancelled,
             partial_engines=partial,
             warnings_count=len(self.warnings),
             errors_count=len(self.errors),

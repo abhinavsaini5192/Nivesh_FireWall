@@ -61,6 +61,11 @@ from .orchestrator import (
     ContextLifecycleStage,
     EngineExecutionState,
     ContextSnapshot,
+    CancellationToken,
+    PipelineNode,
+    PipelineGraph,
+    PolicyGate,
+    SafeEngineExecutor,
 )
 from .schemas import (
 
@@ -230,6 +235,11 @@ __all__ = [
     "ContextLifecycleStage",
     "EngineExecutionState",
     "ContextSnapshot",
+    "CancellationToken",
+    "PipelineNode",
+    "PipelineGraph",
+    "PolicyGate",
+    "SafeEngineExecutor",
 ]
 
 

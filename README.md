@@ -1345,39 +1345,122 @@ The AnalysisContext enforces zero storage of sensitive credentials, OTPs, or fin
 
 ---
 
-## 15. Test Suite Verification
+## 15. Engine Pipeline & Failure Handling (Phase 11.3)
 
-Run all pytest unit, integration, regression, orchestration, and analysis context tests across all 10 engines and the product orchestrator:
+Phase 11.3 introduces production-style dependency-aware pipeline execution and failure handling inside the Product Orchestrator without modifying engine intelligence logic or creating a secondary policy engine.
 
-`ash
+### 15.1 Canonical Dependency Execution Graph
+
+The orchestrator executes the 10 intelligence engines according to an explicit DAG (PipelineGraph):
+
+\\	ext
+                    ENGINE 1 (Content)
+                            │
+                            ▼
+                    ENGINE 2 (Claims)
+                            │
+                            ▼
+                    ENGINE 3 (Actions)
+                            │
+                            ▼
+                    ENGINE 4 (Sources)
+                            │
+                            ▼
+                    ENGINE 5 (Evidence)
+                            │
+              ┌─────────────┼─────────────┐
+              ▼             ▼             ▼
+       ENGINE 6 (Threat) ENGINE 7 (FP) ENGINE 9 (Identity)
+              │             │             │
+              └─────────────┼─────────────┘
+                            ▼
+                     ENGINE 10 (Behaviour)
+                            │
+                            ▼
+                     ENGINE 8 (Policy)
+                            │
+                            ▼
+                      FINAL POLICY
+\
+### 15.2 Execution State Model & Failure Categorization
+
+Every engine invocation transitions through controlled lifecycle states (PENDING -> RUNNING -> COMPLETED / SKIPPED / FAILED / CANCELLED). Outcomes are strictly partitioned into three categories:
+
+1. **Successful Analysis**: Engine executes and returns its analytical result (SUCCESS).
+2. **Recoverable / Expected Analytical Degraded State**: Engine reports valid domain outcomes such as SOURCE_UNAVAILABLE, NOT_ESTABLISHED, INSUFFICIENT_EVIDENCE, or NO_MATCH. These are recorded as analytical results (EXPECTED_ANALYTICAL_RESULT), not system crashes.
+3. **Execution Failure**: Unexpected exceptions, timeouts, or dependency crashes. These are marked FAILED with sanitized error messages and never fabricated into fake intelligence signals.
+
+### 15.3 Dependency-Aware Blocking
+
+If an engine requires a failed prerequisite:
+- The dependent engine is marked SKIPPED with dependency_blocked=True and ailed_dependency set to the prerequisite key.
+- No synthetic or fabricated evidence, threat signals, identity findings, or behavioural events are created.
+- Upstream successful results remain completely intact and uncorrupted.
+
+### 15.4 Bounded Retry & Side-Effect Protection
+
+- Transient network and orchestration failures support bounded retries (max_retries, 
+etry_delay_ms).
+- Retries are deterministic, observable (
+etry_count tracked in both telemetry and EngineExecutionState), and side-effect safe.
+- **Fingerprint Protection**: Engine 7 duplicate origin hash detection (_content_hash_registry) guarantees that retried or repeated executions never artificially inflate fingerprint observation counts.
+
+### 15.5 Timeouts & Cooperative Cancellation
+
+- **Per-Engine Timeout Enforcement**: Handled via SafeEngineExecutor using worker thread timeouts (engine_timeout_ms). On timeout, the engine is cleanly marked FAILED with timeout reason and duration recorded.
+- **Safe Cancellation**: Controlled via thread-safe CancellationToken. When cancelled, in-flight pipelines transition from RUNNING to CANCELLED, remaining engines are marked CANCELLED, and the context accurately reports CANCELLED (never falsely reporting COMPLETED).
+
+### 15.6 Policy Gate & Policy Authority Boundary
+
+- **Engine 8 Sole Authority**: Engine 8 remains the sole, final safety policy decision authority. The orchestrator never independently invents or overrides policy decisions.
+- **Policy Gate (PolicyGate.verify_gate)**: Before invoking Engine 8, the Policy Gate verifies that:
+  1. Required content exists.
+  2. Claims and actions states are valid.
+  3. Source and evidence results are represented (or explicitly degraded).
+  4. Threat, fingerprint, identity, and behavioural findings are represented where required.
+  5. No prerequisite engine is in an unresolved RUNNING or PENDING state.
+  6. The pipeline has not been cancelled.
+- If prerequisites fail or cancellation occurred, Engine 8 is skipped and no fallback policy decision is fabricated (policy_decision=None).
+
+### 15.7 Structured Telemetry & Privacy Boundary
+
+- Telemetry captures structured metrics: engine_name, engine_key, engine_version, started_at, completed_at, duration_ms, status, output_id, 
+etry_count, and metadata.
+- **Privacy Sanitization**: Passwords, OTPs, PINs, CVVs, card numbers, bank account numbers, raw credentials, and keystrokes are automatically scrubbed from error messages, telemetry, and execution metadata using regular expression redaction ([REDACTED], [REDACTED_CARD]).
+
+---
+
+## 16. Test Suite Verification
+
+Run all pytest unit, integration, regression, orchestration, context, and pipeline tests across all 10 engines and the product orchestrator:
+
+```bash
 python -X utf8 -m pytest -v
-`
-
-**Results:** 423 passed in 32.09s (0 failed, 100% pass rate).
+```
+**Results:** 441 passed in 24.42s (0 failed, 100% pass rate).
 - **Existing 10 Intelligence Engines**: 386 tests.
-- **Phase 11.1 Product Orchestrator Core (	ests/test_orchestrator.py)**: 17 tests.
-- **Phase 11.2 Unified Analysis Context Suite (	ests/test_context.py)**: 20 tests.
-  1. Context creation & default state
-  2. Session correlation match
-  3. Session correlation mismatch detection
-  4. Canonical engine outputs attachment (all 10 engines strongly typed)
-  5. Engine execution state transitions (PENDING -> RUNNING -> COMPLETED/FAILED/SKIPPED)
-  6. Partial / analytical results vs execution failure
-  7. Failure representation & pipeline degradation
-  8. Fatal failure aborts pipeline
-  9. Analysis correlation across engine result IDs
-  10. Upstream references tracking
-  11. Sensitive data boundary stripping
-  12. Mutation protection across engine boundaries
-  13. Session isolation across distinct contexts
-  14. Safe serialization & round-trip deserialization
-  15. Context determinism
-  16. Policy requires upstream intelligence
-  17. Inconsistent state validation raises
-  18. Context snapshot generation
-  19. ProductOrchestrator populates analysis context
-  20. Full Integration Benchmark: case reconstruction from AnalysisContext
+- **Phase 11.1 Product Orchestrator Core (`tests/test_orchestrator.py`)**: 17 tests.
+- **Phase 11.2 Unified Analysis Context Suite (`tests/test_context.py`)**: 20 tests.
+- **Phase 11.3 Engine Pipeline & Failure Handling (`tests/test_pipeline.py`)**: 18 tests.
+  1. Full successful execution (`E1` -> `E2` -> `E3` -> `E4` -> `E5` -> `E6/E7/E9/E10` -> `E8`)
+  2. Correct dependency order enforcement
+  3. Engine 1 failure blocks downstream engines
+  4. Engine 4 source failure preserves failure, skips E5, produces no fake evidence
+  5. Engine 6 threat failure preserves independent E9/E10 results, skips E7
+  6. Engine 7 fingerprint failure isolation
+  7. Engine 9 identity failure not converted to `IDENTITY_MISMATCH`
+  8. Engine 10 behaviour failure creates no synthetic behavioural signals
+  9. Policy Gate blocks Engine 8 when prerequisites are unresolved
+  10. Policy authority: Engine 8 is sole decision authority; orchestrator never invents policy
+  11. Timeout protection: engine timeout handled gracefully without hanging
+  12. Bounded retry: transient failure retried deterministically with observable `retry_count`
+  13. Retry safety for fingerprinting: repeated runs do not inflate observation count
+  14. Session isolation: simultaneous sessions remain completely independent
+  15. Context integrity: one engine cannot overwrite another engine's results
+  16. Safe cancellation: leaves context as CANCELLED, never COMPLETED
+  17. Deterministic execution: equivalent inputs yield identical execution states
+  18. Privacy preservation: telemetry and errors never leak credentials, OTPs, PINs, or cards
 
 **Reconciled Arithmetic**:
-386 \text{ (Engines 1--10)} + 17 \text{ (Product Orchestrator Core)} + 20 \text{ (Unified Analysis Context)} = 423 \text{ tests (100\% match)}
+386 \text{ (Engines 1--10)} + 17 \text{ (Phase 11.1)} + 20 \text{ (Phase 11.2)} + 18 \text{ (Phase 11.3)} = 441 \text{ tests (100\% match)}
 *(Zero regressions across all existing suites, zero skipped, 0 failed across consecutive fresh-process runs).*
