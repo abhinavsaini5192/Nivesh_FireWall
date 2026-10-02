@@ -659,7 +659,12 @@ def _rule_inform_market_opinion_prediction(
         return None
 
     # Check for claims with modality OPINION or PREDICTION
-    has_prediction = any(c.modality in ("OPINION", "PREDICTION") or c.claim_type == "MARKET_PREDICTION" for c in claims.claims)
+    has_prediction = any(
+        (hasattr(c, "modality") and getattr(c.modality, "type", "").upper() in ("OPINION", "PREDICTION"))
+        or str(getattr(c, "modality", "")).upper() in ("OPINION", "PREDICTION")
+        or str(c.claim_type).upper() in ("OPINION", "PREDICTION", "MARKET_PREDICTION")
+        for c in claims.claims
+    )
     if has_prediction:
         return PolicyRuleResult(
             rule_id="RULE-INFORM-01",
@@ -696,36 +701,37 @@ def _rule_inform_financial_content_context(
     if act_types.intersection(HIGH_IMPACT_ACTION_TYPES):
         return None
 
-    # Financially relevant content without major threat triggers
-    is_fin = False
-    if hasattr(content, "content_features") and getattr(content.content_features, "contains_financial_content", False):
-        is_fin = True
-    elif hasattr(content, "features") and getattr(content.features, "is_financially_relevant", False):
-        is_fin = True
-    elif getattr(content, "is_financially_relevant", False):
-        is_fin = True
-    elif claims and len(claims.claims) > 0:
-        is_fin = True
+    # Informational context is for non-critical content where specific financial claims
+    # (e.g. corporate debt, financial performance, regulatory disclosures) warrant neutral contextual awareness.
+    # Benign educational content or heuristic general text must remain ALLOW.
+    if not claims or len(claims.claims) == 0:
+        return None
 
-    if is_fin:
-        return PolicyRuleResult(
-            rule_id="RULE-INFORM-02",
-            rule_name="General Financial Content Informational Context",
-            decision=PolicyDecisionType.INFORM,
-            severity=PolicySeverity.LOW,
-            scope=InterventionScope.INFORMATION_ONLY,
-            reason_codes=[
-                ReasonCode.FINANCIAL_CONTENT_DETECTED,
-            ],
-            primary_reason="Contextual verification: Financial terminology or market topics detected with no critical threat indicators.",
-            supporting_reasons=[
-                "Content references financial assets or market terms.",
-                "No high-impact or suspicious action flow detected.",
-            ],
-            triggered_signals=[],
-            required_user_confirmation=False,
-        )
-    return None
+    has_specific_claims = any(
+        c.claim_type in ("REGULATORY_STATUS", "CORPORATE_FINANCIAL", "FINANCIAL_RETURN")
+        or not c.attributes.get("heuristic", False)
+        for c in claims.claims
+    )
+    if not has_specific_claims:
+        return None
+
+    return PolicyRuleResult(
+        rule_id="RULE-INFORM-02",
+        rule_name="General Financial Content Informational Context",
+        decision=PolicyDecisionType.INFORM,
+        severity=PolicySeverity.LOW,
+        scope=InterventionScope.INFORMATION_ONLY,
+        reason_codes=[
+            ReasonCode.FINANCIAL_CONTENT_DETECTED,
+        ],
+        primary_reason="Contextual verification: Financial claims detected with no critical threat indicators.",
+        supporting_reasons=[
+            "Content references financial assets or makes factual claims.",
+            "No high-impact or suspicious action flow detected.",
+        ],
+        triggered_signals=[],
+        required_user_confirmation=False,
+    )
 
 
 # ==============================================================================
@@ -751,11 +757,10 @@ def _rule_allow_benign_educational_or_general(
         rule_id="RULE-ALLOW-01",
         rule_name="Benign Educational or General Information",
         decision=PolicyDecisionType.ALLOW,
-        severity=PolicySeverity.NONE,
+        severity=PolicySeverity.INFORMATIONAL,
         scope=InterventionScope.INFORMATION_ONLY,
         reason_codes=[
             ReasonCode.NO_INTERVENTION_REQUIRED,
-            ReasonCode.FINANCIAL_EDUCATION_INFORMATIONAL,
         ],
         primary_reason="No policy intervention required: Content is informational or educational without high-impact requested actions.",
         supporting_reasons=[

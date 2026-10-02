@@ -21,6 +21,7 @@ from nivesh.threat.engine import ThreatIntelligenceEngine
 from nivesh.fingerprints.engine import ScamFingerprintEngine
 from nivesh.policy.engine import PolicyInterventionEngine
 from nivesh.policy.schemas import PolicyDecisionType, PolicyContext
+from nivesh.policy.reason_codes import ReasonCode
 
 
 def test_full_8_engine_end_to_end_pipeline():
@@ -114,6 +115,7 @@ def test_full_8_engine_pipeline_benign_informational_content():
     fingerprint = fe.create_or_match(content, claims, actions, sources, evidence, threat)
     decision = pe.decide(content, claims, actions, sources, evidence, threat, fingerprint)
 
-    assert decision.decision in (PolicyDecisionType.ALLOW, PolicyDecisionType.INFORM)
+    assert decision.decision == PolicyDecisionType.ALLOW
     assert decision.required_user_confirmation is False
-    assert decision.severity in ("NONE", "LOW")
+    assert decision.severity in ("INFORMATIONAL", "NONE", "LOW")
+    assert ReasonCode.NO_INTERVENTION_REQUIRED in decision.reason_codes

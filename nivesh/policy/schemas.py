@@ -31,6 +31,7 @@ class InterventionScope(str, Enum):
 class PolicySeverity(str, Enum):
     """Severity tier associated with the intervention."""
     NONE = "NONE"
+    INFORMATIONAL = "INFORMATIONAL"
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"

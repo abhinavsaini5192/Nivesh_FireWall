@@ -33,6 +33,7 @@ class PolicyPrecedenceResolver:
         PolicySeverity.HIGH: 4,
         PolicySeverity.MEDIUM: 3,
         PolicySeverity.LOW: 2,
+        PolicySeverity.INFORMATIONAL: 1,
         PolicySeverity.NONE: 1,
     }
 
@@ -97,6 +98,8 @@ class PolicyPrecedenceResolver:
 
         for r in sorted_rules:
             for c in r.reason_codes:
+                if active_decision != PolicyDecisionType.ALLOW and c == ReasonCode.NO_INTERVENTION_REQUIRED:
+                    continue
                 if c not in seen_codes:
                     seen_codes.add(c)
                     aggregated_codes.append(c)
@@ -110,6 +113,11 @@ class PolicyPrecedenceResolver:
                 if sig not in seen_signals:
                     seen_signals.add(sig)
                     aggregated_signals.append(sig)
+
+        if active_decision == PolicyDecisionType.ALLOW:
+            aggregated_codes = [ReasonCode.NO_INTERVENTION_REQUIRED]
+            active_severity = PolicySeverity.INFORMATIONAL
+            aggregated_signals = []
 
         return PolicyRuleResult(
             rule_id=primary_rule.rule_id,

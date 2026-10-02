@@ -1007,7 +1007,7 @@ Run all pytest unit, integration, and regression tests across all 8 engines:
 python -X utf8 -m pytest -v
 ```
 
-**Results:** `303 passed in 14.65s` (0 failed, 100% pass rate).
+**Results:** `309 passed in 15.18s` (0 failed, 100% pass rate).
 - **Engine 1 Unit Tests**: Text normalizer (7), URL extractor (8), Social extractor (6), Contact extractor (4), Financial extractor (6), Entity extractor (5), CTA extractor (7), Language detector (4), Financial relevance (4), OCR adapter (6), URL adapter (3), Primary fixture (3), API (4) -> **67 tests**.
 - **Engine 2 Unit Tests**: Claim canonicalizer (7), Modality and Temporal (8), Claim segmenter & Action filtering (5), Verification requirements & Relations (5), Benchmark cases (12), Primary fixture (1), Engine 1 -> Engine 2 integration (3), Claim API (3) -> **44 tests**.
 - **Engine 3 Unit Tests**: Schemas & validation (2), Classifier & hierarchy (4), Parameter extractor & privacy (3), Benchmark cases (6), Primary fixture benchmark (1), Engine 1 -> Engine 2 -> Engine 3 integration (2), Action API (4) -> **22 tests**.
@@ -1015,11 +1015,11 @@ python -X utf8 -m pytest -v
 - **Engine 5 Unit Tests**: Schemas & validation (2), Regulatory & identity matching (6), Numerical, ratios, & debt verification (6), Opinions & predictions (2), Source conflicts & absence handling (3), Prompt injection defense (1), Primary fixture benchmark (1), Full 5-engine end-to-end integration (1), Evidence API (3) -> **25 tests**.
 - **Engine 6 Unit Tests**: Schemas & validation (5), Threat signal detector (5), Attack path & transitions (1), Claim-to-action linker (3), Semantic correction tests (6), High-impact actions & evidence weaknesses (2), Multi-signal combinations & threat families (2), Negative guardrails (5), Primary fixture benchmark (1), Full 6-engine end-to-end integration (2), Threat API (4) -> **36 tests**.
 - **Engine 7 Unit & Regression Tests**: Schemas & validation (5), Feature extraction & canonical ordering (2), Multi-dimensional matcher (3), Lifecycle, disputes & relationships (5), Copy-amplification defense & observation counting (2), Primary benchmark fixture & secondary demo (1), Adversarial false-match & false-split tests (2), Privacy preservation & boundary guardrails (1), Full 7-engine end-to-end integration (1), FastAPI endpoints (3), Regression suite (5) -> **30 tests**.
-- **Engine 8 Unit & Integration Tests**: Schemas & validation (5), Individual rules (5), Precedence & user overrides (7), Negative guardrails (5), Neutral explainability (2), Privacy preservation & safety boundaries (2), FastAPI endpoints (4), Primary benchmark fixture (2), Full 8-engine end-to-end integration (2) -> **34 tests**.
+- **Engine 8 Unit & Integration Tests**: Schemas & validation (5), Individual rules (5), Precedence & user overrides (7), Negative guardrails (9), Neutral explainability (2), Privacy preservation & safety boundaries (2), FastAPI endpoints (4), Primary benchmark fixture & determinism (4), Full 8-engine end-to-end integration (2) -> **40 tests**.
 
 **Reconciled Arithmetic**:
-$$67 + 44 + 22 + 45 + 25 + 36 + 30 + 34 = 303 \text{ tests (100\% match)}$$
-*(Zero regressions across all existing suites, zero skipped, 0 failed).*
+$$67 + 44 + 22 + 45 + 25 + 36 + 30 + 40 = 309 \text{ tests (100\% match)}$$
+*(Zero regressions across all existing suites, zero skipped, 0 failed across two consecutive fresh-process runs).*
 
 
 
