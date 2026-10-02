@@ -1,6 +1,6 @@
 """Full 9-Engine End-to-End Pipeline Integration Test.
 
-Executes real sequential pipeline:
+Executes real sequential pipeline with corrected downstream ordering:
 Raw Content
   -> Engine 1 (Content Intelligence)
   -> Engine 2 (Claim Intelligence)
@@ -9,8 +9,8 @@ Raw Content
   -> Engine 5 (Evidence Verification)
   -> Engine 6 (Threat & Attack-Path Intelligence)
   -> Engine 7 (Scam Fingerprint & Collective Threat Intelligence)
-  -> Engine 8 (Policy & Intervention)
   -> Engine 9 (Identity Verification & Entity Resolution)
+  -> Engine 8 (Policy & Intervention)
 """
 
 from nivesh.engine import ContentIntelligenceEngine
@@ -29,7 +29,7 @@ from nivesh.identity.schemas import (
 
 
 def test_full_9_engine_primary_benchmark_pipeline():
-    """Execute complete 1 -> 9 pipeline on primary benchmark content."""
+    """Execute complete 1 -> 9 pipeline on primary benchmark content with Engine 9 before Engine 8."""
     # Instantiate all 9 real engines
     ce = ContentIntelligenceEngine()
     cl = ClaimIntelligenceEngine()
@@ -75,11 +75,7 @@ def test_full_9_engine_primary_benchmark_pipeline():
     fingerprint = fe.create_or_match(content, claims, actions, sources, evidence, threat)
     assert fingerprint.fingerprint is not None
 
-    # 8. Engine 8
-    decision = pe.decide(content, claims, actions, sources, evidence, threat, fingerprint)
-    assert decision.decision.value in ("PAUSE", "BLOCK", "WARN")
-
-    # 9. Engine 9: Identity Verification & Entity Resolution
+    # 8. Engine 9: Identity Verification & Entity Resolution (executes BEFORE Engine 8 Policy)
     identity_analysis = ie.verify(
         content=content,
         claims=claims,
@@ -120,9 +116,24 @@ def test_full_9_engine_primary_benchmark_pipeline():
     assert set(identity_analysis.upstream_references["claim_ids"]) == {c.claim_id for c in claims.claims}
     assert identity_analysis.upstream_references["threat_id"] == threat.content_id
 
+    # 9. Engine 8: Policy & Intervention (consumes IdentityAnalysis from Engine 9)
+    decision = pe.decide(
+        content=content,
+        claims=claims,
+        actions=actions,
+        sources=sources,
+        evidence=evidence,
+        threat=threat,
+        fingerprint=fingerprint,
+        identity=identity_analysis,
+    )
+    assert decision.decision.value in ("PAUSE", "BLOCK", "WARN")
+    assert decision.relevant_identity_id == identity_analysis.analysis_id
+    assert decision.audit_metadata.get("identity_status") == identity_analysis.identity_status.value
+
 
 def test_full_9_engine_informational_content():
-    """Execute complete 1 -> 9 pipeline on benign educational content."""
+    """Execute complete 1 -> 9 pipeline on benign educational content with Engine 9 before Engine 8."""
     ce = ContentIntelligenceEngine()
     cl = ClaimIntelligenceEngine()
     ae = ActionIntelligenceEngine()
@@ -142,8 +153,8 @@ def test_full_9_engine_informational_content():
     evidence = ee.verify(content, claims, sources)
     threat = te.analyze(content, claims, actions, sources, evidence)
     fingerprint = fe.create_or_match(content, claims, actions, sources, evidence, threat)
-    decision = pe.decide(content, claims, actions, sources, evidence, threat, fingerprint)
 
+    # Engine 9 before Engine 8
     identity_analysis = ie.verify(
         content=content,
         claims=claims,
@@ -152,6 +163,20 @@ def test_full_9_engine_informational_content():
         threat=threat,
     )
 
+    # Engine 8 consumes Engine 9 output
+    decision = pe.decide(
+        content=content,
+        claims=claims,
+        actions=actions,
+        sources=sources,
+        evidence=evidence,
+        threat=threat,
+        fingerprint=fingerprint,
+        identity=identity_analysis,
+    )
+
     assert decision.decision.value == "ALLOW"
+    assert decision.relevant_identity_id == identity_analysis.analysis_id
     assert identity_analysis.identity_status in (IdentityStatus.NOT_APPLICABLE, IdentityStatus.NOT_ESTABLISHED)
     assert identity_analysis.confidence >= 0.5
+

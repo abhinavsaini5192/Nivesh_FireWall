@@ -59,6 +59,7 @@ class PolicyRule:
         evidence: EvidenceAnalysis,
         threat: ThreatAnalysis,
         fingerprint: FingerprintAnalysis,
+        identity: Optional[Any] = None,
         context: Optional[PolicyContext] = None,
     ) -> Optional[PolicyRuleResult]:
         return self.condition_fn(
@@ -69,6 +70,7 @@ class PolicyRule:
             evidence=evidence,
             threat=threat,
             fingerprint=fingerprint,
+            identity=identity,
             context=context,
         )
 
@@ -152,7 +154,11 @@ def _get_evidence_verdicts(evidence: EvidenceAnalysis) -> set[str]:
     return verdicts
 
 
-def _has_unverified_authority(threat: ThreatAnalysis, evidence: EvidenceAnalysis) -> bool:
+def _has_unverified_authority(
+    threat: ThreatAnalysis,
+    evidence: EvidenceAnalysis,
+    identity: Optional[Any] = None,
+) -> bool:
     sig_types = _get_threat_signal_types(threat)
     verdicts = _get_evidence_verdicts(evidence)
     verif_list = getattr(evidence, "verifications", getattr(evidence, "results", []))
@@ -160,23 +166,57 @@ def _has_unverified_authority(threat: ThreatAnalysis, evidence: EvidenceAnalysis
         any("not_found" in str(m).lower() or "missing" in str(m).lower() for m in getattr(v, "missing_elements", []))
         for v in verif_list
     )
+    has_identity_unverified = False
+    if identity is not None and hasattr(identity, "identity_status"):
+        status_val = (
+            identity.identity_status.value
+            if hasattr(identity.identity_status, "value")
+            else str(identity.identity_status)
+        )
+        if status_val in ("NOT_ESTABLISHED", "AMBIGUOUS", "INSUFFICIENT_EVIDENCE", "SOURCE_UNAVAILABLE"):
+            has_identity_unverified = True
+
     return bool(
         "IDENTITY_NOT_ESTABLISHED" in sig_types
         or "INSUFFICIENT_EVIDENCE" in verdicts
         or "NO_USABLE_EVIDENCE" in verdicts
         or "NOT_VERIFIABLE" in verdicts
         or has_missing
+        or has_identity_unverified
     )
 
 
-def _has_regulatory_conflict(threat: ThreatAnalysis, evidence: EvidenceAnalysis) -> bool:
+def _has_regulatory_conflict(
+    threat: ThreatAnalysis,
+    evidence: EvidenceAnalysis,
+    identity: Optional[Any] = None,
+) -> bool:
     sig_types = _get_threat_signal_types(threat)
     verdicts = _get_evidence_verdicts(evidence)
-    return "REGULATORY_CLAIM_CONFLICT" in sig_types or "REGULATORY_CONFLICT" in verdicts
+    has_id_conflict = False
+    if identity is not None and hasattr(identity, "authority_alignments"):
+        for a in identity.authority_alignments:
+            status = getattr(a, "alignment_status", "")
+            if status in ("MISMATCH", "CONFLICT"):
+                has_id_conflict = True
+    return "REGULATORY_CLAIM_CONFLICT" in sig_types or "REGULATORY_CONFLICT" in verdicts or has_id_conflict
 
 
-def _has_factual_contradiction(evidence: EvidenceAnalysis) -> bool:
-    return "CONTRADICTED" in _get_evidence_verdicts(evidence)
+def _has_factual_contradiction(
+    evidence: EvidenceAnalysis,
+    identity: Optional[Any] = None,
+) -> bool:
+    has_evidence_contradiction = "CONTRADICTED" in _get_evidence_verdicts(evidence)
+    has_identity_contradiction = False
+    if identity is not None and hasattr(identity, "identity_status"):
+        status_val = (
+            identity.identity_status.value
+            if hasattr(identity.identity_status, "value")
+            else str(identity.identity_status)
+        )
+        if status_val == "IDENTITY_MISMATCH":
+            has_identity_contradiction = True
+    return has_evidence_contradiction or has_identity_contradiction
 
 
 def _has_confirmed_threat_match(fingerprint: FingerprintAnalysis) -> bool:
@@ -184,6 +224,7 @@ def _has_confirmed_threat_match(fingerprint: FingerprintAnalysis) -> bool:
         fingerprint.match_type in ("EXACT_MATCH", "STRUCTURAL_MATCH", "SEMANTIC_VARIANT")
         and (fingerprint.structural_equivalence or fingerprint.match_type == "EXACT_MATCH")
     )
+
 
 
 # ==============================================================================
@@ -198,7 +239,9 @@ def _rule_block_credential_harvesting(
     evidence: EvidenceAnalysis,
     threat: ThreatAnalysis,
     fingerprint: FingerprintAnalysis,
+    identity: Optional[Any] = None,
     context: Optional[PolicyContext] = None,
+    **kwargs: Any,
 ) -> Optional[PolicyRuleResult]:
     sig_types = _get_threat_signal_types(threat)
     
@@ -208,7 +251,15 @@ def _rule_block_credential_harvesting(
 
     # Must have active impersonation or direct factual contradiction or credential harvest combination
     has_impersonation = "AUTHORITY_IMPERSONATION" in sig_types
-    has_contradiction = _has_factual_contradiction(evidence)
+    if identity is not None and hasattr(identity, "identity_status"):
+        status_val = (
+            identity.identity_status.value
+            if hasattr(identity.identity_status, "value")
+            else str(identity.identity_status)
+        )
+        if status_val == "IDENTITY_MISMATCH":
+            has_impersonation = True
+    has_contradiction = _has_factual_contradiction(evidence, identity=identity)
     has_cred_combo = any(c.combination_type == "CREDENTIAL_HARVESTING" for c in threat.threat_combinations)
 
     if (has_impersonation or has_contradiction or has_cred_combo) and _has_confirmed_threat_match(fingerprint):
@@ -246,7 +297,9 @@ def _rule_block_contradicted_payment(
     evidence: EvidenceAnalysis,
     threat: ThreatAnalysis,
     fingerprint: FingerprintAnalysis,
+    identity: Optional[Any] = None,
     context: Optional[PolicyContext] = None,
+    **kwargs: Any,
 ) -> Optional[PolicyRuleResult]:
     sig_types = _get_threat_signal_types(threat)
 
@@ -255,8 +308,16 @@ def _rule_block_contradicted_payment(
         return None
 
     # Must have direct factual contradiction AND authority impersonation / active known threat match
-    has_contradiction = _has_factual_contradiction(evidence)
+    has_contradiction = _has_factual_contradiction(evidence, identity=identity)
     has_impersonation = "AUTHORITY_IMPERSONATION" in sig_types
+    if identity is not None and hasattr(identity, "identity_status"):
+        status_val = (
+            identity.identity_status.value
+            if hasattr(identity.identity_status, "value")
+            else str(identity.identity_status)
+        )
+        if status_val == "IDENTITY_MISMATCH":
+            has_impersonation = True
     is_confirmed_threat = _has_confirmed_threat_match(fingerprint)
 
     if (has_contradiction or has_impersonation) and is_confirmed_threat:
@@ -298,7 +359,9 @@ def _rule_pause_high_impact_payment_threat_pattern(
     evidence: EvidenceAnalysis,
     threat: ThreatAnalysis,
     fingerprint: FingerprintAnalysis,
+    identity: Optional[Any] = None,
     context: Optional[PolicyContext] = None,
+    **kwargs: Any,
 ) -> Optional[PolicyRuleResult]:
     sig_types = _get_threat_signal_types(threat)
 
@@ -306,8 +369,8 @@ def _rule_pause_high_impact_payment_threat_pattern(
     if not _has_payment_action(actions, threat):
         return None
 
-    has_unverified_auth = _has_unverified_authority(threat, evidence)
-    has_reg_conflict = _has_regulatory_conflict(threat, evidence)
+    has_unverified_auth = _has_unverified_authority(threat, evidence, identity=identity)
+    has_reg_conflict = _has_regulatory_conflict(threat, evidence, identity=identity)
     has_guaranteed_ret = "GUARANTEED_RETURN_LANGUAGE" in sig_types or any(c.claim_type == "FINANCIAL_RETURN" for c in claims.claims)
     has_channel_or_app = _has_channel_migration_action(actions, threat) or _has_software_action(actions, threat)
     has_fp_match = fingerprint.match_type in ("EXACT_MATCH", "STRUCTURAL_MATCH", "SEMANTIC_VARIANT")
@@ -368,7 +431,9 @@ def _rule_pause_software_installation_unverified(
     evidence: EvidenceAnalysis,
     threat: ThreatAnalysis,
     fingerprint: FingerprintAnalysis,
+    identity: Optional[Any] = None,
     context: Optional[PolicyContext] = None,
+    **kwargs: Any,
 ) -> Optional[PolicyRuleResult]:
     sig_types = _get_threat_signal_types(threat)
 
@@ -376,8 +441,8 @@ def _rule_pause_software_installation_unverified(
     if not _has_software_action(actions, threat):
         return None
 
-    has_unverified_auth = _has_unverified_authority(threat, evidence)
-    has_reg_conflict = _has_regulatory_conflict(threat, evidence)
+    has_unverified_auth = _has_unverified_authority(threat, evidence, identity=identity)
+    has_reg_conflict = _has_regulatory_conflict(threat, evidence, identity=identity)
     has_guaranteed_ret = "GUARANTEED_RETURN_LANGUAGE" in sig_types
     has_fp_match = fingerprint.match_type in ("EXACT_MATCH", "STRUCTURAL_MATCH", "SEMANTIC_VARIANT")
 
@@ -426,14 +491,16 @@ def _rule_pause_credential_disclosure(
     evidence: EvidenceAnalysis,
     threat: ThreatAnalysis,
     fingerprint: FingerprintAnalysis,
+    identity: Optional[Any] = None,
     context: Optional[PolicyContext] = None,
+    **kwargs: Any,
 ) -> Optional[PolicyRuleResult]:
     sig_types = _get_threat_signal_types(threat)
 
     if not _has_credential_action(actions, threat):
         return None
 
-    has_unverified = _has_unverified_authority(threat, evidence)
+    has_unverified = _has_unverified_authority(threat, evidence, identity=identity)
     if has_unverified or "IDENTITY_NOT_ESTABLISHED" in sig_types or "CREDENTIAL_HARVESTING" in sig_types:
         return PolicyRuleResult(
             rule_id="RULE-PAUSE-03",
@@ -471,7 +538,9 @@ def _rule_warn_channel_migration_unverified(
     evidence: EvidenceAnalysis,
     threat: ThreatAnalysis,
     fingerprint: FingerprintAnalysis,
+    identity: Optional[Any] = None,
     context: Optional[PolicyContext] = None,
+    **kwargs: Any,
 ) -> Optional[PolicyRuleResult]:
     sig_types = _get_threat_signal_types(threat)
 
@@ -483,9 +552,9 @@ def _rule_warn_channel_migration_unverified(
     if _has_payment_action(actions, threat) or _has_software_action(actions, threat):
         return None
 
-    has_unverified = _has_unverified_authority(threat, evidence)
+    has_unverified = _has_unverified_authority(threat, evidence, identity=identity)
     has_guaranteed_ret = "GUARANTEED_RETURN_LANGUAGE" in sig_types
-    has_reg_conflict = _has_regulatory_conflict(threat, evidence)
+    has_reg_conflict = _has_regulatory_conflict(threat, evidence, identity=identity)
     has_auth_claim = "REGULATORY_AUTHORITY_CLAIM" in sig_types or any(c.claim_type == "REGULATORY_STATUS" for c in claims.claims)
 
     if has_unverified or has_guaranteed_ret or has_reg_conflict or has_auth_claim:
@@ -528,7 +597,9 @@ def _rule_warn_guaranteed_return_language(
     evidence: EvidenceAnalysis,
     threat: ThreatAnalysis,
     fingerprint: FingerprintAnalysis,
+    identity: Optional[Any] = None,
     context: Optional[PolicyContext] = None,
+    **kwargs: Any,
 ) -> Optional[PolicyRuleResult]:
     sig_types = _get_threat_signal_types(threat)
     act_types = _get_action_types(actions)
@@ -567,14 +638,21 @@ def _rule_warn_unverified_regulatory_claim(
     evidence: EvidenceAnalysis,
     threat: ThreatAnalysis,
     fingerprint: FingerprintAnalysis,
+    identity: Optional[Any] = None,
     context: Optional[PolicyContext] = None,
+    **kwargs: Any,
 ) -> Optional[PolicyRuleResult]:
     sig_types = _get_threat_signal_types(threat)
     act_types = _get_action_types(actions)
 
-    if "REGULATORY_AUTHORITY_CLAIM" not in sig_types and not any(c.claim_type == "REGULATORY_STATUS" for c in claims.claims):
+    has_auth_claim = (
+        "REGULATORY_AUTHORITY_CLAIM" in sig_types
+        or any(c.claim_type == "REGULATORY_STATUS" for c in claims.claims)
+        or bool(identity and getattr(identity, "authority_alignments", None))
+    )
+    if not has_auth_claim:
         return None
-    if not _has_unverified_authority(threat, evidence):
+    if not _has_unverified_authority(threat, evidence, identity=identity):
         return None
     if act_types.intersection(HIGH_IMPACT_ACTION_TYPES):
         return None
@@ -607,7 +685,9 @@ def _rule_warn_threat_pattern_resemblance(
     evidence: EvidenceAnalysis,
     threat: ThreatAnalysis,
     fingerprint: FingerprintAnalysis,
+    identity: Optional[Any] = None,
     context: Optional[PolicyContext] = None,
+    **kwargs: Any,
 ) -> Optional[PolicyRuleResult]:
     act_types = _get_action_types(actions)
 
@@ -652,7 +732,9 @@ def _rule_inform_market_opinion_prediction(
     evidence: EvidenceAnalysis,
     threat: ThreatAnalysis,
     fingerprint: FingerprintAnalysis,
+    identity: Optional[Any] = None,
     context: Optional[PolicyContext] = None,
+    **kwargs: Any,
 ) -> Optional[PolicyRuleResult]:
     act_types = _get_action_types(actions)
     if act_types.intersection(HIGH_IMPACT_ACTION_TYPES):
@@ -695,7 +777,9 @@ def _rule_inform_financial_content_context(
     evidence: EvidenceAnalysis,
     threat: ThreatAnalysis,
     fingerprint: FingerprintAnalysis,
+    identity: Optional[Any] = None,
     context: Optional[PolicyContext] = None,
+    **kwargs: Any,
 ) -> Optional[PolicyRuleResult]:
     act_types = _get_action_types(actions)
     if act_types.intersection(HIGH_IMPACT_ACTION_TYPES):
@@ -746,7 +830,9 @@ def _rule_allow_benign_educational_or_general(
     evidence: EvidenceAnalysis,
     threat: ThreatAnalysis,
     fingerprint: FingerprintAnalysis,
+    identity: Optional[Any] = None,
     context: Optional[PolicyContext] = None,
+    **kwargs: Any,
 ) -> Optional[PolicyRuleResult]:
     # Default benign rule fires when no high-impact actions and no high severity threat patterns exist
     act_types = _get_action_types(actions)

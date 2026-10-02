@@ -79,6 +79,7 @@ class PolicyDecision(BaseModel):
     relevant_source_ids: list[str] = Field(default_factory=list, description="IDs of authoritative sources consulted")
     relevant_evidence_ids: list[str] = Field(default_factory=list, description="IDs of verification results involved")
     relevant_fingerprint_id: Optional[str] = Field(default=None, description="Matched collective threat fingerprint ID if any")
+    relevant_identity_id: Optional[str] = Field(default=None, description="IdentityAnalysis ID from Engine 9 if provided")
     intervention_scope: InterventionScope = Field(default=InterventionScope.CURRENT_ACTION, description="Scope of the safety intervention")
     required_user_confirmation: bool = Field(default=False, description="True if explicit user confirmation is required to proceed (True for PAUSE)")
     cooldown_seconds: Optional[int] = Field(default=None, description="Recommended cooldown/timeout before action can proceed")

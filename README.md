@@ -62,20 +62,20 @@ RAW CONTENT (Text, URL, Image)
      FingerprintAnalysis (ScamFingerprint, FingerprintObservation, FingerprintMatch[])
           │
           ▼
-┌─────────────────────────────────────────────────────────┐
-│ ENGINE 8: Policy & Intervention Engine                  │
-└─────────────────────────────────────────────────────────┘
-          │ (Answers: "What safety response should be presented before/during the user's action?")
-          ▼
-     PolicyDecision (ALLOW | INFORM | WARN | PAUSE | BLOCK)
-          │
-          ▼
 ┌───────────────────────────────────────────────────────────────────┐
 │ ENGINE 9: Identity Verification & Entity Resolution Engine        │
 └───────────────────────────────────────────────────────────────────┘
           │ (Answers: "Does the claimed entity align with authoritative identity evidence?")
           ▼
      IdentityAnalysis (IdentityStatus, ClaimedEntity[], IdentityMatch[], AuthorityAlignment[], DomainAlignment[])
+          │
+          ▼
+┌─────────────────────────────────────────────────────────┐
+│ ENGINE 8: Policy & Intervention Engine                  │
+└─────────────────────────────────────────────────────────┘
+          │ (Answers: "Given threat, fingerprint, and identity findings, what safety intervention applies?")
+          ▼
+     PolicyDecision (ALLOW | INFORM | WARN | PAUSE | BLOCK)
           │
           ▼
 ┌─────────────────────────────────────────────────────────┐
@@ -792,32 +792,36 @@ Shared Threat Family / Structural Fingerprint (SFP-001, count = 2)
 
 ## 8. Engine 8: Policy & Intervention Engine
 
-Engine 8 is the **decision and safety support engine** of the Nivesh Firewall. It consumes the structured intelligence produced by Engines 1 through 7 and determines the appropriate safety intervention before or during a user's potentially harmful financial action.
+Engine 8 is the **decision and safety support engine** of the Nivesh Firewall. It consumes the structured intelligence produced by Engines 1 through 7 and Engine 9 (Identity Verification) and determines the appropriate safety intervention before or during a user's potentially harmful financial action.
 
 ```
 Engine 1 (Content) ──► Engine 2 (Claims) ──► Engine 3 (Actions)
        │                      │                      │
        ▼                      ▼                      ▼
 Engine 4 (Sources) ──► Engine 5 (Evidence) ──► Engine 6 (Threats)
-                                                     │
-                                                     ▼
-                                              Engine 7 (Fingerprints)
-                                                     │
-                                                     ▼
-                                              ┌─────────────────────────────────────┐
-                                              │ ENGINE 8: Policy & Intervention     │
-                                              │ - Explicit Rule Evaluator           │
-                                              │ - Deterministic Precedence Resolver │
-                                              │ - Dual-Channel Explainability       │
-                                              │ - Privacy-Preserving Audit Engine   │
-                                              └─────────────────────────────────────┘
-                                                     │
-                                                     ▼
-                                              PolicyDecision
-                                              (ALLOW | INFORM | WARN | PAUSE | BLOCK)
-                                                     │
-                                                     ▼
-                                              Browser/Desktop Enforcement Adapter
+       │                                             │
+       │                                             ▼
+       │                                      Engine 7 (Fingerprints)
+       │                                             │
+       ▼                                             │
+Engine 9 (Identity Resolution) ◄─────────────────────┘
+       │
+       ▼
+┌────────────────────────────────────────────────────────┐
+│ ENGINE 8: Policy & Intervention                        │
+│ - Explicit Rule Evaluator                              │
+│ - Consumes ThreatAnalysis, SFP, and IdentityAnalysis   │
+│ - Deterministic Precedence Resolver                    │
+│ - Dual-Channel Explainability                          │
+│ - Privacy-Preserving Audit Engine                      │
+└────────────────────────────────────────────────────────┘
+       │
+       ▼
+PolicyDecision
+(ALLOW | INFORM | WARN | PAUSE | BLOCK)
+       │
+       ▼
+Browser/Desktop Enforcement Adapter
 ```
 
 ### Core Architecture & Principles
@@ -1052,18 +1056,7 @@ e1 = evidence_engine.verify(c1, cl1, s1)
 t1 = threat_engine.analyze(c1, cl1, a1, s1, e1)
 fp1 = fingerprint_engine.create_or_match(c1, cl1, a1, s1, e1, t1)
 
-# Engine 8: Decide Intervention Policy
-decision_1 = policy_engine.decide(
-    content=c1,
-    claims=cl1,
-    actions=a1,
-    sources=s1,
-    evidence=e1,
-    threat=t1,
-    fingerprint=fp1,
-)
-
-# Engine 9: Verify Identity & Resolve Entities
+# Engine 9: Verify Identity & Resolve Entities (executes before final Policy evaluation)
 identity_1 = identity_engine.verify(
     content=c1,
     claims=cl1,
@@ -1072,12 +1065,25 @@ identity_1 = identity_engine.verify(
     threat=t1,
 )
 
-print(f"Policy Decision: {decision_1.decision}")                   # PolicyDecisionType.PAUSE
-print(f"Severity: {decision_1.severity}")                         # PolicySeverity.HIGH
-print(f"Requires Confirmation: {decision_1.required_user_confirmation}") # True
+# Engine 8: Decide Intervention Policy (consumes IdentityAnalysis from Engine 9)
+decision_1 = policy_engine.decide(
+    content=c1,
+    claims=cl1,
+    actions=a1,
+    sources=s1,
+    evidence=e1,
+    threat=t1,
+    fingerprint=fp1,
+    identity=identity_1,
+)
+
 print(f"Identity Status: {identity_1.identity_status}")           # IdentityStatus.NOT_ESTABLISHED
 print(f"Entities: {[e.name for e in identity_1.entities]}")       # ['Rahul Sharma', ...]
 print(f"Authority Alignment: {identity_1.authority_alignments[0].alignment_status}") # NOT_ESTABLISHED
+print(f"Policy Decision: {decision_1.decision}")                   # PolicyDecisionType.PAUSE
+print(f"Severity: {decision_1.severity}")                         # PolicySeverity.HIGH
+print(f"Requires Confirmation: {decision_1.required_user_confirmation}") # True
+print(f"Relevant Identity ID: {decision_1.relevant_identity_id}") # IDA-001
 
 # Observation 2: Verified official entity (Positive Benchmark)
 raw_text_2 = (
@@ -1104,7 +1110,7 @@ Run all pytest unit, integration, and regression tests across all 9 engines:
 python -X utf8 -m pytest -v
 ```
 
-**Results:** `350 passed in 21.32s` (0 failed, 100% pass rate).
+**Results:** `358 passed in 31.26s` (0 failed, 100% pass rate).
 - **Engine 1 Unit Tests**: Text normalizer (7), URL extractor (8), Social extractor (6), Contact extractor (4), Financial extractor (6), Entity extractor (5), CTA extractor (7), Language detector (4), Financial relevance (4), OCR adapter (6), URL adapter (3), Primary fixture (3), API (4) -> **67 tests**.
 - **Engine 2 Unit Tests**: Claim canonicalizer (7), Modality and Temporal (8), Claim segmenter & Action filtering (5), Verification requirements & Relations (5), Benchmark cases (12), Primary fixture (1), Engine 1 -> Engine 2 integration (3), Claim API (3) -> **44 tests**.
 - **Engine 3 Unit Tests**: Schemas & validation (2), Classifier & hierarchy (4), Parameter extractor & privacy (3), Benchmark cases (6), Primary fixture benchmark (1), Engine 1 -> Engine 2 -> Engine 3 integration (2), Action API (4) -> **22 tests**.
@@ -1113,10 +1119,10 @@ python -X utf8 -m pytest -v
 - **Engine 6 Unit Tests**: Schemas & validation (5), Threat signal detector (5), Attack path & transitions (1), Claim-to-action linker (3), Semantic correction tests (6), High-impact actions & evidence weaknesses (2), Multi-signal combinations & threat families (2), Negative guardrails (5), Primary fixture benchmark (1), Full 6-engine end-to-end integration (2), Threat API (4) -> **36 tests**.
 - **Engine 7 Unit & Regression Tests**: Schemas & validation (5), Feature extraction & canonical ordering (2), Multi-dimensional matcher (3), Lifecycle, disputes & relationships (5), Copy-amplification defense & observation counting (2), Primary benchmark fixture & secondary demo (1), Adversarial false-match & false-split tests (2), Privacy preservation & boundary guardrails (1), Full 7-engine end-to-end integration (1), FastAPI endpoints (3), Regression suite (5) -> **30 tests**.
 - **Engine 8 Unit & Integration Tests**: Schemas & validation (5), Individual rules (5), Precedence & user overrides (7), Negative guardrails (9), Neutral explainability (2), Privacy preservation & safety boundaries (2), FastAPI endpoints (4), Primary benchmark fixture & determinism (4), Full 8-engine end-to-end integration (2) -> **40 tests**.
-- **Engine 9 Unit & Integration Tests**: Schemas & validation (5), Entity & domain normalizer (6), Registration resolver (5), Domain & brand alignment (3), Authority & social channel resolution (4), Negative guardrails & safety boundaries (5), Core benchmarks: primary, positive, mismatch, ambiguous (4), Privacy preservation & provenance integrity (3), FastAPI endpoints (4), Full 9-engine end-to-end integration (2) -> **41 tests**.
+- **Engine 9 Unit, Integration & Regression Tests**: Schemas & validation (5), Entity & domain normalizer (6), Registration resolver (5), Domain & brand alignment (3), Authority & social channel resolution (4), Negative guardrails & safety boundaries (5), Core benchmarks: primary, positive, mismatch, ambiguous (4), Privacy preservation & provenance integrity (3), FastAPI endpoints (4), Full 9-engine end-to-end integration (2), Downstream ordering & Policy integration regression suite (8) -> **49 tests**.
 
 **Reconciled Arithmetic**:
-$$67 + 44 + 22 + 45 + 25 + 36 + 30 + 40 + 41 = 350 \text{ tests (100\% match)}$$
+$$67 + 44 + 22 + 45 + 25 + 36 + 30 + 40 + 49 = 358 \text{ tests (100\% match)}$$
 *(Zero regressions across all existing suites, zero skipped, 0 failed across two consecutive fresh-process runs).*
 
 

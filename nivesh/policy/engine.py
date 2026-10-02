@@ -26,6 +26,7 @@ from nivesh.schemas.sources import SourceAnalysis
 from nivesh.schemas.evidence import EvidenceAnalysis
 from nivesh.schemas.threat import ThreatAnalysis
 from nivesh.schemas.fingerprint import FingerprintAnalysis
+from nivesh.identity.schemas import IdentityAnalysis
 
 
 class PolicyInterventionEngine:
@@ -52,12 +53,18 @@ class PolicyInterventionEngine:
         evidence: EvidenceAnalysis,
         threat: ThreatAnalysis,
         fingerprint: FingerprintAnalysis,
+        identity: Optional[IdentityAnalysis] = None,
         context: Optional[PolicyContext] = None,
     ) -> PolicyDecision:
         """Determines the safety intervention for the current interaction.
 
-        Consumes the structured outputs from Engines 1–7 without re-computing them.
+        Consumes the structured outputs from Engines 1–7 and Engine 9 without re-computing them.
         """
+        # Defensive handling if context was passed positionally as 8th argument
+        if isinstance(identity, PolicyContext) and context is None:
+            context = identity
+            identity = None
+
         with self._lock:
             decision_id = f"DEC-{self._counter:03d}"
             self._counter += 1
@@ -71,6 +78,7 @@ class PolicyInterventionEngine:
             evidence=evidence,
             threat=threat,
             fingerprint=fingerprint,
+            identity=identity,
             context=context,
         )
 
@@ -105,6 +113,10 @@ class PolicyInterventionEngine:
         elif fingerprint.fingerprint:
             relevant_fp_id = fingerprint.fingerprint.fingerprint_id
 
+        relevant_identity_id = None
+        if identity is not None and hasattr(identity, "analysis_id"):
+            relevant_identity_id = identity.analysis_id
+
         # 5. Build privacy-safe audit record (zero PII, credentials, or raw content)
         threat_stages = []
         if threat and hasattr(threat, "attack_path") and hasattr(threat.attack_path, "nodes"):
@@ -126,6 +138,14 @@ class PolicyInterventionEngine:
             "threat_families": threat.threat_families,
             "fingerprint_match_type": str(fingerprint.match_type),
         }
+        if identity is not None:
+            audit_metadata["identity_status"] = (
+                identity.identity_status.value
+                if hasattr(identity.identity_status, "value")
+                else str(identity.identity_status)
+            )
+            audit_metadata["identity_analysis_id"] = identity.analysis_id
+            audit_metadata["identity_entity_count"] = len(getattr(identity, "entities", []))
 
         # 6. Instantiate canonical PolicyDecision
         decision = PolicyDecision(
@@ -141,6 +161,7 @@ class PolicyInterventionEngine:
             relevant_source_ids=relevant_source_ids,
             relevant_evidence_ids=relevant_evidence_ids,
             relevant_fingerprint_id=relevant_fp_id,
+            relevant_identity_id=relevant_identity_id,
             intervention_scope=resolved.scope,
             required_user_confirmation=resolved.required_user_confirmation,
             cooldown_seconds=resolved.cooldown_seconds,

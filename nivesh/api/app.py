@@ -86,6 +86,7 @@ class PolicyDecidePayload(BaseModel):
     evidence: Optional[EvidenceAnalysis] = None
     threat: Optional[ThreatAnalysis] = None
     fingerprint: Optional[FingerprintAnalysis] = None
+    identity: Optional[IdentityAnalysis] = None
     context: Optional[PolicyContext] = None
 
 
@@ -534,6 +535,7 @@ async def evaluate_policy(request: Request):
             evidence = payload.evidence
             threat = payload.threat
             fingerprint = payload.fingerprint
+            identity = payload.identity
             context = payload.context
         else:
             content = NormalizedContent(**body)
@@ -543,6 +545,7 @@ async def evaluate_policy(request: Request):
             evidence = None
             threat = None
             fingerprint = None
+            identity = None
             context = None
 
         if claims is None:
@@ -557,6 +560,14 @@ async def evaluate_policy(request: Request):
             threat = threat_engine.analyze(content, claims, actions, sources, evidence)
         if fingerprint is None:
             fingerprint = fingerprint_engine.create_or_match(content, claims, actions, sources, evidence, threat)
+        if identity is None:
+            identity = identity_engine.verify(
+                content=content,
+                claims=claims,
+                sources=sources,
+                evidence=evidence,
+                threat=threat,
+            )
 
         decision = policy_engine.decide(
             content=content,
@@ -566,6 +577,7 @@ async def evaluate_policy(request: Request):
             evidence=evidence,
             threat=threat,
             fingerprint=fingerprint,
+            identity=identity,
             context=context,
         )
         return decision
