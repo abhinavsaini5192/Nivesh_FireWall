@@ -57,7 +57,8 @@ def test_adversarial_mutations_preserve_structural_match():
     assert res2.is_new_pattern is False
     assert res2.primary_match is not None
     assert res2.primary_match.fingerprint_id == "SFP-001"
-    assert res2.match_type in ("STRUCTURAL_MATCH", "SEMANTIC_VARIANT")
+    assert res2.match_type == "SEMANTIC_VARIANT"
+    assert res2.structural_equivalence is True
     assert res2.match_confidence >= 0.80
 
     # Stored fingerprint should now have observation_count == 2

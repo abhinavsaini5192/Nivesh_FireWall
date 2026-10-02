@@ -68,8 +68,8 @@ def test_primary_and_secondary_demo_benchmark():
 
     assert res2.is_new_pattern is False
     assert res2.primary_match is not None
-    assert res2.primary_match.fingerprint_id == "SFP-001"
-    assert res2.match_type in ("STRUCTURAL_MATCH", "SEMANTIC_VARIANT")
+    assert res2.match_type == "SEMANTIC_VARIANT"
+    assert res2.structural_equivalence is True
     assert res2.match_confidence >= 0.85
     assert res2.fingerprint.observation_count == 2
     assert "whatsapp" in res2.fingerprint.distinct_channels

@@ -47,6 +47,7 @@ class FingerprintMatcher:
             return FingerprintMatch(
                 fingerprint_id=fingerprint.fingerprint_id,
                 match_type="EXACT_MATCH",
+                structural_equivalence=True,
                 match_confidence=1.0,
                 matched_features=fingerprint.canonical_features,
                 divergent_features=[],
@@ -69,19 +70,21 @@ class FingerprintMatcher:
             matched = sorted(list(q_can.intersection(fp_can)))
             divergent = sorted(list(q_can.symmetric_difference(fp_can)))
 
-            # If differing only by channel or external domain
+            # If differing by surface details (channel, domain, specific amounts/wording),
+            # classify deterministically as SEMANTIC_VARIANT with structural_equivalence=True
             return FingerprintMatch(
                 fingerprint_id=fingerprint.fingerprint_id,
-                match_type="STRUCTURAL_MATCH",
-                match_confidence=0.93,
+                match_type="SEMANTIC_VARIANT",
+                structural_equivalence=True,
+                match_confidence=0.91,
                 matched_features=matched,
                 divergent_features=divergent,
                 matched_dimensions=[
                     "attack_path", "action_patterns", "claim_patterns", "identity_patterns"
                 ],
                 explanation=(
-                    "Identical core attack path and threat mechanics observed; differences are confined "
-                    f"to superficial communication channel or domain variations ({', '.join(divergent[:3])})."
+                    "Identical core attack path and threat mechanics observed with structural equivalence; differences are confined "
+                    f"to superficial communication channel or domain variations ({', '.join(divergent[:3]) if divergent else 'surface wording/amounts'})."
                 ),
                 threat_families=fingerprint.threat_families,
                 attack_stages=fingerprint.attack_stages,
@@ -163,21 +166,30 @@ class FingerprintMatcher:
         # Determine Match Classification
         match_type: FingerprintMatchType = "NO_MATCH"
         explanation = ""
+        is_struct_equiv = False
 
         if total_score >= 0.85 and "attack_path" in matched_dims and "action_patterns" in matched_dims:
-            match_type = "STRUCTURAL_MATCH"
+            has_surface_divergence = bool(
+                divergent
+                or set(query_features.get("channel_patterns", [])) != set(fingerprint.channel_patterns)
+                or set(query_features.get("technical_patterns", [])) != set(fingerprint.technical_patterns)
+            )
+            match_type = "SEMANTIC_VARIANT" if has_surface_divergence else "STRUCTURAL_MATCH"
+            is_struct_equiv = True
             explanation = (
-                f"Strong structural correspondence across {len(matched_dims)} dimensions "
+                f"Strong structural correspondence across {len(matched_dims)} dimensions with structural equivalence "
                 f"({', '.join(matched_dims)})."
             )
-        elif total_score >= 0.68 and ("attack_path" in matched_dims or "action_patterns" in matched_dims):
+        elif total_score >= 0.65 and ("attack_path" in matched_dims or "action_patterns" in matched_dims):
             match_type = "SEMANTIC_VARIANT"
+            is_struct_equiv = bool("attack_path" in matched_dims and "action_patterns" in matched_dims)
             explanation = (
                 f"Semantic variant exhibiting equivalent threat structure with alternative surface features "
                 f"({', '.join(divergent[:3])})."
             )
         elif total_score >= 0.40 or (shared_families and len(q_stages.intersection(fp_stages)) >= 2):
             match_type = "RELATED_PATTERN"
+            is_struct_equiv = False
             fam_desc = f" ({', '.join(shared_families)})" if shared_families else ""
             explanation = (
                 f"Shares related threat mechanics or threat family{fam_desc}, "
@@ -185,11 +197,13 @@ class FingerprintMatcher:
             )
         else:
             match_type = "NO_MATCH"
+            is_struct_equiv = False
             explanation = "Interaction structure does not meaningfully correspond to this stored fingerprint."
 
         return FingerprintMatch(
             fingerprint_id=fingerprint.fingerprint_id,
             match_type=match_type,
+            structural_equivalence=is_struct_equiv,
             match_confidence=round(total_score, 2),
             matched_features=matched,
             divergent_features=divergent,

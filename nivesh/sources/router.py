@@ -36,8 +36,9 @@ class SourceRouter:
         reg_number = None
         if content and content.structured_signals and content.structured_signals.registration_numbers:
             for reg in content.structured_signals.registration_numbers:
-                if reg.code:
-                    reg_number = reg.code
+                code_val = getattr(reg, "code", getattr(reg, "value", None))
+                if code_val:
+                    reg_number = code_val
                     break
 
         # Check if subject/object contains a registration number pattern

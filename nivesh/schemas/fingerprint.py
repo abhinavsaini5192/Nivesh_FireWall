@@ -87,6 +87,7 @@ class FingerprintMatch(BaseModel):
     """Result of comparing an observation against an existing fingerprint."""
     fingerprint_id: str = Field(description="Matched fingerprint ID")
     match_type: FingerprintMatchType = Field(description="Exact, structural, variant, related, or none")
+    structural_equivalence: bool = Field(default=False, description="True if underlying attack path and threat mechanics are structurally equivalent")
     match_confidence: float = Field(ge=0.0, le=1.0, description="Confidence in pattern similarity (NOT scam probability)")
     matched_features: list[str] = Field(default_factory=list, description="Common structural features")
     divergent_features: list[str] = Field(default_factory=list, description="Features that differ between observation and fingerprint")
@@ -127,6 +128,7 @@ class FingerprintAnalysis(BaseModel):
     primary_match: Optional[FingerprintMatch] = Field(default=None, description="Best candidate match if one exists")
     is_new_pattern: bool = Field(default=True, description="True if a new fingerprint was created rather than matched")
     match_type: FingerprintMatchType = Field(default="NO_MATCH", description="Relationship type of primary match")
+    structural_equivalence: bool = Field(default=False, description="True if underlying threat mechanics are structurally equivalent")
     match_confidence: float = Field(default=0.0, description="Similarity confidence for primary match")
     collective_context: Optional[dict[str, Any]] = Field(default=None, description="Privacy-safe collective threat context")
     provenance: FingerprintProvenance

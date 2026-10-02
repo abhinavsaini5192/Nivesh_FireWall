@@ -60,12 +60,15 @@ class NormalizedFeatureExtractor:
             identity_patterns.add("IDENTITY:MISMATCH")
 
         # Entity / regulator checks from content
+        RECOGNISED_REGULATORS = {"SEBI", "RBI", "IRDAI", "PFRDA", "NSE", "BSE", "AMFI", "FMC", "MCA"}
         if content.entities:
             if hasattr(content.entities, "regulators") and content.entities.regulators:
                 identity_patterns.add("IDENTITY:REGULATORY_AUTHORITY_CLAIM")
                 for r in content.entities.regulators:
                     if r.text:
-                        identity_patterns.add(f"IDENTITY:REGULATOR:{r.text.strip().upper()}")
+                        r_clean = r.text.strip().upper()
+                        if r_clean in RECOGNISED_REGULATORS:
+                            identity_patterns.add(f"IDENTITY:REGULATOR:{r_clean}")
             if hasattr(content.entities, "organizations") and content.entities.organizations:
                 for org in content.entities.organizations:
                     if "SEBI" in org.text.upper():
@@ -78,7 +81,9 @@ class NormalizedFeatureExtractor:
             if pred_upper in ("REGISTERED_WITH", "LICENSED_BY", "APPROVED_BY", "CERTIFIED_BY"):
                 identity_patterns.add("IDENTITY:REGULATORY_AUTHORITY_CLAIM")
                 if c.object:
-                    identity_patterns.add(f"IDENTITY:REGULATOR:{str(c.object).strip().upper()}")
+                    obj_clean = str(c.object).strip().upper()
+                    if obj_clean in RECOGNISED_REGULATORS:
+                        identity_patterns.add(f"IDENTITY:REGULATOR:{obj_clean}")
 
         if not identity_patterns:
             identity_patterns.add("IDENTITY:UNSPECIFIED_OFFER")
@@ -245,10 +250,14 @@ class NormalizedFeatureExtractor:
         ).hexdigest()
 
         # Content hash: SHA-256 of normalized text for amplification detection
+        # Strip superficial URL tracking/ref parameters (?ref=1, &ref=2, ?utm_source=...)
+        # so that exact message forwards with altered tracking links are recognized as duplicates.
         content_hash = None
         raw_norm = (content.normalized.text if content.normalized and content.normalized.text else "").strip().lower()
         if raw_norm:
-            content_hash = hashlib.sha256(raw_norm.encode("utf-8")).hexdigest()
+            clean_norm = re.sub(r'(\?|&)(ref|utm_[^=]+|track|s|source|t)=[^&\s\.,;!]+', '', raw_norm)
+            clean_norm = re.sub(r'\?(?=\s|[.,;!]|\Z)', '', clean_norm).strip()
+            content_hash = hashlib.sha256(clean_norm.encode("utf-8")).hexdigest()
 
         # Primary observed channel
         observed_channel = None

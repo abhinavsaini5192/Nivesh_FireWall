@@ -107,6 +107,7 @@ class ScamFingerprintEngine:
                 primary_match=None,
                 is_new_pattern=False,
                 match_type="NO_MATCH",
+                structural_equivalence=False,
                 match_confidence=0.0,
                 collective_context={
                     "pattern_summary": "Content represents informational or educational material with no matching threat fingerprint.",
@@ -222,6 +223,7 @@ class ScamFingerprintEngine:
                 primary_match=primary_match,
                 is_new_pattern=False,
                 match_type=primary_match.match_type,
+                structural_equivalence=primary_match.structural_equivalence,
                 match_confidence=primary_match.match_confidence,
                 collective_context=collective_context,
                 provenance=FingerprintProvenance(
@@ -291,6 +293,7 @@ class ScamFingerprintEngine:
                 primary_match=primary_match,
                 is_new_pattern=True,
                 match_type=primary_match.match_type if primary_match else "NO_MATCH",
+                structural_equivalence=primary_match.structural_equivalence if primary_match else False,
                 match_confidence=primary_match.match_confidence if primary_match else 0.0,
                 collective_context=collective_context,
                 provenance=FingerprintProvenance(
@@ -406,6 +409,7 @@ class ScamFingerprintEngine:
             "status": fingerprint.status,
             "matching_characteristics": self._summarize_characteristics(fingerprint),
             "match_type": match.match_type,
+            "structural_equivalence": match.structural_equivalence,
             "match_confidence": match.match_confidence,
             "matched_dimensions": match.matched_dimensions,
             "explanation": match.explanation

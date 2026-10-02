@@ -712,20 +712,24 @@ Shared Threat Family / Structural Fingerprint (SFP-001, count = 2)
    - `exact_signature`: SHA-256 digest of strictly sorted canonical features for $O(1)$ exact matches.
    - `semantic_signature`: SHA-256 digest of invariant structural dimensions (omitting channel, lookalike domain, and exact rupee amount) for instantaneous variant detection.
    - `attack_path_signature`: Normalized stage transition chain (`TRUST_BUILDING>CHANNEL_MIGRATION>SOFTWARE_INSTALLATION>FINANCIAL_REQUEST`).
-3. **Multi-Level Match Hierarchy**:
-   - `EXACT_MATCH`: 100% identical canonical structure ($1.00$ confidence).
-   - `STRUCTURAL_MATCH`: Same core attack path and threat mechanics with differing external channel or domain ($0.90$–$0.95$ confidence).
-   - `SEMANTIC_VARIANT`: Equivalent threat structure with mutated wording, amounts, or channels ($0.85$–$0.92$ confidence).
-   - `RELATED_PATTERN`: Shares threat family and partial attack path ($0.40$–$0.70$ confidence).
-   - `NO_MATCH`: Unrelated or benign informational content ($0.00$ confidence).
+3. **Deterministic Single-Valued Match Hierarchy**:
+   - Every match returns exactly **ONE** primary `match_type` enum value:
+     - `EXACT_MATCH`: 100% identical canonical structure ($1.00$ confidence).
+     - `STRUCTURAL_MATCH`: Same core attack path and threat mechanics with differing external channel or domain ($0.90$–$0.95$ confidence).
+     - `SEMANTIC_VARIANT`: Equivalent threat structure with mutated wording, amounts, or channels ($0.85$–$0.92$ confidence). When wording, channel, domain, or amount changes while normalized threat structure remains equivalent, Engine 7 deterministically sets `match_type = "SEMANTIC_VARIANT"` and sets `structural_equivalence = True`.
+     - `RELATED_PATTERN`: Shares threat family and partial attack path ($0.40$–$0.70$ confidence).
+     - `NO_MATCH`: Unrelated or benign informational content ($0.00$ confidence).
 4. **Copy-Amplification & Duplicate-Origin Defense**:
-   - Tracks `content_hash` of normalized text. Multiple forwarded copies from the same origin do **not** inflate independent `observation_count` (`is_duplicate_origin=True`).
+   - Tracks `content_hash` of normalized text (ignoring URL tracking parameters like `?ref=...`).
+   - Copied forwards across different channels (e.g. Telegram to WhatsApp) are identified as `is_duplicate_origin = True` and do **not** increment independent `observation_count`.
+   - Distinct channels are recorded in `distinct_channels` for metadata visibility without artificially inflating collective corroboration.
 5. **Lifecycle & Dispute Management**:
    - States: `NEW` ➔ `ACTIVE` (promoted upon reaching 2+ independent observations) ➔ `STALE` (inactivity threshold) ➔ `ARCHIVED` / `DISPUTED`.
    - Disputes record notes and auditor provenance without silently deleting historical observations.
+   - **Prototype Persistence Note**: For this hackathon prototype, an in-memory repository with thread-safe locking and indexing is implemented. Full persistence across process restarts (e.g., PostgreSQL with pgvector / Redis) is a production hardening item.
 6. **Strict Privacy Preservation**:
-   - Zero raw PII in canonical features, signatures, or repository records.
-   - User identities remain completely anonymous from collective threat context.
+   - Zero raw PII (names, phone numbers, email addresses, bank accounts, OTPs, PAN, Aadhaar) or raw message text in stored fingerprints, observations, or collective context.
+   - User identities remain completely anonymous.
    - Downstream responses to other users disclose only normalized threat mechanics.
 
 ### Schema Example: `ScamFingerprint`
@@ -870,7 +874,8 @@ e2 = evidence_engine.verify(c2, cl2, s2)
 t2 = threat_engine.analyze(c2, cl2, a2, s2, e2)
 res2 = fingerprint_engine.create_or_match(c2, cl2, a2, s2, e2, t2)
 
-print(f"Observation 2 Match Type: {res2.match_type}")                      # STRUCTURAL_MATCH / SEMANTIC_VARIANT
+print(f"Observation 2 Match Type: {res2.match_type}")                      # SEMANTIC_VARIANT
+print(f"Observation 2 Structural Equivalence: {res2.structural_equivalence}") # True
 print(f"Observation 2 Match Confidence: {res2.match_confidence}")          # 0.91
 print(f"Consolidated Observation Count: {res2.fingerprint.observation_count}") # 2
 print(f"Distinct Channels: {res2.fingerprint.distinct_channels}")          # ['telegram', 'whatsapp']
@@ -893,19 +898,23 @@ print(f"Observation 3 Match Type: {res3.match_type}")                      # NO_
 
 ## 10. Test Suite Verification
 
-Run all pytest unit and integration tests across all 7 engines:
+Run all pytest unit, integration, and regression tests across all 7 engines:
 
 ```bash
 python -X utf8 -m pytest -v
 ```
 
-**Results:** `264 passed in 8.19s` (0 failed, 100% pass rate).
+**Results:** `269 passed in 9.06s` (0 failed, 100% pass rate).
 - **Engine 1 Unit Tests**: Text normalizer (7), URL extractor (8), Social extractor (6), Contact extractor (4), Financial extractor (6), Entity extractor (5), CTA extractor (7), Language detector (4), Financial relevance (4), OCR adapter (6), URL adapter (3), Primary fixture (3), API (4) -> **67 tests**.
-- **Engine 2 Unit Tests**: Claim canonicalizer (7), Modality and Temporal (8), Claim segmenter & Action filtering (5), Verification requirements & Relations (5), Benchmark cases (7), Primary fixture (1), Engine 1 -> Engine 2 integration (3), Claim API (3), Correction tests (5) -> **44 tests**.
-- **Engine 3 Unit Tests**: Schemas & validation (3), Classifier & hierarchy (3), Parameter extractor & privacy (4), Benchmark cases (6), Primary fixture benchmark (2), Engine 1 -> Engine 2 -> Engine 3 integration (2), Action API (2) -> **22 tests**.
-- **Engine 4 Unit Tests**: Schemas & validation (4), SSRF protection (20), Source routing (4), Adapters & caching (7), Evidence candidates (1), Primary fixture (1), Full 4-engine integration (1), Source API (3), Correction & boundaries -> **45 tests**.
+- **Engine 2 Unit Tests**: Claim canonicalizer (7), Modality and Temporal (8), Claim segmenter & Action filtering (5), Verification requirements & Relations (5), Benchmark cases (12), Primary fixture (1), Engine 1 -> Engine 2 integration (3), Claim API (3) -> **44 tests**.
+- **Engine 3 Unit Tests**: Schemas & validation (2), Classifier & hierarchy (4), Parameter extractor & privacy (3), Benchmark cases (6), Primary fixture benchmark (1), Engine 1 -> Engine 2 -> Engine 3 integration (2), Action API (4) -> **22 tests**.
+- **Engine 4 Unit Tests**: Schemas & validation (4), SSRF protection (24), Source routing (4), Adapters & caching (7), Evidence candidates (1), Primary fixture (1), Full 4-engine integration (1), Source API (3) -> **45 tests**.
 - **Engine 5 Unit Tests**: Schemas & validation (2), Regulatory & identity matching (6), Numerical, ratios, & debt verification (6), Opinions & predictions (2), Source conflicts & absence handling (3), Prompt injection defense (1), Primary fixture benchmark (1), Full 5-engine end-to-end integration (1), Evidence API (3) -> **25 tests**.
-- **Engine 6 Unit Tests**: Schemas & validation (5), Threat signal detector (4), Attack path & transitions (1), Claim-to-action linker (2), High-impact actions & evidence weaknesses (2), Multi-signal combinations & threat families (2), Negative guardrails (5), Primary fixture benchmark (1), Full 6-engine end-to-end integration (2), Threat API (4) -> **28 tests**.
-- **Engine 7 Unit Tests**: Schemas & validation (5), Feature extraction & canonical ordering (2), Multi-dimensional matcher (3), Lifecycle, disputes & relationships (5), Copy-amplification defense & observation counting (2), Primary benchmark fixture & secondary demo (1), Adversarial false-match & false-split tests (2), Privacy preservation & boundary guardrails (1), Full 7-engine end-to-end integration (1), FastAPI endpoints (3) -> **25 tests**.
+- **Engine 6 Unit Tests**: Schemas & validation (5), Threat signal detector (5), Attack path & transitions (1), Claim-to-action linker (3), Semantic correction tests (6), High-impact actions & evidence weaknesses (2), Multi-signal combinations & threat families (2), Negative guardrails (5), Primary fixture benchmark (1), Full 6-engine end-to-end integration (2), Threat API (4) -> **36 tests**.
+- **Engine 7 Unit & Regression Tests**: Schemas & validation (5), Feature extraction & canonical ordering (2), Multi-dimensional matcher (3), Lifecycle, disputes & relationships (5), Copy-amplification defense & observation counting (2), Primary benchmark fixture & secondary demo (1), Adversarial false-match & false-split tests (2), Privacy preservation & boundary guardrails (1), Full 7-engine end-to-end integration (1), FastAPI endpoints (3), + Targeted Regression Suite (5 tests: single-valued determinism, copy-amplification defense with tracking links, complete PII/raw text serialization sanitization, non-destructive dispute audit trails, and end-to-end Observations A/B/C verification) -> **30 tests**.
+
+**Reconciled Arithmetic**:
+$$67 + 44 + 22 + 45 + 25 + 36 + 30 = 269 \text{ tests (100\% match)}$$
+*(Note on previous discrepancy: the previous test summary listed Engine 6 as 28 instead of its actual 36 collected tests [a difference of 8 tests], leading to an undercount in the written sum. The corrected sum is exactly 269).*
 
 
