@@ -54,8 +54,10 @@ def test_primary_benchmark_threat_intelligence():
     assert "PRIVATE_CHANNEL_MIGRATION" in signal_types
     assert "EXTERNAL_APP" in signal_types
     assert "PAYMENT_REQUEST" in signal_types
-    # Either IDENTITY_NOT_ESTABLISHED or AUTHORITY_IMPERSONATION or REGULATORY_CONFLICT
-    assert any(s in signal_types for s in ["IDENTITY_NOT_ESTABLISHED", "AUTHORITY_IMPERSONATION", "REGULATORY_CONFLICT"])
+    assert "REGULATORY_AUTHORITY_CLAIM" in signal_types
+    assert "IDENTITY_NOT_ESTABLISHED" in signal_types
+    # Must NOT prematurely classify as impersonation without concrete identity mismatch evidence
+    assert "AUTHORITY_IMPERSONATION" not in signal_types
 
     # Verify Signal Provenance
     for signal in threat_analysis.threat_signals:
@@ -86,7 +88,8 @@ def test_primary_benchmark_threat_intelligence():
     assert "FINANCIAL" in impact_cats
 
     # Verify Claim-Action Links
-    assert len(threat_analysis.claim_action_links) >= 1
+    # SEBI registration claim must NOT have unjustified blanket action links
+    assert not any(l.claim_id == "CLAIM-001" for l in threat_analysis.claim_action_links)
     for link in threat_analysis.claim_action_links:
         assert link.link_id is not None
         assert link.claim_id is not None

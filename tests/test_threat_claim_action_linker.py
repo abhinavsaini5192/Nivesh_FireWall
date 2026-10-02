@@ -48,7 +48,7 @@ def test_claim_action_direct_rationale_linking():
     assert r_link.action_id == "ACTION-001"
 
 
-def test_regulatory_trust_claim_justifies_download():
+def test_adjacent_claims_and_actions_without_connective_produce_no_links():
     content_engine = ContentIntelligenceEngine()
     content = content_engine.process_text("SEBI registered advisor Rahul Sharma. Download our app.")
 
@@ -81,7 +81,45 @@ def test_regulatory_trust_claim_justifies_download():
     )
 
     links = ClaimActionLinker.link_claims_and_actions(content, claims, actions)
-    assert len(links) >= 1
-    j_link = next(l for l in links if l.type == "JUSTIFIES")
-    assert j_link.claim_id == "CLAIM-101"
-    assert j_link.action_id == "ACTION-101"
+    # Proximity alone must NOT generate claim->action justification links
+    assert len(links) == 0
+
+
+def test_return_claim_with_purpose_connective_links_to_payment():
+    content_engine = ContentIntelligenceEngine()
+    content = content_engine.process_text("Guaranteed 40% returns. Pay ₹5,000 to participate.")
+
+    claims = ClaimAnalysis(
+        content_id=content.content_id,
+        claims=[
+            CanonicalClaim(
+                claim_id="CLAIM-201",
+                source_content_id=content.content_id,
+                text=ClaimText(original="Guaranteed 40% returns.", normalized="Guaranteed 40% returns."),
+                claim_type="FINANCIAL",
+                subject="unspecified_offer",
+                predicate="GUARANTEED_RETURN",
+                object="40% returns"
+            )
+        ]
+    )
+    actions = ActionAnalysis(
+        content_id=content.content_id,
+        actions=[
+            CanonicalAction(
+                action_id="ACTION-201",
+                source_content_id=content.content_id,
+                text=ActionText(original="Pay ₹5,000 to participate.", normalized="Pay ₹5,000"),
+                action_type="PAYMENT",
+                category="FINANCIAL_TRANSACTION",
+                target=ActionTarget(type="unknown")
+            )
+        ]
+    )
+
+    links = ClaimActionLinker.link_claims_and_actions(content, claims, actions)
+    assert len(links) == 1
+    assert links[0].type == "RATIONALE_FOR"
+    assert links[0].claim_id == "CLAIM-201"
+    assert links[0].action_id == "ACTION-201"
+

@@ -59,12 +59,60 @@ def test_detect_authority_and_identity_not_established_signals(content_engine):
     signals = ThreatSignalDetector.detect_signals(content, claims, actions, sources, evidence)
     sig_types = [s.type for s in signals]
 
-    assert "AUTHORITY_IMPERSONATION" in sig_types
+    assert "REGULATORY_AUTHORITY_CLAIM" in sig_types
     assert "IDENTITY_NOT_ESTABLISHED" in sig_types
+    assert "AUTHORITY_IMPERSONATION" not in sig_types
 
     id_sig = next(s for s in signals if s.type == "IDENTITY_NOT_ESTABLISHED")
     assert id_sig.source == "evidence_verification"
     assert id_sig.claim_id == "CLAIM-001"
+
+
+def test_detect_authority_impersonation_on_concrete_identity_mismatch(content_engine):
+    content = content_engine.process_text("SEBI registered advisor Rahul Sharma.")
+    claims = ClaimAnalysis(
+        content_id=content.content_id,
+        claims=[
+            CanonicalClaim(
+                claim_id="CLAIM-001",
+                source_content_id=content.content_id,
+                text=ClaimText(original="Rahul Sharma is registered with SEBI.", normalized="Rahul Sharma is registered with SEBI."),
+                claim_type="REGULATORY",
+                subject="Rahul Sharma",
+                predicate="REGISTERED_WITH",
+                object="SEBI"
+            )
+        ]
+    )
+    actions = ActionAnalysis(content_id=content.content_id, actions=[])
+    sources = SourceAnalysis(content_id=content.content_id, claim_sources=[], analysis_metadata=SourceAnalysisMetadata())
+    evidence = EvidenceAnalysis(
+        content_id=content.content_id,
+        verifications=[
+            VerificationResult(
+                claim_id="CLAIM-001",
+                status="CONTRADICTED",
+                confidence=0.98,
+                evidence_strength="HIGH",
+                supporting_evidence=[],
+                contradicting_evidence=[],
+                reasoning_trace=["Official SEBI registry shows registration INH000001234 belongs to XYZ Advisory Ltd, not Rahul Sharma."],
+                provenance=VerificationProvenance(engine_version="1.0.0", verification_method="rule", verified_at="2026-10-02T12:00:00Z")
+            )
+        ],
+        analysis_metadata=EvidenceAnalysisMetadata()
+    )
+
+    signals = ThreatSignalDetector.detect_signals(content, claims, actions, sources, evidence)
+    sig_types = [s.type for s in signals]
+
+    assert "REGULATORY_AUTHORITY_CLAIM" in sig_types
+    assert "IDENTITY_MISMATCH" in sig_types
+    assert "AUTHORITY_IMPERSONATION" in sig_types
+
+    imp_sig = next(s for s in signals if s.type == "AUTHORITY_IMPERSONATION")
+    assert imp_sig.source == "evidence_verification"
+    assert "identity mismatch" in imp_sig.evidence.lower()
 
 
 def test_detect_guaranteed_return_and_regulatory_conflict_signals(content_engine):

@@ -92,24 +92,57 @@ class ThreatSignalDetector:
             if is_registration_or_licensing and not any(r == subj_upper for r in regulators):
                 signals.append(ThreatSignal(
                     signal_id=f"SIG-{sig_counter:03d}",
-                    type="AUTHORITY_IMPERSONATION",
+                    type="REGULATORY_AUTHORITY_CLAIM",
                     source="claim",
                     evidence=f"Claim '{claim.subject}' asserts registration/licensing with '{claim.object or 'regulator'}'",
                     confidence=0.90,
-                    description=f"Content leverages regulatory authority by asserting association with {claim.object or 'regulator'}.",
+                    description=f"Content asserts regulatory authority by stating association with {claim.object or 'regulator'}.",
                     claim_id=claim.claim_id
                 ))
                 sig_counter += 1
 
-                # Check if evidence failed to establish identity
+                # Check evidence verification results (Engine 5)
                 if v_res:
-                    if v_res.status in ("INSUFFICIENT_EVIDENCE", "CONTRADICTED"):
-                        # Check if registry specifically failed to find a match
-                        registry_no_match = any("returned 0 matches" in r.lower() or "not substantiated" in r.lower() for r in v_res.reasoning_trace)
-                        sig_type: ThreatSignalType = "IDENTITY_NOT_ESTABLISHED" if registry_no_match or v_res.status == "INSUFFICIENT_EVIDENCE" else "IDENTITY_MISMATCH"
+                    # Check for concrete identity mismatch or contradiction
+                    reasoning_lower = " ".join(v_res.reasoning_trace).lower() if v_res.reasoning_trace else ""
+                    # Concrete identity mismatch requires explicit mismatch findings, belonging to another entity, or CONTRADICTED status
+                    is_mismatch = (
+                        v_res.status == "CONTRADICTED"
+                        or "identity mismatch" in reasoning_lower
+                        or "belongs to another" in reasoning_lower
+                        or "different entity" in reasoning_lower
+                    )
+
+                    if is_mismatch:
+                        contradiction_note = v_res.reasoning_trace[0] if v_res.reasoning_trace else f"Evidence contradicts claimed registration for '{claim.subject}'"
                         signals.append(ThreatSignal(
                             signal_id=f"SIG-{sig_counter:03d}",
-                            type=sig_type,
+                            type="IDENTITY_MISMATCH",
+                            source="evidence_verification",
+                            evidence=f"Official registry verification contradicts registration: {contradiction_note}",
+                            confidence=v_res.confidence,
+                            description=f"Evidence establishes that claimed registration does not belong to '{claim.subject}'.",
+                            claim_id=claim.claim_id
+                        ))
+                        sig_counter += 1
+
+                        signals.append(ThreatSignal(
+                            signal_id=f"SIG-{sig_counter:03d}",
+                            type="AUTHORITY_IMPERSONATION",
+                            source="evidence_verification",
+                            evidence=f"Authority claim elevated to impersonation based on identity mismatch: {contradiction_note}",
+                            confidence=v_res.confidence,
+                            description="Unsubstantiated regulatory claim elevated to authority impersonation based on contradicting identity evidence.",
+                            claim_id=claim.claim_id
+                        ))
+                        sig_counter += 1
+
+                    elif v_res.status == "INSUFFICIENT_EVIDENCE":
+                        # Registry search returned 0 matches or insufficient records -> IDENTITY_NOT_ESTABLISHED
+                        # Must NOT emit AUTHORITY_IMPERSONATION, FRAUD, IMPERSONATOR, or SCAMMER
+                        signals.append(ThreatSignal(
+                            signal_id=f"SIG-{sig_counter:03d}",
+                            type="IDENTITY_NOT_ESTABLISHED",
                             source="evidence_verification",
                             evidence=f"Official registry verification for '{claim.subject}' returned status '{v_res.status}'",
                             confidence=v_res.confidence,

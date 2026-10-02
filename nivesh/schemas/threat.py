@@ -9,6 +9,8 @@ from typing import Literal, Optional, Any
 from pydantic import BaseModel, Field
 
 ThreatSignalType = Literal[
+    "REGULATORY_AUTHORITY_CLAIM",
+    "AUTHORITY_CLAIM",
     "AUTHORITY_IMPERSONATION",
     "IDENTITY_MISMATCH",
     "IDENTITY_NOT_ESTABLISHED",

@@ -548,11 +548,11 @@ Raw Text ──▶ Engine 1 (Content) ──▶ Engine 2 (Claims) ──▶ Engi
   "threat_signals": [
     {
       "signal_id": "SIG-001",
-      "type": "AUTHORITY_IMPERSONATION",
+      "type": "REGULATORY_AUTHORITY_CLAIM",
       "source": "claim",
       "evidence": "Claim 'Rahul Sharma' asserts registration/licensing with 'SEBI'",
       "confidence": 0.9,
-      "description": "Content leverages regulatory authority by asserting association with SEBI.",
+      "description": "Content asserts regulatory authority by stating association with SEBI.",
       "claim_id": "CLAIM-001"
     },
     {
@@ -634,12 +634,7 @@ Raw Text ──▶ Engine 1 (Content) ──▶ Engine 2 (Claims) ──▶ Engi
     "entry_stage": "TRUST_BUILDING",
     "terminal_stage": "FINANCIAL_REQUEST"
   },
-  "claim_action_links": [
-    { "link_id": "CAL-001", "claim_id": "CLAIM-001", "action_id": "ACTION-001", "type": "JUSTIFIES", "confidence": 0.88 },
-    { "link_id": "CAL-002", "claim_id": "CLAIM-001", "action_id": "ACTION-002", "type": "JUSTIFIES", "confidence": 0.88 },
-    { "link_id": "CAL-003", "claim_id": "CLAIM-001", "action_id": "ACTION-003", "type": "JUSTIFIES", "confidence": 0.88 },
-    { "link_id": "CAL-004", "claim_id": "CLAIM-002", "action_id": "ACTION-003", "type": "JUSTIFIES", "confidence": 0.85 }
-  ],
+  "claim_action_links": [],
   "evidence_weaknesses": [
     { "weakness_id": "EW-001", "claim_id": "CLAIM-001", "weakness_type": "IDENTITY_NOT_ESTABLISHED", "evidence_status": "INSUFFICIENT_EVIDENCE", "severity": "HIGH" },
     { "weakness_id": "EW-002", "claim_id": "CLAIM-002", "weakness_type": "REGULATORY_CONFLICT", "evidence_status": "INSUFFICIENT_EVIDENCE", "severity": "HIGH" }
@@ -649,11 +644,9 @@ Raw Text ──▶ Engine 1 (Content) ──▶ Engine 2 (Claims) ──▶ Engi
     { "action_id": "ACTION-003", "action_type": "PAYMENT", "impact_category": "FINANCIAL", "reversibility": "IRREVERSIBLE" }
   ],
   "threat_families": [
-    "IDENTITY_IMPERSONATION",
     "INVESTMENT_PROMOTION_SCAM",
     "MALICIOUS_SOFTWARE",
     "PAYMENT_FRAUD",
-    "REGULATORY_IMPERSONATION",
     "SOCIAL_ENGINEERING"
   ],
   "fingerprint_prep": {

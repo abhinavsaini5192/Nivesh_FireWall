@@ -40,13 +40,18 @@ class CombinationEngine:
         # -----------------------------------------------------------------
         # Combination 1: Authority Claim / Identity Gap + Private Channel + Payment
         if (
-            has_signal("AUTHORITY_IMPERSONATION", "IDENTITY_NOT_ESTABLISHED", "IDENTITY_MISMATCH")
+            has_signal("REGULATORY_AUTHORITY_CLAIM", "AUTHORITY_CLAIM", "AUTHORITY_IMPERSONATION", "IDENTITY_NOT_ESTABLISHED", "IDENTITY_MISMATCH")
             and has_signal("PRIVATE_CHANNEL_MIGRATION")
             and has_signal("PAYMENT_REQUEST", "UPFRONT_FEE")
         ):
+            lead_sig = "IDENTITY_NOT_ESTABLISHED" if "IDENTITY_NOT_ESTABLISHED" in sig_types else (
+                "IDENTITY_MISMATCH" if "IDENTITY_MISMATCH" in sig_types else (
+                    "REGULATORY_AUTHORITY_CLAIM" if "REGULATORY_AUTHORITY_CLAIM" in sig_types else "AUTHORITY_IMPERSONATION"
+                )
+            )
             combinations.append(ThreatCombination(
                 combination=[
-                    "IDENTITY_NOT_ESTABLISHED" if "IDENTITY_NOT_ESTABLISHED" in sig_types else "AUTHORITY_IMPERSONATION",
+                    lead_sig,
                     "PRIVATE_CHANNEL_MIGRATION",
                     "PAYMENT_REQUEST"
                 ],
@@ -80,22 +85,38 @@ class CombinationEngine:
             ))
             threat_families.add("INVESTMENT_PROMOTION_SCAM")
 
-        # Combination 3: Regulatory Impersonation
-        if (
-            has_signal("AUTHORITY_IMPERSONATION")
-            and has_signal("IDENTITY_NOT_ESTABLISHED", "IDENTITY_MISMATCH")
-        ):
+        # Combination 3: Regulatory Impersonation / Unsubstantiated Authority
+        if has_signal("AUTHORITY_IMPERSONATION") or has_signal("IDENTITY_MISMATCH"):
             combinations.append(ThreatCombination(
-                combination=["AUTHORITY_IMPERSONATION", "IDENTITY_NOT_ESTABLISHED"],
+                combination=[
+                    "AUTHORITY_IMPERSONATION" if "AUTHORITY_IMPERSONATION" in sig_types else "IDENTITY_MISMATCH",
+                    "IDENTITY_MISMATCH" if "IDENTITY_MISMATCH" in sig_types else "AUTHORITY_IMPERSONATION"
+                ],
                 mechanism="unsubstantiated_regulatory_authority",
                 confidence=0.94,
+                description=(
+                    "Official registry verification contradicts claimed regulatory authority or establishes identity mismatch."
+                )
+            ))
+            threat_families.add("REGULATORY_IMPERSONATION")
+            threat_families.add("IDENTITY_IMPERSONATION")
+        elif (
+            has_signal("REGULATORY_AUTHORITY_CLAIM", "AUTHORITY_CLAIM")
+            and has_signal("IDENTITY_NOT_ESTABLISHED")
+        ):
+            combinations.append(ThreatCombination(
+                combination=[
+                    "REGULATORY_AUTHORITY_CLAIM" if "REGULATORY_AUTHORITY_CLAIM" in sig_types else "AUTHORITY_CLAIM",
+                    "IDENTITY_NOT_ESTABLISHED"
+                ],
+                mechanism="unsubstantiated_regulatory_authority",
+                confidence=0.88,
                 description=(
                     "Content explicitly asserts official regulatory status (e.g. SEBI registered), "
                     "yet official registry lookups returned no matching records."
                 )
             ))
-            threat_families.add("REGULATORY_IMPERSONATION")
-            threat_families.add("IDENTITY_IMPERSONATION")
+            # Note: Do not escalate to REGULATORY_IMPERSONATION without identity mismatch evidence
 
         # Combination 4: Software Installation + Financial Transfer
         if has_signal("EXTERNAL_APP") and has_signal("PAYMENT_REQUEST"):
@@ -106,7 +127,7 @@ class CombinationEngine:
                 description="Interaction instructs downloading external application software accompanied by fee payments."
             ))
             threat_families.add("PAYMENT_FRAUD")
-            if has_signal("PRIVATE_CHANNEL_MIGRATION", "AUTHORITY_IMPERSONATION"):
+            if has_signal("PRIVATE_CHANNEL_MIGRATION", "AUTHORITY_IMPERSONATION", "REGULATORY_AUTHORITY_CLAIM"):
                 threat_families.add("MALICIOUS_SOFTWARE")
 
         # Combination 5: Credential / OTP Capture in Unverified Channel
