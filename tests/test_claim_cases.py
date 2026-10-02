@@ -99,3 +99,104 @@ def test_case_action_vs_claim(claims_engine):
     res = claims_engine.analyze(make_normalized("Buy now and join our Telegram."))
     assert len(res.claims) == 0
     assert res.analysis_metadata.actions_filtered_count >= 1
+
+
+def test_regression_no_implicit_attribution(claims_engine):
+    """Test 1 — No implicit attribution:
+    Input: 'Rahul Sharma is a SEBI registered advisor. Guaranteed 40% returns.'
+    Assert:
+    claim 1.subject == 'Rahul Sharma'
+    claim 2.subject != 'Rahul Sharma'
+    """
+    from nivesh.engine import ContentIntelligenceEngine
+    content_engine = ContentIntelligenceEngine()
+    norm = content_engine.process_text("Rahul Sharma is a SEBI registered advisor. Guaranteed 40% returns.")
+    res = claims_engine.analyze(norm)
+
+    assert len(res.claims) >= 2
+    claim1 = res.claims[0]
+    claim2 = res.claims[1]
+
+    assert claim1.subject == "Rahul Sharma"
+    assert claim1.predicate == "REGISTERED_WITH"
+
+    assert claim2.subject != "Rahul Sharma"
+    assert claim2.subject in {"unspecified_offer", "unspecified", "investment_offer"}
+    assert claim2.predicate == "GUARANTEED_RETURN"
+    assert claim2.attribution is None
+
+
+def test_regression_explicit_attribution(claims_engine):
+    """Test 2 — Explicit attribution:
+    Input: 'Rahul Sharma guarantees 40% returns.'
+    Assert:
+    claim.subject == 'Rahul Sharma'
+    """
+    from nivesh.engine import ContentIntelligenceEngine
+    content_engine = ContentIntelligenceEngine()
+    norm = content_engine.process_text("Rahul Sharma guarantees 40% returns.")
+    res = claims_engine.analyze(norm)
+
+    assert len(res.claims) >= 1
+    claim = res.claims[0]
+    assert claim.subject == "Rahul Sharma"
+    assert claim.predicate == "GUARANTEED_RETURN"
+    assert "40%" in (claim.object or "")
+
+
+def test_regression_according_to_attribution(claims_engine):
+    """Test 3 — According-to attribution:
+    Input: 'According to Rahul Sharma, the investment guarantees 40% returns.'
+    Assert:
+    claim.subject != 'Rahul Sharma'
+    claim.attribution.entity == 'Rahul Sharma'
+    claim.attribution.explicit == true
+    """
+    from nivesh.engine import ContentIntelligenceEngine
+    content_engine = ContentIntelligenceEngine()
+    norm = content_engine.process_text("According to Rahul Sharma, the investment guarantees 40% returns.")
+    res = claims_engine.analyze(norm)
+
+    assert len(res.claims) >= 1
+    claim = res.claims[0]
+    assert claim.subject != "Rahul Sharma"
+    assert claim.attribution is not None
+    assert claim.attribution.entity == "Rahul Sharma"
+    assert claim.attribution.explicit is True
+    assert claim.predicate == "GUARANTEED_RETURN"
+
+
+def test_regression_generic_offer(claims_engine):
+    """Test 4 — Generic offer:
+    Input: 'This investment guarantees 40% returns.'
+    Assert:
+    claim.subject == 'this investment'
+    """
+    from nivesh.engine import ContentIntelligenceEngine
+    content_engine = ContentIntelligenceEngine()
+    norm = content_engine.process_text("This investment guarantees 40% returns.")
+    res = claims_engine.analyze(norm)
+
+    assert len(res.claims) >= 1
+    claim = res.claims[0]
+    assert claim.subject.lower() == "this investment"
+    assert claim.predicate == "GUARANTEED_RETURN"
+
+
+def test_regression_multiple_nearby_entities(claims_engine):
+    """Test 5 — Multiple nearby entities:
+    Input: 'Rahul Sharma works at ABC Investments. ABC Investments offers guaranteed 40% returns.'
+    Assert:
+    claim.subject == 'ABC Investments'
+    not Rahul Sharma.
+    """
+    from nivesh.engine import ContentIntelligenceEngine
+    content_engine = ContentIntelligenceEngine()
+    norm = content_engine.process_text("Rahul Sharma works at ABC Investments. ABC Investments offers guaranteed 40% returns.")
+    res = claims_engine.analyze(norm)
+
+    return_claims = [c for c in res.claims if c.predicate == "GUARANTEED_RETURN"]
+    assert len(return_claims) >= 1
+    claim = return_claims[0]
+    assert claim.subject == "ABC Investments"
+    assert claim.subject != "Rahul Sharma"

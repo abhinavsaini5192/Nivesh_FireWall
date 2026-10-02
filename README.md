@@ -83,10 +83,14 @@ Converts `NormalizedContent` into atomic, canonical claims (`ClaimAnalysis`).
    - Standardizes equivalent phrasing to identical semantic forms:
      - `XYZ is debt free` == `XYZ has zero debt` == `XYZ carries no debt` -> `Subject: XYZ | Predicate: HAS_DEBT | Object: 0`.
      - `Rahul Sharma is a SEBI registered advisor` -> `Subject: Rahul Sharma | Predicate: REGISTERED_WITH | Object: SEBI`.
-     - `Guaranteed 40% returns` -> `Subject: returns | Predicate: GUARANTEED_RETURN | Object: 40%`.
+     - `Guaranteed 40% returns` -> `Subject: unspecified_offer | Predicate: GUARANTEED_RETURN | Object: 40%`.
      - `ABC announced a 1:1 bonus` -> `Subject: ABC | Predicate: ANNOUNCED_BONUS | Object: 1:1`.
      - `ABC will reach ₹500 next year` -> `Subject: ABC | Predicate: REACH_PRICE | Object: ₹500`.
      - `I think ABC is undervalued` -> `Subject: ABC | Predicate: VALUATION_STATUS | Object: undervalued`.
+   - **Separation of Mentioned Entities from Claim Subjects**:
+     - Prevents unsupported subject attribution: mentioned entities (e.g. `Rahul Sharma`) in proximity are never inferred to be claim subjects unless explicitly asserted by source text.
+     - Passive / generic offers without explicit subjects default to `unspecified_offer` (e.g. `Guaranteed 40% returns`).
+     - Explicit speaker attribution (e.g. `According to Rahul Sharma, ...` or `Rahul Sharma claims that ...`) is parsed separately into the `attribution` field (`ClaimAttribution`), retaining the actual claim subject as `the investment` or `unspecified_offer`.
 3. **Modality & Certainty Language Detection** (`ModalityDetector`):
    - Identifies: `assertion`, `possibility`, `prediction`, `opinion`, `conditional`, `question`.
    - Captures certainty language: `guaranteed`, `definitely`, `confirmed`, `officially`, `will`, `may`, `might`, `I think`, `probably`.
@@ -173,19 +177,21 @@ Converts `NormalizedContent` into atomic, canonical claims (`ClaimAnalysis`).
         "normalized": "40% returns are guaranteed."
       },
       "claim_type": "FINANCIAL",
-      "subject": "Rahul Sharma",
+      "subject": "unspecified_offer",
       "predicate": "GUARANTEED_RETURN",
       "object": "40% returns",
+      "attribution": null,
       "temporal_context": { "type": "unknown", "date": null, "raw_text": null },
       "modality": { "type": "assertion", "certainty_language": "Guaranteed" },
       "source_span": { "start": 40, "end": 63 },
       "confidence": 0.95,
-      "canonical_fingerprint": "ENTITY:RAHUL_SHARMA|PREDICATE:GUARANTEED_RETURN|OBJECT:40__RETURNS|TEMPORAL:UNKNOWN|MODALITY:ASSERTION",
+      "canonical_fingerprint": "ENTITY:UNSPECIFIED_OFFER|PREDICATE:GUARANTEED_RETURN|OBJECT:40__RETURNS|TEMPORAL:UNKNOWN|MODALITY:ASSERTION",
       "verification_requirements": [
         "statutory_regulatory_prohibition_check",
-        "advisory_agreement_terms",
-        "sebi_advertisement_code_compliance",
-        "fund_offer_document_scheme_information"
+        "return_terms",
+        "offer_documentation",
+        "advertising_disclosure_evidence",
+        "sebi_advertisement_code_compliance"
       ],
       "provenance": { "extraction_method": "hybrid", "processing_version": "1.0.0" }
     }

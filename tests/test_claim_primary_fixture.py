@@ -52,6 +52,9 @@ def test_primary_benchmark_claims_extraction(content_engine, claims_engine):
     fin_claim = fin_claims[0]
     assert fin_claim.predicate == "GUARANTEED_RETURN"
     assert "40%" in (fin_claim.object or "")
+    assert fin_claim.subject != "Rahul Sharma"
+    assert fin_claim.subject in {"unspecified_offer", "unspecified", "investment_offer"}
+    assert fin_claim.attribution is None
     assert fin_claim.modality.type == "assertion"
     assert fin_claim.modality.certainty_language is not None
     assert "guaranteed" in fin_claim.modality.certainty_language.lower()

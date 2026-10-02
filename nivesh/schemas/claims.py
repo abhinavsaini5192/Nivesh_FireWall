@@ -79,15 +79,24 @@ class ClaimProvenance(BaseModel):
     processing_version: str = "1.0.0"
 
 
+class ClaimAttribution(BaseModel):
+    """Explicit speaker or source attribution asserted in text."""
+    entity: str = Field(description="Name of attributing person or organization")
+    type: str = Field(default="person", description="Entity type e.g. person, organization")
+    explicit: bool = Field(default=True, description="Whether attribution is explicitly stated in text")
+    source_span: Optional[list[int]] = Field(default=None, description="Span of attributing phrase")
+
+
 class CanonicalClaim(BaseModel):
     """Structured, atomic assertion extracted from content."""
     claim_id: str = Field(description="Unique claim identifier e.g. CLAIM-001")
     source_content_id: str = Field(description="Reference to origin NormalizedContent content_id")
     text: ClaimText
     claim_type: ClaimType
-    subject: str = Field(description="Subject entity or concept e.g. 'Rahul Sharma', 'ABC', 'returns'")
+    subject: Optional[str] = Field(default="unspecified_offer", description="Subject entity e.g. 'Rahul Sharma', 'ABC', 'unspecified_offer'")
     predicate: str = Field(description="Canonical uppercase predicate e.g. 'REGISTERED_WITH', 'HAS_DEBT'")
     object: Optional[str] = Field(default=None, description="Object, value or target e.g. 'SEBI', '0', '40%'")
+    attribution: Optional[ClaimAttribution] = Field(default=None, description="Explicit speaker or source attribution if supported by text")
     attributes: dict[str, Any] = Field(default_factory=dict, description="Structured attributes, roles, numbers")
     temporal_context: TemporalContext = Field(default_factory=TemporalContext)
     modality: ClaimModality = Field(default_factory=ClaimModality)

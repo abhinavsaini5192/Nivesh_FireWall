@@ -201,7 +201,10 @@ class ClaimSegmenter:
             res = [CandidateSegment(c1_text, span1)]
 
             if guarantee_part:
-                c2_text = f"{guarantee_part}"
+                if guarantee_part.lower().startswith("guarantees"):
+                    c2_text = f"{name_part} {guarantee_part}"
+                else:
+                    c2_text = f"{guarantee_part}"
                 g_idx = full_text.find(guarantee_part)
                 span2 = SourceSpan(start=g_idx if g_idx != -1 else span.start, end=g_idx + len(guarantee_part) if g_idx != -1 else span.end)
                 res.append(CandidateSegment(c2_text, span2))

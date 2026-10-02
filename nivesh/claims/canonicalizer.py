@@ -13,10 +13,17 @@ from nivesh.schemas.claims import (
     ClaimText,
     ClaimType,
     SourceSpan,
+    ClaimAttribution,
 )
 from nivesh.claims.modality import ModalityDetector
 from nivesh.claims.temporal import TemporalDetector
 from nivesh.claims.verification_reqs import VerificationRequirementsGenerator
+
+# Explicit attribution prefix patterns
+ATTRIBUTION_PATTERNS = [
+    re.compile(r"^\s*According\s+to\s+([A-Za-z0-9&.\s]{1,40}?)(?:,\s*|:\s*|\s+that\s+)\s*(.+)$", re.IGNORECASE),
+    re.compile(r"^\s*([A-Za-z0-9&.\s]{1,40}?)\s+(?:says|claims|stated|states)(?:\s+that|:|,)?\s+(.+)$", re.IGNORECASE),
+]
 
 # Canonical mapping rules: (regex pattern, claim_type, predicate, subject_group, object_group, canonical_obj)
 CANONICAL_PATTERNS = [
@@ -73,7 +80,18 @@ CANONICAL_PATTERNS = [
         2,
         "SEBI"  # default regulator if not explicit
     ),
-    # Return guarantees (Guaranteed 40% returns / 40% returns are guaranteed / guarantees 40% returns)
+    # Explicit guarantor / offeror return promises
+    # e.g. "Rahul Sharma guarantees 40% returns", "This investment guarantees 40% returns",
+    # "ABC Investments offers guaranteed 40% returns"
+    (
+        re.compile(r"\b([A-Za-z0-9&.\s]{1,40}?)\s+(?:guarantees|offers\s+guaranteed|provides\s+guaranteed|promises\s+guaranteed)\s+(\d+(?:\.\d+)?\s*%(?:\s+returns?)?)\b", re.IGNORECASE),
+        "FINANCIAL",
+        "GUARANTEED_RETURN",
+        1,
+        2,
+        None
+    ),
+    # Passive or impersonal guaranteed returns (no explicit subject attached in sentence)
     (
         re.compile(r"\b(?:guaranteed|guarantees)\s+(\d+(?:\.\d+)?\s*%(?:\s+returns?)?)\b", re.IGNORECASE),
         "FINANCIAL",
@@ -204,23 +222,56 @@ class ClaimCanonicalizer:
         if not clean:
             return None
 
-        # Detect modality and temporal framing
-        modality = self.modality_detector.detect(clean)
-        temporal = self.temporal_detector.detect(clean)
+        # Check for explicit speaker attribution prefix (e.g. "According to Rahul Sharma, ...")
+        attribution: Optional[ClaimAttribution] = None
+        statement_text = clean
+        for attr_pat in ATTRIBUTION_PATTERNS:
+            attr_m = attr_pat.match(clean)
+            if attr_m:
+                attr_entity = attr_m.group(1).strip()
+                statement_text = attr_m.group(2).strip()
+                # Determine entity type
+                org_keywords = ["inc", "ltd", "corp", "investments", "capital", "securities", "fund", "holdings", "group", "bank"]
+                ent_type = "organization" if any(k in attr_entity.lower() for k in org_keywords) else "person"
+                
+                # Source span for attributing phrase
+                attr_end = source_span.start + clean.lower().find(attr_entity.lower()) + len(attr_entity)
+                attribution = ClaimAttribution(
+                    entity=attr_entity,
+                    type=ent_type,
+                    explicit=True,
+                    source_span=[source_span.start, attr_end]
+                )
+                break
 
-        matched_claim: Optional[CanonicalClaim] = None
+        # Detect modality and temporal framing on statement
+        modality = self.modality_detector.detect(statement_text)
+        temporal = self.temporal_detector.detect(statement_text)
 
         # 1. Match against deterministic canonical patterns
         for pattern, claim_type, predicate, subj_idx, obj_idx, canonical_obj in CANONICAL_PATTERNS:
-            m = pattern.search(clean)
+            m = pattern.search(statement_text)
             if m:
                 # Extract subject
                 if subj_idx is not None and subj_idx <= len(m.groups()):
                     subject = m.group(subj_idx).strip()
-                elif context_entities:
-                    subject = context_entities[0]
+                    # Clean subject leading conjunctions/markers
+                    subject = re.sub(r"^(?:that|says|therefore|and)\s+", "", subject, flags=re.IGNORECASE).strip()
+                    if subject.lower() == "this investment":
+                        subject = "this investment"
+                    elif subject.lower() == "the investment":
+                        subject = "the investment"
                 else:
-                    subject = "returns" if "RETURN" in predicate else "entity"
+                    # Never use context_entities from outside this text snippet!
+                    # Only assign an entity if the candidate text explicitly mentions it.
+                    explicit_entity = self._find_entity_in_text(statement_text, context_entities)
+                    if explicit_entity:
+                        subject = explicit_entity
+                    else:
+                        subject = "unspecified_offer" if "RETURN" in predicate else "unspecified"
+
+                if not subject:
+                    subject = "unspecified_offer" if "RETURN" in predicate else "unspecified"
 
                 # Extract object
                 if canonical_obj is not None:
@@ -230,13 +281,8 @@ class ClaimCanonicalizer:
                 else:
                     obj = None
 
-                # Clean subject
-                subject = re.sub(r"^(?:that|says|therefore|and)\s+", "", subject, flags=re.IGNORECASE).strip()
-                if not subject:
-                    subject = "entity"
-
                 # Standardize normalized sentence
-                normalized_sentence = self._format_normalized_sentence(subject, predicate, obj, claim_type)
+                normalized_sentence = self._format_normalized_sentence(subject, predicate, obj, claim_type, attribution)
 
                 # Verification requirements
                 reqs = self.verification_gen.generate(
@@ -248,7 +294,7 @@ class ClaimCanonicalizer:
                     modality_type=modality.type
                 )
 
-                fingerprint = self._build_fingerprint(subject, predicate, obj, temporal.type, modality.type)
+                fingerprint = self._build_fingerprint(subject, predicate, obj, temporal.type, modality.type, attribution)
 
                 claim_id = f"CLAIM-{claim_index:03d}"
                 return CanonicalClaim(
@@ -259,6 +305,7 @@ class ClaimCanonicalizer:
                     subject=subject,
                     predicate=predicate,
                     object=obj,
+                    attribution=attribution,
                     attributes={"pattern_matched": True},
                     temporal_context=temporal,
                     modality=modality,
@@ -270,13 +317,15 @@ class ClaimCanonicalizer:
 
         # 2. Heuristic fallback for other assertions
         return self._heuristic_fallback(
-            clean,
+            statement_text,
             source_span,
             source_content_id,
             claim_index,
             modality,
             temporal,
-            context_entities
+            context_entities,
+            attribution=attribution,
+            original_text=candidate_text.strip()
         )
 
     def _heuristic_fallback(
@@ -288,6 +337,8 @@ class ClaimCanonicalizer:
         modality,
         temporal,
         entities: Optional[list[str]],
+        attribution: Optional[ClaimAttribution] = None,
+        original_text: Optional[str] = None
     ) -> Optional[CanonicalClaim]:
         """Provides generalized fallback for claims not fitting strict regex patterns."""
         # Determine fallback claim type
@@ -303,16 +354,23 @@ class ClaimCanonicalizer:
         else:
             claim_type = "FACTUAL"
 
-        # Extract subject from first words or entity
         words = text.split()
         if not words:
             return None
 
-        subject = entities[0] if entities else words[0]
+        # Check if an entity appears in this candidate text itself
+        explicit_entity = self._find_entity_in_text(text, entities)
+        if explicit_entity:
+            subject = explicit_entity
+        elif words[0].lower() in {"guaranteed", "offers", "promises", "high", "unspecified"}:
+            subject = "unspecified_offer"
+        else:
+            subject = words[0]
+
         predicate = "ASSERTS"
         obj = " ".join(words[1:]) if len(words) > 1 else None
 
-        normalized_sentence = text
+        normalized_sentence = self._format_normalized_sentence(subject, predicate, obj, claim_type, attribution)
         reqs = self.verification_gen.generate(
             claim_type=claim_type,
             predicate=predicate,
@@ -321,16 +379,17 @@ class ClaimCanonicalizer:
             temporal_type=temporal.type,
             modality_type=modality.type
         )
-        fingerprint = self._build_fingerprint(subject, predicate, obj, temporal.type, modality.type)
+        fingerprint = self._build_fingerprint(subject, predicate, obj, temporal.type, modality.type, attribution)
 
         return CanonicalClaim(
             claim_id=f"CLAIM-{index:03d}",
             source_content_id=content_id,
-            text=ClaimText(original=text, normalized=normalized_sentence),
+            text=ClaimText(original=original_text or text, normalized=normalized_sentence),
             claim_type=claim_type,
             subject=subject,
             predicate=predicate,
             object=obj,
+            attribution=attribution,
             attributes={"heuristic": True},
             temporal_context=temporal,
             modality=modality,
@@ -341,39 +400,81 @@ class ClaimCanonicalizer:
         )
 
     @staticmethod
-    def _format_normalized_sentence(subject: str, predicate: str, obj: Optional[str], claim_type: str) -> str:
-        """Constructs a clean, canonical English statement."""
-        if predicate == "REGISTERED_WITH":
-            return f"{subject} is registered with {obj or 'regulator'}."
-        elif predicate == "HAS_DEBT":
-            if obj in {"0", "zero", "no debt"}:
-                return f"{subject} is debt free."
-            return f"{subject} has {obj} debt."
-        elif predicate == "GUARANTEED_RETURN":
-            clean_val = re.sub(r"\s+returns?$", "", obj or "", flags=re.IGNORECASE).strip()
-            return f"{clean_val or 'High'} returns are guaranteed."
-        elif predicate == "OFFICIALLY_APPROVED":
-            return f"{subject} is officially approved by {obj or 'regulator'}."
-        elif predicate == "ANNOUNCED_BONUS":
-            return f"{subject} announced a {obj} bonus."
-        elif predicate == "REPORTED_PROFIT":
-            return f"{subject} reported {obj} profit."
-        elif predicate == "REPORTED_REVENUE":
-            return f"{subject} reported {obj} revenue."
-        elif predicate == "REACH_PRICE":
-            return f"{subject} will reach price of {obj}."
-        elif predicate == "VALUATION_STATUS":
-            return f"{subject} is {obj}."
-        elif predicate == "RECOMMENDS_INVESTMENT":
-            return f"Investment in {subject} is recommended."
-        return f"{subject} {predicate.lower().replace('_', ' ')} {obj or ''}".strip() + "."
+    def _find_entity_in_text(text: str, entities: Optional[list[str]]) -> Optional[str]:
+        """Finds if an entity from context is explicitly present in the candidate text."""
+        if not entities or not text:
+            return None
+        text_lower = text.lower()
+        for ent in entities:
+            if not ent or not ent.strip():
+                continue
+            pattern = r"\b" + re.escape(ent.lower().strip()) + r"\b"
+            if re.search(pattern, text_lower):
+                return ent.strip()
+        return None
 
     @staticmethod
-    def _build_fingerprint(subject: str, predicate: str, obj: Optional[str], temporal: str, modality: str) -> str:
+    def _format_normalized_sentence(
+        subject: Optional[str],
+        predicate: str,
+        obj: Optional[str],
+        claim_type: str,
+        attribution: Optional[ClaimAttribution] = None
+    ) -> str:
+        """Constructs a clean, canonical English statement."""
+        stmt: str
+        if predicate == "REGISTERED_WITH":
+            stmt = f"{subject} is registered with {obj or 'regulator'}."
+        elif predicate == "HAS_DEBT":
+            if obj in {"0", "zero", "no debt"}:
+                stmt = f"{subject} is debt free."
+            else:
+                stmt = f"{subject} has {obj} debt."
+        elif predicate == "GUARANTEED_RETURN":
+            clean_val = re.sub(r"\s+returns?$", "", obj or "", flags=re.IGNORECASE).strip()
+            if subject in {"unspecified_offer", "unspecified", "investment_offer", None}:
+                stmt = f"{clean_val or 'High'} returns are guaranteed."
+            else:
+                stmt = f"{subject} guarantees {clean_val or 'high'} returns."
+        elif predicate == "OFFICIALLY_APPROVED":
+            stmt = f"{subject} is officially approved by {obj or 'regulator'}."
+        elif predicate == "ANNOUNCED_BONUS":
+            stmt = f"{subject} announced a {obj} bonus."
+        elif predicate == "REPORTED_PROFIT":
+            stmt = f"{subject} reported {obj} profit."
+        elif predicate == "REPORTED_REVENUE":
+            stmt = f"{subject} reported {obj} revenue."
+        elif predicate == "REACH_PRICE":
+            stmt = f"{subject} will reach price of {obj}."
+        elif predicate == "VALUATION_STATUS":
+            stmt = f"{subject} is {obj}."
+        elif predicate == "RECOMMENDS_INVESTMENT":
+            stmt = f"Investment in {subject} is recommended."
+        else:
+            s_str = subject or "unspecified"
+            stmt = f"{s_str} {predicate.lower().replace('_', ' ')} {obj or ''}".strip() + "."
+
+        if attribution and attribution.entity:
+            return f"According to {attribution.entity}, {stmt}"
+        return stmt
+
+    @staticmethod
+    def _build_fingerprint(
+        subject: Optional[str],
+        predicate: str,
+        obj: Optional[str],
+        temporal: str,
+        modality: str,
+        attribution: Optional[ClaimAttribution] = None
+    ) -> str:
         """Builds a deterministic canonical fingerprint for Engine 8."""
-        s = re.sub(r"[^\w]", "_", subject.strip().upper())
+        s = re.sub(r"[^\w]", "_", (subject or "UNSPECIFIED_OFFER").strip().upper())
         p = predicate.strip().upper()
         o = re.sub(r"[^\w]", "_", (obj or "NONE").strip().upper())
         t = temporal.strip().upper()
         m = modality.strip().upper()
-        return f"ENTITY:{s}|PREDICATE:{p}|OBJECT:{o}|TEMPORAL:{t}|MODALITY:{m}"
+        fp = f"ENTITY:{s}|PREDICATE:{p}|OBJECT:{o}|TEMPORAL:{t}|MODALITY:{m}"
+        if attribution and attribution.entity:
+            a = re.sub(r"[^\w]", "_", attribution.entity.strip().upper())
+            fp += f"|ATTRIBUTION:{a}"
+        return fp

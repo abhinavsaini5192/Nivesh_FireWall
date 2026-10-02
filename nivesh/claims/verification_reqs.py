@@ -56,12 +56,22 @@ class VerificationRequirementsGenerator:
 
         # 3. Guaranteed Return / Yield Claims
         if "GUARANTEE" in predicate or "RETURN" in predicate:
-            reqs.extend([
-                "statutory_regulatory_prohibition_check",
-                "advisory_agreement_terms",
-                "sebi_advertisement_code_compliance",
-                "fund_offer_document_scheme_information"
-            ])
+            subj_lower = (subject or "").lower()
+            if not subject or subj_lower in {"unspecified_offer", "unspecified", "investment_offer", "this investment", "the investment"}:
+                reqs.extend([
+                    "statutory_regulatory_prohibition_check",
+                    "return_terms",
+                    "offer_documentation",
+                    "advertising_disclosure_evidence",
+                    "sebi_advertisement_code_compliance",
+                ])
+            else:
+                reqs.extend([
+                    "statutory_regulatory_prohibition_check",
+                    "advisory_agreement_terms",
+                    "sebi_advertisement_code_compliance",
+                    "fund_offer_document_scheme_information"
+                ])
             return reqs
 
         # 4. Corporate Events (Bonus, Dividend, Buyback, IPO)
