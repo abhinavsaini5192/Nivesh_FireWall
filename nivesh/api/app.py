@@ -16,6 +16,7 @@ from nivesh.actions.engine import ActionIntelligenceEngine
 from nivesh.sources.engine import SourceIntelligenceEngine
 from nivesh.evidence.engine import EvidenceVerificationEngine
 from nivesh.threat.engine import ThreatIntelligenceEngine
+from nivesh.fingerprints.engine import ScamFingerprintEngine
 from nivesh.schemas.input import ContentInput, ChannelType
 from nivesh.schemas.normalized import NormalizedContent
 from nivesh.schemas.claims import ClaimAnalysis
@@ -23,7 +24,14 @@ from nivesh.schemas.actions import ActionAnalysis
 from nivesh.schemas.sources import SourceAnalysis
 from nivesh.schemas.evidence import EvidenceAnalysis
 from nivesh.schemas.threat import ThreatAnalysis
+from nivesh.schemas.fingerprint import (
+    ScamFingerprint,
+    FingerprintObservation,
+    FingerprintMatch,
+    FingerprintAnalysis,
+)
 from pydantic import BaseModel
+from datetime import datetime, timezone
 
 class ActionAnalysisPayload(BaseModel):
     content: NormalizedContent
@@ -45,6 +53,18 @@ class ThreatAnalysisPayload(BaseModel):
     actions: Optional[ActionAnalysis] = None
     sources: Optional[SourceAnalysis] = None
     evidence: Optional[EvidenceAnalysis] = None
+
+class FingerprintMatchPayload(BaseModel):
+    content: NormalizedContent
+    claims: Optional[ClaimAnalysis] = None
+    actions: Optional[ActionAnalysis] = None
+    sources: Optional[SourceAnalysis] = None
+    evidence: Optional[EvidenceAnalysis] = None
+    threat: Optional[ThreatAnalysis] = None
+
+class FingerprintDisputePayload(BaseModel):
+    reason: str
+    actor: Optional[str] = "user"
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -69,6 +89,7 @@ actions_engine = ActionIntelligenceEngine()
 sources_engine = SourceIntelligenceEngine()
 evidence_engine = EvidenceVerificationEngine()
 threat_engine = ThreatIntelligenceEngine()
+fingerprint_engine = ScamFingerprintEngine()
 
 
 @app.get("/health", tags=["System"])
@@ -85,6 +106,7 @@ async def health_check():
             "Engine 4: Source Intelligence Engine",
             "Engine 5: Evidence Verification Engine",
             "Engine 6: Threat & Attack-Path Intelligence Engine",
+            "Engine 7: Scam Fingerprint & Collective Threat Intelligence Engine",
         ],
         "version": ENGINE_VERSION,
     }
@@ -294,6 +316,171 @@ async def analyze_threat(request: Request):
             status_code=400,
             detail=f"Threat analysis failed: {str(e)}"
         )
+
+
+@app.post(
+    "/api/v1/fingerprints/match",
+    response_model=FingerprintAnalysis,
+    tags=["Scam Fingerprint (Engine 7)"],
+    summary="Match observation against collective threat fingerprints or register new pattern",
+)
+async def match_fingerprint(request: Request):
+    """Consumes normalized content through ThreatAnalysis, matching against stored fingerprints."""
+    try:
+        body = await request.json()
+        if "content" in body:
+            payload = FingerprintMatchPayload(**body)
+            content = payload.content
+            claims = payload.claims
+            actions = payload.actions
+            sources = payload.sources
+            evidence = payload.evidence
+            threat = payload.threat
+        else:
+            content = NormalizedContent(**body)
+            claims = None
+            actions = None
+            sources = None
+            evidence = None
+            threat = None
+
+        if claims is None:
+            claims = claims_engine.analyze(content)
+        if actions is None:
+            actions = actions_engine.analyze(content, claims)
+        if sources is None:
+            sources = sources_engine.discover_and_retrieve(content, claims, actions)
+        if evidence is None:
+            evidence = evidence_engine.verify(content, claims, sources)
+        if threat is None:
+            threat = threat_engine.analyze(content, claims, actions, sources, evidence)
+
+        return fingerprint_engine.create_or_match(content, claims, actions, sources, evidence, threat)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Fingerprint matching failed: {str(e)}"
+        )
+
+
+@app.post(
+    "/api/v1/fingerprints/create",
+    response_model=ScamFingerprint,
+    tags=["Scam Fingerprint (Engine 7)"],
+    summary="Register a new scam fingerprint in collective memory",
+)
+async def create_fingerprint(request: Request):
+    """Creates and registers a new ScamFingerprint into repository."""
+    try:
+        body = await request.json()
+        if "fingerprint_id" in body and "exact_signature" in body:
+            fp = ScamFingerprint(**body)
+            return fingerprint_engine.repository.add_fingerprint(fp)
+
+        if "content" in body:
+            payload = FingerprintMatchPayload(**body)
+            content = payload.content
+            claims = payload.claims
+            actions = payload.actions
+            sources = payload.sources
+            evidence = payload.evidence
+            threat = payload.threat
+        else:
+            content = NormalizedContent(**body)
+            claims = None
+            actions = None
+            sources = None
+            evidence = None
+            threat = None
+
+        if claims is None:
+            claims = claims_engine.analyze(content)
+        if actions is None:
+            actions = actions_engine.analyze(content, claims)
+        if sources is None:
+            sources = sources_engine.discover_and_retrieve(content, claims, actions)
+        if evidence is None:
+            evidence = evidence_engine.verify(content, claims, sources)
+        if threat is None:
+            threat = threat_engine.analyze(content, claims, actions, sources, evidence)
+
+        features = fingerprint_engine.feature_extractor.extract_features(
+            content=content,
+            claims=claims,
+            actions=actions,
+            sources=sources,
+            evidence=evidence,
+            threat=threat
+        )
+        now_iso = datetime.now(timezone.utc).isoformat()
+        new_fp = fingerprint_engine._create_new_fingerprint(features, now_iso)
+        return fingerprint_engine.repository.add_fingerprint(new_fp)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Fingerprint creation failed: {str(e)}"
+        )
+
+
+@app.get(
+    "/api/v1/fingerprints/search",
+    response_model=list[ScamFingerprint],
+    tags=["Scam Fingerprint (Engine 7)"],
+    summary="Search stored fingerprints by query, status, threat family, or channel",
+)
+async def search_fingerprints(
+    query: Optional[str] = None,
+    status: Optional[str] = None,
+    threat_family: Optional[str] = None,
+    channel: Optional[str] = None,
+):
+    """Searches stored threat fingerprints in collective memory."""
+    try:
+        return fingerprint_engine.search_fingerprints(
+            query=query,
+            status=status,
+            threat_family=threat_family,
+            channel=channel,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Fingerprint search failed: {str(e)}"
+        )
+
+
+@app.get(
+    "/api/v1/fingerprints/{fingerprint_id}",
+    response_model=ScamFingerprint,
+    tags=["Scam Fingerprint (Engine 7)"],
+    summary="Retrieve details of a specific scam fingerprint",
+)
+async def get_fingerprint(fingerprint_id: str):
+    """Retrieves a single scam fingerprint by ID."""
+    fp = fingerprint_engine.get_fingerprint(fingerprint_id)
+    if not fp:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Fingerprint '{fingerprint_id}' not found."
+        )
+    return fp
+
+
+@app.post(
+    "/api/v1/fingerprints/{fingerprint_id}/dispute",
+    response_model=ScamFingerprint,
+    tags=["Scam Fingerprint (Engine 7)"],
+    summary="Record a dispute against a fingerprint",
+)
+async def dispute_fingerprint(fingerprint_id: str, payload: FingerprintDisputePayload):
+    """Records a dispute note against a fingerprint and marks it DISPUTED."""
+    fp = fingerprint_engine.dispute_fingerprint(fingerprint_id, reason=payload.reason, actor=payload.actor)
+    if not fp:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Fingerprint '{fingerprint_id}' not found."
+        )
+    return fp
 
 
 

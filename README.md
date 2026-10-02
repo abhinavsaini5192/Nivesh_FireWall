@@ -1,6 +1,6 @@
 # Nivesh Firewall — Backend Core
 
-Production-quality implementations of **Engine 1 (Content Intelligence)**, **Engine 2 (Claim Intelligence)**, **Engine 3 (Action Intelligence)**, **Engine 4 (Source Intelligence)**, **Engine 5 (Evidence Verification)**, and **Engine 6 (Threat & Attack-Path Intelligence Engine)** for the **Nivesh Firewall** backend.
+Production-quality implementations of **Engine 1 (Content Intelligence)**, **Engine 2 (Claim Intelligence)**, **Engine 3 (Action Intelligence)**, **Engine 4 (Source Intelligence)**, **Engine 5 (Evidence Verification)**, **Engine 6 (Threat & Attack-Path Intelligence)**, and **Engine 7 (Scam Fingerprint & Collective Threat Intelligence)** for the **Nivesh Firewall** backend.
 
 ```
 RAW CONTENT (Text, URL, Image)
@@ -55,8 +55,15 @@ RAW CONTENT (Text, URL, Image)
           │
           ▼
 ┌─────────────────────────────────────────────────────────┐
-│ DOWNSTREAM ENGINES (Engine 7+):                         │
-│ - Scam Fingerprint Engine (Engine 7)                    │
+│ ENGINE 7: Scam Fingerprint & Collective Intelligence     │
+└─────────────────────────────────────────────────────────┘
+          │ (Answers: "Have we previously observed this underlying financial threat pattern?")
+          ▼
+     FingerprintAnalysis (ScamFingerprint, FingerprintObservation, FingerprintMatch[])
+          │
+          ▼
+┌─────────────────────────────────────────────────────────┐
+│ DOWNSTREAM ENGINES (Engine 8+):                         │
 │ - Policy & Safety Intervention Engine (Engine 8)        │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -69,7 +76,8 @@ RAW CONTENT (Text, URL, Image)
 > - **Engine 4** routes claims to authoritative source taxonomies, queries official registries/filings (SEBI, NSE, etc.), normalizes retrieved documents, and generates structured evidence candidates with full provenance while keeping verification status strictly `UNVERIFIED`.
 > - **Engine 5** evaluates claim-level evidence relationships (`SUPPORTED`, `PARTIALLY_SUPPORTED`, `CONTRADICTED`, `INSUFFICIENT_EVIDENCE`, `NOT_VERIFIABLE`, `SOURCE_CONFLICT`), strictly separating source retrieval status from claim truth, and distinguishing absence of evidence from falsity.
 > - **Engine 6** constructs structured attack paths, identifies threat stages & transitions, links claims to actions (`RATIONALE_FOR`, `JUSTIFIES`), surfaces evidence weaknesses, evaluates high-impact actions with reversibility ratings, and detects multi-signal combinations without predicting prices or calculating generic scam probabilities.
-> - **Engines 1 through 6 NEVER** recommend buying/selling/holding investments, predict future market outcomes, calculate general "scam probabilities" (e.g. 0.94), or create final ALLOW/BLOCK decisions. Final intervention policy belongs strictly to Engine 8.
+> - **Engine 7** creates privacy-preserving structural scam fingerprints, normalizes threat patterns across multiple observations, detects exact and semantic variants, maintains observation counts with copy-amplification protection, and provides collective intelligence without storing raw PII, declaring criminality, or predicting scam probability.
+> - **Engines 1 through 7 NEVER** recommend buying/selling/holding investments, predict future market outcomes, calculate general "scam probabilities" (e.g. 0.94), declare individuals criminals, or create final ALLOW/BLOCK decisions. Final intervention policy belongs strictly to downstream Engine 8.
 
 
 ---
@@ -672,6 +680,94 @@ Raw Text ──▶ Engine 1 (Content) ──▶ Engine 2 (Claims) ──▶ Engi
 
 ---
 
+## 7. Engine 7: Scam Fingerprint & Collective Threat Intelligence Engine
+
+Creates and manages **privacy-preserving scam fingerprints** across multi-user observations.
+
+### Fundamental Question
+> **"Have we previously observed this underlying financial threat pattern, and which structural characteristics make the current observation similar?"**
+
+### Core Architectural Principle
+A scammer may change the URL, handle, domain, or monetary amount (e.g. ₹5,000 ↔ ₹4,999, Telegram ↔ WhatsApp). Engine 7 abstracts superficial variations into **invariant structural dimensions** rather than hashing raw messages (`SHA256(raw_text)`).
+
+```
+Observation A (Telegram + SEBI + Guaranteed 40% + App + ₹5,000)
+       \
+        \
+         → STRUCTURAL / SEMANTIC VARIANT MATCH (Confidence 0.91)
+        /
+Observation B (WhatsApp + SEBI + Assured 40% + App + ₹4,999)
+       ↓
+Shared Threat Family / Structural Fingerprint (SFP-001, count = 2)
+```
+
+### Capabilities & Safeguards
+1. **Multi-Dimensional Normalized Features**:
+   - `identity_patterns`: Canonical regulatory authority assertions (`IDENTITY:REGULATORY_AUTHORITY_CLAIM`, `IDENTITY:NOT_ESTABLISHED`)
+   - `claim_patterns`: Canonical claims (`CLAIM:GUARANTEED_RETURN`, `CLAIM:REGULATORY_REGISTRATION`)
+   - `action_patterns`: Canonical requested user actions (`ACTION:CHANNEL_MIGRATION`, `ACTION:SOFTWARE_INSTALLATION`, `ACTION:PAYMENT_REQUEST`)
+   - `attack_stages` & `attack_transitions`: Interaction attack path progression
+   - `threat_patterns` & `evidence_patterns`: Normalized regulatory conflict and unverified identity states
+2. **Deterministic Canonical Signatures**:
+   - `exact_signature`: SHA-256 digest of strictly sorted canonical features for $O(1)$ exact matches.
+   - `semantic_signature`: SHA-256 digest of invariant structural dimensions (omitting channel, lookalike domain, and exact rupee amount) for instantaneous variant detection.
+   - `attack_path_signature`: Normalized stage transition chain (`TRUST_BUILDING>CHANNEL_MIGRATION>SOFTWARE_INSTALLATION>FINANCIAL_REQUEST`).
+3. **Multi-Level Match Hierarchy**:
+   - `EXACT_MATCH`: 100% identical canonical structure ($1.00$ confidence).
+   - `STRUCTURAL_MATCH`: Same core attack path and threat mechanics with differing external channel or domain ($0.90$–$0.95$ confidence).
+   - `SEMANTIC_VARIANT`: Equivalent threat structure with mutated wording, amounts, or channels ($0.85$–$0.92$ confidence).
+   - `RELATED_PATTERN`: Shares threat family and partial attack path ($0.40$–$0.70$ confidence).
+   - `NO_MATCH`: Unrelated or benign informational content ($0.00$ confidence).
+4. **Copy-Amplification & Duplicate-Origin Defense**:
+   - Tracks `content_hash` of normalized text. Multiple forwarded copies from the same origin do **not** inflate independent `observation_count` (`is_duplicate_origin=True`).
+5. **Lifecycle & Dispute Management**:
+   - States: `NEW` ➔ `ACTIVE` (promoted upon reaching 2+ independent observations) ➔ `STALE` (inactivity threshold) ➔ `ARCHIVED` / `DISPUTED`.
+   - Disputes record notes and auditor provenance without silently deleting historical observations.
+6. **Strict Privacy Preservation**:
+   - Zero raw PII in canonical features, signatures, or repository records.
+   - User identities remain completely anonymous from collective threat context.
+   - Downstream responses to other users disclose only normalized threat mechanics.
+
+### Schema Example: `ScamFingerprint`
+```json
+{
+  "fingerprint_id": "SFP-001",
+  "schema_version": "1.0",
+  "identity_patterns": [
+    "IDENTITY:NOT_ESTABLISHED",
+    "IDENTITY:REGULATOR:SEBI",
+    "IDENTITY:REGULATORY_AUTHORITY_CLAIM"
+  ],
+  "claim_patterns": [
+    "CLAIM:GUARANTEED_RETURN",
+    "CLAIM:REGULATORY_REGISTRATION"
+  ],
+  "action_patterns": [
+    "ACTION:CHANNEL_MIGRATION",
+    "ACTION:PAYMENT_REQUEST",
+    "ACTION:SOFTWARE_INSTALLATION"
+  ],
+  "channel_patterns": [
+    "CHANNEL:TELEGRAM"
+  ],
+  "attack_stages": [
+    "TRUST_BUILDING",
+    "CHANNEL_MIGRATION",
+    "SOFTWARE_INSTALLATION",
+    "FINANCIAL_REQUEST"
+  ],
+  "attack_path_signature": "TRUST_BUILDING>CHANNEL_MIGRATION>SOFTWARE_INSTALLATION>FINANCIAL_REQUEST",
+  "exact_signature": "0e6761ca783f982a...",
+  "semantic_signature": "81f148e657cba31e...",
+  "observation_count": 2,
+  "distinct_channels": ["telegram", "whatsapp"],
+  "distinct_variants": 2,
+  "status": "ACTIVE"
+}
+```
+
+---
+
 ## 8. API Endpoints
 
 Start the server:
@@ -680,7 +776,7 @@ uvicorn nivesh.api.app:app --host 0.0.0.0 --port 8000
 ```
 
 1. **`GET /health`** / **`GET /api/v1/health`**:
-   Returns system status and active engines (`content_intelligence`, `claim_intelligence`, `action_intelligence`, `source_intelligence`, `evidence_verification`, `threat_intelligence`).
+   Returns system status and all 7 active engines.
 2. **`POST /api/v1/content/analyze`** (Engine 1):
    - Body: `{"text": "...", "url": "...", "channel": "telegram"}`
    - Form-Data: `file=@screenshot.png`, `channel=whatsapp`
@@ -700,6 +796,20 @@ uvicorn nivesh.api.app:app --host 0.0.0.0 --port 8000
 7. **`POST /api/v1/threat/analyze`** (Engine 6):
    - Body: `{"content": NormalizedContent, "claims": ClaimAnalysis, "actions": ActionAnalysis, "sources": SourceAnalysis, "evidence": EvidenceAnalysis}` or directly `NormalizedContent` (with auto-cascading pipeline execution)
    - Output: `ThreatAnalysis`
+8. **`POST /api/v1/fingerprints/match`** (Engine 7):
+   - Body: Full payload or `NormalizedContent` (with auto-cascading execution through Engine 6)
+   - Output: `FingerprintAnalysis` (containing match type, match confidence, primary fingerprint, observations, collective threat context)
+9. **`POST /api/v1/fingerprints/create`** (Engine 7):
+   - Body: Direct `ScamFingerprint` or content payload
+   - Output: `ScamFingerprint`
+10. **`GET /api/v1/fingerprints/{fingerprint_id}`** (Engine 7):
+    - Output: `ScamFingerprint`
+11. **`GET /api/v1/fingerprints/search`** (Engine 7):
+    - Params: `query`, `status`, `threat_family`, `channel`
+    - Output: `list[ScamFingerprint]`
+12. **`POST /api/v1/fingerprints/{fingerprint_id}/dispute`** (Engine 7):
+    - Body: `{"reason": "...", "actor": "compliance_officer"}`
+    - Output: `ScamFingerprint` with `status="DISPUTED"`
 
 ---
 
@@ -713,64 +823,89 @@ from nivesh import (
     SourceIntelligenceEngine,
     EvidenceVerificationEngine,
     ThreatIntelligenceEngine,
+    ScamFingerprintEngine,
 )
 
-# Initialize engines
+# Initialize all 7 engines
 content_engine = ContentIntelligenceEngine()
 claims_engine = ClaimIntelligenceEngine()
 actions_engine = ActionIntelligenceEngine()
-sources_engine = SourceIntelligenceEngine()
+sources_engine = SourceIntelligenceEngine(default_mode="FIXTURE")
 evidence_engine = EvidenceVerificationEngine()
 threat_engine = ThreatIntelligenceEngine()
+fingerprint_engine = ScamFingerprintEngine()
 
-raw_text = (
+# Observation 1: Standard benchmark threat
+raw_text_1 = (
     "🚨 SEBI registered advisor Rahul Sharma! Guaranteed 40% returns. "
     "Join our Telegram VIP group: https://t.me/rahulinvest. "
-    "Download our app and pay ₹5,000. Contact rahul@example.com."
+    "Download our app and pay ₹5,000."
 )
 
-# Step 1: Engine 1 (What information exists?)
-normalized = content_engine.process_text(raw_text)
+# Process Observation 1 through Pipeline
+c1 = content_engine.process_text(raw_text_1)
+cl1 = claims_engine.analyze(c1)
+a1 = actions_engine.analyze(c1, cl1)
+s1 = sources_engine.discover_and_retrieve(c1, cl1, a1)
+e1 = evidence_engine.verify(c1, cl1, s1)
+t1 = threat_engine.analyze(c1, cl1, a1, s1, e1)
+res1 = fingerprint_engine.create_or_match(c1, cl1, a1, s1, e1, t1)
 
-# Step 2: Engine 2 (What claims are being made?)
-claims = claims_engine.analyze(normalized)
+print(f"Observation 1 Fingerprint ID: {res1.fingerprint.fingerprint_id}")  # SFP-001
+print(f"Observation 1 Status: {res1.fingerprint.status}")                  # NEW
+print(f"Observation 1 Count: {res1.fingerprint.observation_count}")        # 1
 
-# Step 3: Engine 3 (What actions are requested?)
-actions = actions_engine.analyze(normalized, claims)
+# Observation 2: Mutated wording, WhatsApp, ₹4,999, same threat structure
+raw_text_2 = (
+    "SEBI certified financial expert Vijay Kumar! Assured 40% returns. "
+    "Join our VIP WhatsApp group: https://chat.whatsapp.com/inv99. "
+    "Install our mobile software and pay ₹4,999 subscription fee."
+)
 
-# Step 4: Engine 4 (Where is authoritative info & what was retrieved?)
-sources = sources_engine.discover_and_retrieve(normalized, claims, actions)
+c2 = content_engine.process_text(raw_text_2)
+cl2 = claims_engine.analyze(c2)
+a2 = actions_engine.analyze(c2, cl2)
+s2 = sources_engine.discover_and_retrieve(c2, cl2, a2)
+e2 = evidence_engine.verify(c2, cl2, s2)
+t2 = threat_engine.analyze(c2, cl2, a2, s2, e2)
+res2 = fingerprint_engine.create_or_match(c2, cl2, a2, s2, e2, t2)
 
-# Step 5: Engine 5 (What does the retrieved evidence actually establish?)
-evidence = evidence_engine.verify(normalized, claims, sources)
+print(f"Observation 2 Match Type: {res2.match_type}")                      # STRUCTURAL_MATCH / SEMANTIC_VARIANT
+print(f"Observation 2 Match Confidence: {res2.match_confidence}")          # 0.91
+print(f"Consolidated Observation Count: {res2.fingerprint.observation_count}") # 2
+print(f"Distinct Channels: {res2.fingerprint.distinct_channels}")          # ['telegram', 'whatsapp']
+print(f"Collective Context: {res2.collective_context['pattern_summary']}")
 
-# Step 6: Engine 6 (How do claims, actions, and evidence combine into a threat path?)
-threat = threat_engine.analyze(normalized, claims, actions, sources, evidence)
+# Observation 3: Benign informational content
+raw_text_3 = "Learn what mutual funds are and how diversification protects your capital over the long term."
+c3 = content_engine.process_text(raw_text_3)
+cl3 = claims_engine.analyze(c3)
+a3 = actions_engine.analyze(c3, cl3)
+s3 = sources_engine.discover_and_retrieve(c3, cl3, a3)
+e3 = evidence_engine.verify(c3, cl3, s3)
+t3 = threat_engine.analyze(c3, cl3, a3, s3, e3)
+res3 = fingerprint_engine.create_or_match(c3, cl3, a3, s3, e3, t3)
 
-print(f"Content ID: {threat.content_id}")
-print(f"Attack Stages: {[n.stage for n in threat.attack_path.nodes if n.stage != 'DISCOVERY']}")
-print(f"Transitions: {[' -> '.join([t.from_stage, t.to_stage]) for t in threat.transitions]}")
-print(f"Threat Families: {threat.threat_families}")
-print(f"High-Impact Actions: {[(hia.action_type, hia.impact_category, hia.reversibility) for hia in threat.high_impact_actions]}")
-print(f"Summary: {threat.explanation.summary}")
+print(f"Observation 3 Match Type: {res3.match_type}")                      # NO_MATCH
 ```
 
 ---
 
 ## 10. Test Suite Verification
 
-Run all pytest unit and integration tests:
+Run all pytest unit and integration tests across all 7 engines:
 
 ```bash
 python -X utf8 -m pytest -v
 ```
 
-**Results:** `231 passed in 8.36s` (0 failed, 100% pass rate).
+**Results:** `264 passed in 8.19s` (0 failed, 100% pass rate).
 - **Engine 1 Unit Tests**: Text normalizer (7), URL extractor (8), Social extractor (6), Contact extractor (4), Financial extractor (6), Entity extractor (5), CTA extractor (7), Language detector (4), Financial relevance (4), OCR adapter (6), URL adapter (3), Primary fixture (3), API (4) -> **67 tests**.
 - **Engine 2 Unit Tests**: Claim canonicalizer (7), Modality and Temporal (8), Claim segmenter & Action filtering (5), Verification requirements & Relations (5), Benchmark cases (7), Primary fixture (1), Engine 1 -> Engine 2 integration (3), Claim API (3), Correction tests (5) -> **44 tests**.
 - **Engine 3 Unit Tests**: Schemas & validation (3), Classifier & hierarchy (3), Parameter extractor & privacy (4), Benchmark cases (6), Primary fixture benchmark (2), Engine 1 -> Engine 2 -> Engine 3 integration (2), Action API (2) -> **22 tests**.
 - **Engine 4 Unit Tests**: Schemas & validation (4), SSRF protection (20), Source routing (4), Adapters & caching (7), Evidence candidates (1), Primary fixture (1), Full 4-engine integration (1), Source API (3), Correction & boundaries -> **45 tests**.
 - **Engine 5 Unit Tests**: Schemas & validation (2), Regulatory & identity matching (6), Numerical, ratios, & debt verification (6), Opinions & predictions (2), Source conflicts & absence handling (3), Prompt injection defense (1), Primary fixture benchmark (1), Full 5-engine end-to-end integration (1), Evidence API (3) -> **25 tests**.
 - **Engine 6 Unit Tests**: Schemas & validation (5), Threat signal detector (4), Attack path & transitions (1), Claim-to-action linker (2), High-impact actions & evidence weaknesses (2), Multi-signal combinations & threat families (2), Negative guardrails (5), Primary fixture benchmark (1), Full 6-engine end-to-end integration (2), Threat API (4) -> **28 tests**.
+- **Engine 7 Unit Tests**: Schemas & validation (5), Feature extraction & canonical ordering (2), Multi-dimensional matcher (3), Lifecycle, disputes & relationships (5), Copy-amplification defense & observation counting (2), Primary benchmark fixture & secondary demo (1), Adversarial false-match & false-split tests (2), Privacy preservation & boundary guardrails (1), Full 7-engine end-to-end integration (1), FastAPI endpoints (3) -> **25 tests**.
 
 

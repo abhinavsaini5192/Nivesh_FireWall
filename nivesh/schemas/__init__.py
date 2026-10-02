@@ -194,4 +194,15 @@ from .threat import (
     ThreatAnalysis,
 )
 
+from .fingerprint import (
+    FingerprintMatchType,
+    FingerprintStatus,
+    ScamFingerprint,
+    FingerprintObservation,
+    FingerprintMatch,
+    FingerprintProvenance,
+    FingerprintAnalysisMetadata,
+    FingerprintAnalysis,
+)
+
 

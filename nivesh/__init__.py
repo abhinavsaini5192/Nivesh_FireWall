@@ -10,6 +10,7 @@ from .actions import ActionIntelligenceEngine
 from .sources import SourceIntelligenceEngine
 from .evidence import EvidenceVerificationEngine
 from .threat import ThreatIntelligenceEngine
+from .fingerprints import ScamFingerprintEngine
 from .schemas import (
     ContentInput,
     NormalizedContent,
@@ -58,6 +59,14 @@ from .schemas import (
     ThreatProvenance,
     ThreatAnalysisMetadata,
     ThreatAnalysis,
+    ScamFingerprint,
+    FingerprintObservation,
+    FingerprintMatch,
+    FingerprintProvenance,
+    FingerprintAnalysisMetadata,
+    FingerprintAnalysis,
+    FingerprintMatchType,
+    FingerprintStatus,
 )
 
 __version__ = ENGINE_VERSION
@@ -69,6 +78,7 @@ __all__ = [
     "SourceIntelligenceEngine",
     "EvidenceVerificationEngine",
     "ThreatIntelligenceEngine",
+    "ScamFingerprintEngine",
     "ENGINE_VERSION",
     "ContentInput",
     "NormalizedContent",
@@ -117,6 +127,14 @@ __all__ = [
     "ThreatProvenance",
     "ThreatAnalysisMetadata",
     "ThreatAnalysis",
+    "ScamFingerprint",
+    "FingerprintObservation",
+    "FingerprintMatch",
+    "FingerprintProvenance",
+    "FingerprintAnalysisMetadata",
+    "FingerprintAnalysis",
+    "FingerprintMatchType",
+    "FingerprintStatus",
 ]
 
 
