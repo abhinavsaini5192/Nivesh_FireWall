@@ -51,6 +51,19 @@ class PersistenceDetector:
         ]
 
         if decline_indices:
+            decline_events = [events[i] for i in decline_indices]
+            signals.append(
+                BehaviouralSignal(
+                    signal_id=f"BHS-PER-DEC-{len(signals) + 1:03d}",
+                    signal_type=BehaviouralSignalType.USER_DECLINE,
+                    description=f"Observable user decline interaction event recorded ({len(decline_indices)} recorded)",
+                    severity=BehaviouralSignalSeverity.INFORMATIONAL,
+                    confidence=0.98,
+                    event_ids=[e.event_id for e in decline_events if e.event_id],
+                    evidence=[f"Recorded {len(decline_indices)} explicit user decline event(s)"],
+                )
+            )
+
             # Check if any request event followed a decline
             retry_events: list[InteractionEvent] = []
             for d_idx in decline_indices:
@@ -79,6 +92,23 @@ class PersistenceDetector:
                         ],
                     )
                 )
+
+        # 2b. Check for USER_HESITATION
+        hesitation_events = [
+            e for e in events if e.event_type == InteractionEventType.USER_HESITATION
+        ]
+        if hesitation_events:
+            signals.append(
+                BehaviouralSignal(
+                    signal_id=f"BHS-PER-HES-{len(signals) + 1:03d}",
+                    signal_type=BehaviouralSignalType.USER_HESITATION,
+                    description=f"Observable user hesitation or interaction delay recorded ({len(hesitation_events)} observed)",
+                    severity=BehaviouralSignalSeverity.INFORMATIONAL,
+                    confidence=0.95,
+                    event_ids=[e.event_id for e in hesitation_events if e.event_id],
+                    evidence=[f"Recorded {len(hesitation_events)} hesitation/timeout event(s)"],
+                )
+            )
 
         # 3. PERSISTENT_PAYMENT_REQUEST (Payment requested >= repeated_request_threshold times)
         payment_events = [

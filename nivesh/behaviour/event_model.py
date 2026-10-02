@@ -32,9 +32,11 @@ class InteractionEventType(str, Enum):
 
 # Prohibited metadata keys to enforce privacy preservation
 FORBIDDEN_METADATA_KEYS = frozenset({
-    "password", "passwd", "pwd", "otp", "pin", "cvv", "card_number",
-    "account_number", "secret", "token", "auth_token", "private_key",
-    "keystrokes", "raw_message", "message_body", "sms_body", "contact_list",
+    "password", "passwd", "pwd", "otp", "pin", "cvv", "cvv2", "card_number",
+    "card_numbers", "account_number", "account_numbers", "bank_account",
+    "bank_account_number", "bank_account_numbers", "secret", "token", "auth_token",
+    "private_key", "credential", "credentials", "raw_credentials",
+    "keystrokes", "keystroke", "raw_message", "message_body", "sms_body", "contact_list",
 })
 
 

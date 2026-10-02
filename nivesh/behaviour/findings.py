@@ -86,6 +86,14 @@ FINDING_DESCRIPTIONS: dict[str, tuple[str, str]] = {
         "Multiple warnings were overridden within the same session.",
         "Session recorded successive warning presentations followed by user overrides.",
     ),
+    BehaviouralSignalType.USER_DECLINE.value: (
+        "User declined action request.",
+        "Recorded explicit user decline interaction event within session history.",
+    ),
+    BehaviouralSignalType.USER_HESITATION.value: (
+        "Observable user hesitation or interaction delay recorded.",
+        "Interaction timeout or hesitation event observed during interaction.",
+    ),
 }
 
 

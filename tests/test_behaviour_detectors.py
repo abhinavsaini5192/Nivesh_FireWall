@@ -207,25 +207,40 @@ def test_persistence_detector_negative_single_message_no_history():
 
 
 def test_persistence_detector_user_override_and_repeated_warning_override():
-    """Verify warning override and repeated warning override detection."""
+    """Verify all 5 user response patterns (HESITATION, DECLINE, OVERRIDE, WARNING_OVERRIDE, REPEATED_WARNING_OVERRIDE).
+
+    Strict neutrality constraint: All 5 are observable interaction events only,
+    never psychological or character judgments (fearful, greedy, naive, impulsive,
+    desperate, uneducated, untrustworthy, etc.).
+    """
     history = InteractionHistory(session_id="SESS-PER-OVR")
     history.add_event(InteractionEvent(
         event_id="EVT-01",
         timestamp="10:00:00",
-        event_type=InteractionEventType.WARNING_SHOWN,
+        event_type=InteractionEventType.USER_HESITATION,
     ))
     history.add_event(InteractionEvent(
         event_id="EVT-02",
-        timestamp="10:00:30",
-        event_type=InteractionEventType.USER_OVERRIDE,
+        timestamp="10:00:15",
+        event_type=InteractionEventType.USER_DECLINED,
     ))
     history.add_event(InteractionEvent(
         event_id="EVT-03",
-        timestamp="10:01:00",
+        timestamp="10:00:30",
         event_type=InteractionEventType.WARNING_SHOWN,
     ))
     history.add_event(InteractionEvent(
         event_id="EVT-04",
+        timestamp="10:00:45",
+        event_type=InteractionEventType.USER_OVERRIDE,
+    ))
+    history.add_event(InteractionEvent(
+        event_id="EVT-05",
+        timestamp="10:01:00",
+        event_type=InteractionEventType.WARNING_SHOWN,
+    ))
+    history.add_event(InteractionEvent(
+        event_id="EVT-06",
         timestamp="10:01:30",
         event_type=InteractionEventType.USER_OVERRIDE,
     ))
@@ -234,15 +249,21 @@ def test_persistence_detector_user_override_and_repeated_warning_override():
     signals = detector.detect(interaction_history=history)
 
     stypes = {s.signal_type for s in signals}
+    assert BehaviouralSignalType.USER_HESITATION in stypes
+    assert BehaviouralSignalType.USER_DECLINE in stypes
     assert BehaviouralSignalType.WARNING_OVERRIDE in stypes
     assert BehaviouralSignalType.REPEATED_WARNING_OVERRIDE in stypes
 
-    # Strict constraint: Override description does NOT judge user character or rationality
+    # Strict constraint: Override description does NOT judge user character, intelligence, or rationality
+    forbidden_terms = [
+        "fearful", "greedy", "naive", "impulsive", "desperate",
+        "uneducated", "untrustworthy", "careless", "irrational",
+        "foolish", "vulnerable", "criminal", "personality", "mental state"
+    ]
     for s in signals:
         desc = s.description.lower()
-        assert "careless" not in desc
-        assert "irrational" not in desc
-        assert "foolish" not in desc
+        for forbidden in forbidden_terms:
+            assert forbidden not in desc, f"Forbidden psychological term '{forbidden}' found in description: {desc}"
 
 
 # ==============================================================================
