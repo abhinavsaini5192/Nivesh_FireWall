@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nivesh"
-version = "1.0.0"
-description = "Nivesh Firewall — Engine 1: Content Intelligence Engine"
+version = "1.0.0-rc1"
+description = "Nivesh Firewall — Multi-Engine Financial Scam Protection & Security Intelligence Platform"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

@@ -725,6 +725,13 @@ def _rule_warn_threat_pattern_resemblance(
 
     # Matches a pattern but without high-impact actions
     if fingerprint.match_type in ("SEMANTIC_VARIANT", "STRUCTURAL_MATCH", "RELATED_PATTERN"):
+        # Ensure observable threat indicators or active attack stages exist beyond informational discovery
+        non_weakness_signals = [s for s in threat.threat_signals if getattr(s, "type", "") not in ("UNSUPPORTED_CLAIM", "EVIDENCE_GAP", "MISSING_EVIDENCE")]
+        active_nodes = [n for n in getattr(threat.attack_path, "nodes", []) if (getattr(n.stage, "value", str(n.stage)) if hasattr(n, "stage") else "") not in ("DISCOVERY", "INFORMATIONAL", "")]
+        has_threat_context = bool(non_weakness_signals or active_nodes or threat.threat_families)
+        if not has_threat_context:
+            return None
+
         if not act_types.intersection(HIGH_IMPACT_ACTION_TYPES):
             rc = (
                 ReasonCode.KNOWN_THREAT_STRUCTURAL_MATCH if fingerprint.match_type == "STRUCTURAL_MATCH"

@@ -1,7 +1,7 @@
-"""Nivesh Firewall — Engine 1: Content Intelligence Engine.
+"""Nivesh Firewall — Multi-Engine Financial Scam Protection & Security Intelligence Platform.
 
-Converts raw user-provided financial content into clean, normalized,
-structured representation for downstream security engines.
+Integrates 10 specialized intelligence engines, product orchestration, unified policy
+interventions, persistent collective memory, and production operational monitoring.
 """
 
 from .engine import ContentIntelligenceEngine, ENGINE_VERSION
@@ -130,9 +130,11 @@ from .schemas import (
     FingerprintStatus,
 )
 
-__version__ = ENGINE_VERSION
+RELEASE_VERSION = "1.0.0-rc1"
+__version__ = RELEASE_VERSION
 
 __all__ = [
+    "RELEASE_VERSION",
     "ContentIntelligenceEngine",
     "ClaimIntelligenceEngine",
     "ActionIntelligenceEngine",

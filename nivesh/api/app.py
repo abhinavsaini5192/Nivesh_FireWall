@@ -1,8 +1,11 @@
-"""FastAPI Application exposing Content Intelligence Engine API.
+"""FastAPI Application exposing Nivesh Firewall Unified API.
 
 Provides:
-- POST /api/v1/content/analyze (JSON or multipart file upload)
-- GET  /api/v1/health
+- POST /api/v1/firewall/analyze (Unified 10-engine pipeline)
+- GET  /api/v1/firewall/analysis/{id} (Secure IDOR-protected retrieval)
+- GET  /health, /health/live, /health/ready (Liveness and readiness probes)
+- GET  /api/v1/metrics (Prometheus & JSON operational telemetry)
+- Modular Engine 1-10 component endpoints
 """
 
 from typing import Optional
@@ -314,7 +317,7 @@ def health_check():
             "Engine 9: Identity Verification & Entity Resolution Engine",
             "Engine 10: Behavioural Signal Intelligence Engine",
         ],
-        "firewall": f"Nivesh Firewall Phase 11.4 ({current_settings.env})",
+        "firewall": f"Nivesh Firewall ({current_settings.env})",
     }
 
 
