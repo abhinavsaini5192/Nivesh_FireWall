@@ -26,6 +26,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import type { FirewallAnalysisResponse } from '../../types/firewall';
+import { deriveInterventionModel, type UserActionType } from '../../types/intervention';
 import { Card, CardContent } from '../common/Card';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
@@ -33,19 +34,90 @@ import { Panel } from '../common/Panel';
 import { MetadataRow } from '../common/MetadataRow';
 import { Accordion, AccordionItem } from '../common/Accordion';
 import { SemanticStatusBadge } from '../status/SemanticStatusBadge';
+import { ErrorState } from '../common/ErrorState';
+import {
+  ProtectionBanner,
+  HighImpactActionAlert,
+  ProtectionSummaryCard,
+  WhyIntervenedSection,
+  RecommendedNextStepCard,
+  OverrideConfirmationModal,
+} from '../intervention';
 
 export interface AnalysisResultViewProps {
   analysis: FirewallAnalysisResponse;
   onAnalyzeAnother: () => void;
+  onGoBack?: () => void;
+  onOverrideConfirmed?: () => void;
 }
 
 export const AnalysisResultView: React.FC<AnalysisResultViewProps> = ({
   analysis,
   onAnalyzeAnother,
+  onGoBack,
+  onOverrideConfirmed,
 }) => {
   const [copiedId, setCopiedId] = React.useState(false);
+  const [isOverrideModalOpen, setIsOverrideModalOpen] = React.useState(false);
+  const [isConfirmedOverride, setIsConfirmedOverride] = React.useState(false);
+
+  // Safety Boundary (Section 28 & 29): Never downgrade stronger decision on error
+  if (!analysis || !analysis.decision) {
+    return (
+      <div style={{ width: '100%', maxWidth: '640px', margin: 'var(--space-8) auto' }}>
+        <ErrorState
+          title="Analysis Result Incomplete"
+          message="We couldn't display the full protection details. The analysis result is incomplete or malformed."
+          errorCode="ANALYSIS_RESULT_INCOMPLETE"
+          onRetry={onAnalyzeAnother}
+        />
+      </div>
+    );
+  }
+
+  const model = deriveInterventionModel(analysis);
+
   const { decision, content, claims, actions, evidence, identity, threat, fingerprint, behaviour, provenance } =
     analysis;
+
+  const handleSelectSection = (sectionId: string) => {
+    const el = document.getElementById(sectionId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const btn = el.querySelector('button');
+      if (btn) {
+        btn.focus();
+      }
+    }
+  };
+
+  const handleActionClick = (action: UserActionType) => {
+    switch (action) {
+      case 'view-details':
+      case 'review-details':
+      case 'review-why':
+      case 'view-evidence':
+        handleSelectSection('intelligence-breakdown-heading');
+        break;
+      case 'go-back':
+      case 'return-to-protect':
+        if (onGoBack) {
+          onGoBack();
+        } else {
+          onAnalyzeAnother();
+        }
+        break;
+      case 'override':
+        setIsOverrideModalOpen(true);
+        break;
+      case 'analyze-another':
+        onAnalyzeAnother();
+        break;
+      case 'continue':
+      default:
+        break;
+    }
+  };
 
   const handleCopyId = async () => {
     try {
@@ -296,9 +368,68 @@ export const AnalysisResultView: React.FC<AnalysisResultViewProps> = ({
         </CardContent>
       </Card>
 
+      {/* 2.5 Intervention Experience Layer (Phase 12.3) */}
+      {isConfirmedOverride && (
+        <ProtectionBanner
+          decision={decision.decision}
+          title="User Manual Override Confirmed"
+          description={`Original policy was acknowledged by the user (${decision.decision}). Proceeding under user manual verification.`}
+        />
+      )}
+
+      {/* High-Impact Consequence Action (Engine 3) */}
+      {model.highImpactActions.length > 0 && (
+        <HighImpactActionAlert
+          actions={model.highImpactActions}
+          onSelectAction={() => handleSelectSection('panel-actions')}
+        />
+      )}
+
+      {/* Protection Summary (5 Core Analytical Dimensions) */}
+      <ProtectionSummaryCard
+        dimensions={model.protectionSummary}
+        onSelectSection={handleSelectSection}
+      />
+
+      {/* Why Did Nivesh Intervene? */}
+      <WhyIntervenedSection
+        primaryReason={decision.primary_reason}
+        reasonCodes={decision.reason_codes}
+        reasons={model.reasons}
+        onSelectSection={handleSelectSection}
+      />
+
+      {/* Recommended Next Step & Contextual Action Controls */}
+      <RecommendedNextStepCard
+        decision={decision.decision}
+        recommendedInstruction={model.recommendedNextStep}
+        availableActions={model.availableActions}
+        onActionClick={handleActionClick}
+        isConfirmedOverride={isConfirmedOverride}
+      />
+
+      {/* Override Confirmation Modal */}
+      <OverrideConfirmationModal
+        isOpen={isOverrideModalOpen}
+        onClose={() => setIsOverrideModalOpen(false)}
+        onConfirmOverride={() => {
+          setIsConfirmedOverride(true);
+          if (onOverrideConfirmed) onOverrideConfirmed();
+        }}
+        decision={decision.decision}
+        primaryReason={decision.primary_reason}
+        actionDescription={
+          model.highImpactActions[0]
+            ? `Proceeding with ${model.highImpactActions[0].action_type.replace(/_/g, ' ')} (${model.highImpactActions[0].target || 'interaction'})`
+            : undefined
+        }
+        analysisId={analysis.analysis_id}
+      />
+
       {/* 3. Multi-Engine Intelligence Breakdown Accordions */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
         <h3
+          id="intelligence-breakdown-heading"
           style={{
             fontSize: 'var(--font-size-lg)',
             fontWeight: 'var(--font-weight-semibold)',

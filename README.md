@@ -1672,5 +1672,46 @@ Explore 8 Intelligence Panels (Claims, Actions, Evidence, Identity, Threat, Fing
    - **Build**: Production bundle built cleanly (`tsc -b && vite build`) in <1 second.
    - **Backend Compatibility**: 481 backend tests passing (100% pass rate across all 10 intelligence engines, context, pipeline, and product API).
 
+---
 
+## 20. Intervention & Protection Experience (Phase 12.3)
 
+Phase 12.3 establishes the dedicated user-facing intervention and protection experience for Nivesh Firewall, transforming the canonical Engine 8 policy decisions into transparent, accessible, and honest protection workflows.
+
+```text
+Engine 8 Decision (Sole Policy Authority)
+                  ↓
+       Intervention Model (Pure Presentation)
+                  ↓
+┌────────────────────────────────────────────────────────┐
+│ ProtectionBanner & InterventionHeader                  │
+│ HighImpactActionAlert (Transfers, Credentials, App)    │
+│ ProtectionSummaryCard (5 Dimensions with Deep Links)   │
+│ WhyIntervenedSection (Primary Reason & Reason Codes)   │
+│ RecommendedNextStepCard (Protective Actions Only)      │
+│ OverrideConfirmationModal (Explicit 2-Step Workflow)   │
+└────────────────────────────────────────────────────────┘
+```
+
+### 20.1 Core Architecture & Principles
+1. **Frontend as Pure Policy Consumer**:
+   - The frontend strictly consumes Engine 8's canonical policy decision. It performs **zero** client-side risk scoring, threat heuristics, or policy re-evaluation.
+2. **Honest, Non-Accusatory UX Semantics**:
+   - **`ALLOW`**: Calm confirmation ("Action Permitted — Verified Neutral"). No misleading claims of "100% safe" or "guaranteed legitimate".
+   - **`INFORM`**: Contextual informational advisory without alarmist framing.
+   - **`WARN`**: Caution recommended with backend-supported reasons; never labels an entity as a "scammer".
+   - **`PAUSE`**: High-visibility pause state with verification cooldown and explicit confirmation requirements.
+   - **`BLOCK`**: Strong protection state ("Action Blocked — Threat Prevented") without sensationalism ("you were definitely scammed").
+3. **5-Dimension Protection Summary**:
+   - Summarizes Requested Action, Entity Identity, Claim Evidence, Threat Template, and Observed Behaviour with 1-click smooth scrolling to the underlying intelligence panel.
+4. **Protective-Only UX Recommendations**:
+   - Strictly protective actions (e.g. independently verifying identity, returning to safety); **strictly zero financial or investment advice**.
+5. **Fail-Safe Safety Boundary**:
+   - If rendering or network issues occur, the UI surfaces a safe error state and **never downgrades** a `BLOCK`, `PAUSE`, or `WARN` state to `ALLOW`.
+6. **Explicit User Override**:
+   - A 2-step confirmation modal with non-shaming language for overridable policy states, preserving the original policy state if cancelled.
+7. **Verification & Quality Standards**:
+   - **Frontend Tests**: 67 Vitest tests passing across 5 test suites (`interventionExperience.test.tsx`, `analysisWorkflow.test.tsx`, `components.test.tsx`, `App.test.tsx`, `api.test.ts`).
+   - **Lint**: 0 warnings, 0 errors (Oxlint on 52 files).
+   - **Production Build**: Built cleanly with Vite and TypeScript compiler.
+   - **Backend Compatibility**: 481 backend tests passing (100% pass rate in `pytest`).

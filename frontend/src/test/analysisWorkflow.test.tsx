@@ -387,7 +387,7 @@ describe('Phase 12.2 — Complete Firewall Analysis Workflow & Results', () => {
 
     expect(screen.getByText('DOWNLOAD')).toBeInTheDocument();
     expect(screen.getByText('TRANSFER_MONEY')).toBeInTheDocument();
-    expect(screen.getByText('IRREVERSIBLE')).toBeInTheDocument();
+    expect(screen.getAllByText('IRREVERSIBLE').length).toBeGreaterThan(0);
     expect(screen.getByText('Urgency Detected')).toBeInTheDocument();
   });
 
