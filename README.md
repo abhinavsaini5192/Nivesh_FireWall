@@ -1584,3 +1584,42 @@ python -X utf8 -m pytest -v
 386 (Engines 1–10) + 17 (Phase 11.1) + 20 (Phase 11.2) + 18 (Phase 11.3) + 20 (Phase 11.4) + 20 (Phase 11.5) = 481 tests (100% match)
 *(Zero regressions across all existing suites, zero skipped, 0 failed across consecutive fresh-process runs).*
 
+---
+
+## 18. Product UI Foundation (Phase 12.1)
+
+Phase 12.1 establishes the foundational user interface and design system for the **Nivesh Firewall** product.
+
+```text
+                  NIVESH FIREWALL UI
+                          │
+          ┌───────────────┼───────────────┐
+          ↓               ↓               ↓
+      AppShell       Navigation       Header
+   (Responsive)     (Small/Focused) (Live Status)
+          │
+          ▼
+   Active View (Protect / Activity / Threat Intel / Settings)
+          │
+          ▼
+   ContentEntryCard (Inspection Shell)
+          │
+          ▼
+   API Client Layer (apiClient)
+          │
+          ▼
+   POST /api/v1/firewall/analyze (Phase 11 Backend)
+```
+
+### 18.1 Key Frontend Architecture Decisions
+- **Stack**: React 19, TypeScript, Vite 8, Vitest, React Testing Library, Oxlint.
+- **Design Tokens (`tokens.css`)**: Coherent, calm dark slate palette (`--color-bg-canvas`, `--color-bg-surface`, `--color-accent`) with standardized typography, 4px-base spacing scale, borders, and restrained elevation.
+- **Accessibility Baseline (`base.css`)**: Visible focus indicators (`:focus-visible`), aria landmarks, semantic HTML, and reduced motion queries.
+- **Small, Focused Navigation**: 4 core routes (`Protect`, `Activity`, `Threat Intelligence`, `Settings`).
+- **Semantic Status Presentation (`SemanticStatusBadge`)**: Pure presentation system for Engine 8 outcomes (`ALLOW`, `INFORM`, `WARN`, `PAUSE`, `BLOCK`) with zero frontend policy calculations.
+- **Dynamic Protection Status (`ProtectionStatus`)**: State-driven (`active`, `connecting`, `unavailable`, `error`) probing real `/health` backend status.
+- **Zero Mock Intelligence**: No fake scam scores, fabricated threat data, or hardcoded criminal accusations.
+- **Reusable Component Library (`components/common/`)**: 18 accessible components (`Button`, `IconButton`, `Input`, `Textarea`, `Select`, `Card`, `Panel`, `Badge`, `StatusIndicator`, `Alert`, `EmptyState`, `LoadingState`, `ErrorState`, `Modal`, `Tooltip`, `Divider`, `SectionHeader`, `MetadataRow`).
+- **Frontend Verification**: 25 Vitest unit/component/API tests passing with 0 warnings and 0 errors.
+
+

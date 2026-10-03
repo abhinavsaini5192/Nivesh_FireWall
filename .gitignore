@@ -8,3 +8,6 @@ dist/
 build/
 .env
 .venv
+node_modules/
+frontend/dist/
+frontend/node_modules/
