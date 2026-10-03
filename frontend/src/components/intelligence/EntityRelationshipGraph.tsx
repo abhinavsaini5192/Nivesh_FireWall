@@ -36,8 +36,8 @@ export const EntityRelationshipGraph: React.FC<EntityRelationshipGraphProps> = (
     }
   };
 
-  const claimedName = identity.claimed_entities[0] || 'Unidentified Entity';
-  const confidencePercent = (identity.confidence * 100).toFixed(0);
+  const claimedName = (identity.claimed_entities && identity.claimed_entities[0]) || 'Unidentified Entity';
+  const confidencePercent = typeof identity.confidence === 'number' ? (identity.confidence * 100).toFixed(0) : '0';
 
   return (
     <Card variant="surface" style={{ width: '100%' }}>
@@ -168,7 +168,7 @@ export const EntityRelationshipGraph: React.FC<EntityRelationshipGraphProps> = (
             isMono
           />
 
-          {identity.claimed_entities.length > 0 && (
+          {identity.claimed_entities && identity.claimed_entities.length > 0 && (
             <div style={{ marginTop: 'var(--space-1)' }}>
               <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
                 Identified Entity References:
@@ -183,7 +183,7 @@ export const EntityRelationshipGraph: React.FC<EntityRelationshipGraphProps> = (
             </div>
           )}
 
-          {identity.findings_summary.length > 0 && (
+          {identity.findings_summary && identity.findings_summary.length > 0 && (
             <div style={{ marginTop: 'var(--space-2)' }}>
               <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
                 Authoritative Findings Summary:

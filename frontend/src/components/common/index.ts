@@ -17,3 +17,4 @@ export * from './Divider';
 export * from './SectionHeader';
 export * from './MetadataRow';
 export * from './Accordion';
+export * from './ErrorBoundary';

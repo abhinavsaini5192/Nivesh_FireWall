@@ -1,4 +1,4 @@
-# Nivesh Firewall — Frontend Application (Phase 12.3)
+# Nivesh Firewall — Frontend Application (Phase 12.5)
 
 Production-grade user interface for the **Nivesh Firewall** financial-content protection system.
 
@@ -181,7 +181,8 @@ frontend/
 │   │   ├── intervention.ts               # Intervention presentation model & mapping
 │   │   └── intelligence.ts               # Presentation contracts & sanitization helpers
 │   ├── components/
-│   │   ├── common/                       # Reusable UI component library (Accordion, Modal, Card, etc.)
+│   │   ├── common/                       # Reusable UI component library (Accordion, Modal, Card, ErrorBoundary, etc.)
+│   │   │   ├── ErrorBoundary.tsx         # Global error boundary preventing unsafe ALLOW fallback
 │   │   ├── intervention/                 # Dedicated Phase 12.3 intervention components
 │   │   │   ├── ProtectionBanner.tsx      # Top banner for decision states
 │   │   │   ├── InterventionHeader.tsx    # Hero decision header & status
@@ -211,6 +212,7 @@ frontend/
 │   │   │   └── PrivacyNotice.tsx         # Trust and privacy disclosure
 │   │   └── shell/                        # AppShell, Header, Navigation
 │   └── test/
+│       ├── integrationValidation.test.tsx  # 18 Tests covering Phase 12.5 E2E, failures, race conditions
 │       ├── intelligenceDetailView.test.tsx # 18 Tests covering Phase 12.4 requirements
 │       ├── interventionExperience.test.tsx # 20 Tests covering Phase 12.3 requirements
 │       ├── analysisWorkflow.test.tsx       # 22 Tests covering Phase 12.2 workflow
@@ -226,12 +228,12 @@ frontend/
 Run all frontend checks:
 
 ```bash
-# Lint check (Oxlint: 0 warnings, 0 errors)
+# Lint check (Oxlint: 0 warnings, 0 errors across 69 files)
 npm --prefix frontend run lint
 
-# Vitest Suite (85/85 passed)
-npm --prefix frontend test
+# Vitest Suite (103/103 passed across 7 test suites)
+npm --prefix frontend test -- --run
 
-# Production Build (TypeScript compilation + Vite bundling)
+# Production Build (TypeScript compilation + Vite bundling in <1s)
 npm --prefix frontend run build
 ```

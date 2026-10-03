@@ -200,3 +200,23 @@ export interface FirewallApiError {
 }
 
 export type ProtectionSystemStatus = 'active' | 'connecting' | 'unavailable' | 'error';
+
+/**
+ * Maps canonical backend error codes to product-level user messages (Phase 12.5 Section 19)
+ */
+export function mapBackendErrorToUserMessage(errorCode: string, fallbackMessage?: string): string {
+  switch (errorCode) {
+    case 'INVALID_REQUEST':
+      return 'Check the submitted content.';
+    case 'UNSUPPORTED_INPUT':
+      return 'This type of content is not currently supported.';
+    case 'SERVICE_UNAVAILABLE':
+      return 'Nivesh protection service is temporarily unavailable.';
+    case 'PIPELINE_FAILURE':
+      return "We couldn't complete this analysis.";
+    case 'ANALYSIS_NOT_FOUND':
+      return 'This analysis is no longer available.';
+    default:
+      return fallbackMessage || "We couldn't complete this analysis.";
+  }
+}

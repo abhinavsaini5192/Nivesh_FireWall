@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type {
   ProtectionSystemStatus,
   ChannelType,
   FirewallAnalysisResponse,
   AnalysisState,
 } from './types/firewall';
+import { mapBackendErrorToUserMessage } from './types/firewall';
 import { apiClient, FirewallClientError } from './api/client';
 import { AppShell } from './components/shell/AppShell';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import type { NavTabId } from './components/shell/Navigation';
 import { ProtectView } from './views/ProtectView';
 import { ActivityView } from './views/ActivityView';
@@ -46,6 +48,9 @@ export const App: React.FC = () => {
   const [systemStatus, setSystemStatus] = useState<ProtectionSystemStatus>('connecting');
   const [sessionId] = useState<string>(() => `NIV-${Math.random().toString(36).substring(2, 10).toUpperCase()}`);
 
+  // Request counter for race condition protection
+  const activeRequestIdRef = useRef<number>(0);
+
   // Analysis Lifecycle & History State
   const [analysisState, setAnalysisState] = useState<AnalysisState>(() => {
     if (typeof window !== 'undefined' && getAnalysisIdFromHash(window.location.hash)) {
@@ -74,9 +79,10 @@ export const App: React.FC = () => {
     // 2. Check for deep-linked analysis ID in URL hash
     const initialId = getAnalysisIdFromHash(window.location.hash);
     if (initialId) {
+      const reqId = ++activeRequestIdRef.current;
       apiClient.getAnalysis(initialId)
         .then((res) => {
-          if (isMounted) {
+          if (isMounted && reqId === activeRequestIdRef.current) {
             setCurrentAnalysis(res);
             setAnalysisHistory((prev) => {
               const exists = prev.some((p) => p.analysis_id === res.analysis_id);
@@ -86,7 +92,7 @@ export const App: React.FC = () => {
           }
         })
         .catch((err) => {
-          if (isMounted) {
+          if (isMounted && reqId === activeRequestIdRef.current) {
             setAnalysisError(err instanceof FirewallClientError ? err.message : 'Unable to retrieve analysis.');
             setAnalysisErrorCode(err instanceof FirewallClientError ? err.errorCode : 'ANALYSIS_NOT_FOUND');
             setAnalysisState('ERROR');
@@ -101,16 +107,17 @@ export const App: React.FC = () => {
 
       const targetId = getAnalysisIdFromHash(window.location.hash);
       if (targetId && (!currentAnalysis || currentAnalysis.analysis_id !== targetId)) {
+        const reqId = ++activeRequestIdRef.current;
         setAnalysisState('ANALYZING');
         apiClient.getAnalysis(targetId)
           .then((res) => {
-            if (isMounted) {
+            if (isMounted && reqId === activeRequestIdRef.current) {
               setCurrentAnalysis(res);
               setAnalysisState(res.pipeline_status === 'PARTIAL' ? 'PARTIAL_RESULT' : 'SUCCESS');
             }
           })
           .catch((err) => {
-            if (isMounted) {
+            if (isMounted && reqId === activeRequestIdRef.current) {
               setAnalysisError(err instanceof FirewallClientError ? err.message : 'Unable to retrieve analysis.');
               setAnalysisErrorCode(err instanceof FirewallClientError ? err.errorCode : 'ANALYSIS_NOT_FOUND');
               setAnalysisState('ERROR');
@@ -134,9 +141,11 @@ export const App: React.FC = () => {
   // Content Analysis Handler (Calling unified backend API)
   const handleAnalyze = async (payload: { text?: string; url?: string; channel: ChannelType }) => {
     // Prevent duplicate concurrent submissions
-    if (analysisState === 'SUBMITTING' || analysisState === 'ANALYZING') {
+    if (analysisState === 'SUBMITTING' || analysisState === 'ANALYZING' || analysisState === 'VALIDATING') {
       return;
     }
+
+    setAnalysisState('VALIDATING');
 
     // Client-side validation
     const hasText = !!(payload.text && payload.text.trim());
@@ -148,9 +157,14 @@ export const App: React.FC = () => {
       return;
     }
 
-    setAnalysisState('SUBMITTING');
+    // Race condition protection: track active request sequence
+    const currentReqId = ++activeRequestIdRef.current;
+
+    // Stale result protection: clear previous analysis immediately
+    setCurrentAnalysis(null);
     setAnalysisError(null);
     setAnalysisErrorCode(null);
+    setAnalysisState('SUBMITTING');
 
     try {
       setAnalysisState('ANALYZING');
@@ -162,6 +176,11 @@ export const App: React.FC = () => {
         session_id: sessionId,
       });
 
+      // Ignore if a newer request was dispatched while this was in-flight
+      if (currentReqId !== activeRequestIdRef.current) {
+        return;
+      }
+
       setCurrentAnalysis(response);
       setAnalysisHistory((prev) => {
         const exists = prev.some((p) => p.analysis_id === response.analysis_id);
@@ -170,11 +189,16 @@ export const App: React.FC = () => {
       setAnalysisState(response.pipeline_status === 'PARTIAL' ? 'PARTIAL_RESULT' : 'SUCCESS');
       navigateHash(`protect?id=${response.analysis_id}`);
     } catch (err) {
+      // Ignore if a newer request was dispatched while this was in-flight
+      if (currentReqId !== activeRequestIdRef.current) {
+        return;
+      }
+
       if (err instanceof FirewallClientError) {
-        setAnalysisError(err.message);
+        setAnalysisError(err.message || mapBackendErrorToUserMessage(err.errorCode));
         setAnalysisErrorCode(err.errorCode);
       } else {
-        setAnalysisError('An unexpected error occurred while communicating with the Firewall service.');
+        setAnalysisError(mapBackendErrorToUserMessage('PIPELINE_FAILURE', 'An unexpected error occurred while communicating with the Firewall service.'));
         setAnalysisErrorCode('PIPELINE_FAILURE');
       }
       setAnalysisState('ERROR');
@@ -254,7 +278,9 @@ export const App: React.FC = () => {
       systemStatus={systemStatus}
       sessionId={sessionId}
     >
-      {renderActiveView()}
+      <ErrorBoundary onReset={handleResetAnalysis}>
+        {renderActiveView()}
+      </ErrorBoundary>
     </AppShell>
   );
 };
