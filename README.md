@@ -1915,3 +1915,92 @@ python -X utf8 -m pytest tests/test_persistence.py -v
 - Browser extension test suite: **141 passed in 7s** (100% pass rate).
 - Frontend & extension production builds: **Clean (0 errors, 0 warnings)**.
 
+
+---
+
+## 23. Security, Access Control & Secrets (Phase 14.3)
+
+Phase 14.3 establishes the production security layer for Nivesh Firewall. It secures the application boundary, APIs, administrative operations, and persistent data without modifying the detection semantics of Engines 1–10.
+
+### 23.1 Authentication & Authorization Architecture
+
+Nivesh Firewall implements server-side Role-Based Access Control (RBAC) and dual authentication schemes:
+
+1. **HMAC-SHA256 (HS256) Bearer JWT Tokens (`nivesh.security.tokens`)**:
+   - Zero external dependency implementation using Python standard library (`hmac`, `hashlib`, `base64`, `json`).
+   - Encodes `user_id`, `organization_id`, `roles`, `session_id`, issue timestamp (`iat`), and expiration (`exp`).
+   - Rejects tampered, malformed, or expired tokens with structured security exceptions (`InvalidTokenError`, `TokenExpiredError`, `MalformedTokenError`).
+   - Token minting endpoint available at `POST /api/v1/auth/token`.
+
+2. **Timing-Safe Static API Keys (`nivesh.security.api_keys`)**:
+   - Accepts `X-API-Key` or `Authorization: ApiKey <key>`.
+   - Uses `hmac.compare_digest` to prevent timing attacks.
+   - Distinct keys for `admin_api_key` (`ADMIN` role) and `service_api_key` (`SERVICE` role).
+
+3. **Server-Side RBAC Roles (`UserRole`)**:
+   - **`ADMIN`**: Full platform authority; fingerprint creation, status promotion/demotion, analysis deletion, and audit log inspection.
+   - **`ANALYST`**: Threat review, collective intelligence analysis, dispute processing.
+   - **`USER`**: Standard end-user; submit analyses, view owned analyses within user/organization boundary.
+   - **`SERVICE`**: Machine-to-machine background tasks and ingestion workers.
+   - **`ANONYMOUS`**: Public submission for browser extension and demo traffic (creates unowned analysis).
+
+### 23.2 Authorization Matrix
+
+| Endpoint | Method | Permitted Roles | Notes / Enforcement |
+|:---|:---|:---|:---|
+| `/api/v1/firewall/analyze` | `POST` | All (`ANONYMOUS`, `USER`, `ADMIN`) | Tags analysis with `user_id` / `org_id` if authenticated |
+| `/api/v1/firewall/analysis/{id}` | `GET` | Owner, Org Member, `ADMIN` | **Conceals existence (404)** on IDOR attempts |
+| `/api/v1/firewall/analysis/{id}` | `DELETE` | `ADMIN` only | Soft-deletes or purges analysis record; records audit log |
+| `/api/v1/fingerprints/create` | `POST` | `ADMIN` only | Protects collective threat intelligence from poisoning |
+| `/api/v1/fingerprints/{id}/status` | `POST` | `ADMIN` only | Promotes/demotes fingerprint state with audit trail |
+| `/api/v1/fingerprints/{id}/dispute` | `POST` | `USER`, `ANALYST`, `ADMIN` | Allows users to dispute false-positive fingerprint matches |
+| `/api/v1/admin/audit-logs` | `GET` | `ADMIN` only | Returns tamper-evident security audit records |
+| `/api/v1/auth/token` | `POST` | Public / Gateway | Issues signed HMAC-SHA256 JWT access tokens |
+| `/api/v1/health` | `GET` | Public | Status probe with safe database connection check |
+
+### 23.3 Insecure Direct Object Reference (IDOR) & Existence Concealment
+
+When a user attempts to access an analysis belonging to a different user or organization:
+- The system **never** returns `403 Forbidden` for IDOR attempts, as returning `403` confirms that the sensitive ID exists.
+- The system returns `404 Not Found` with a generic `ANALYSIS_NOT_FOUND` error code, completely concealing the existence of the resource.
+- An `IDOR_ACCESS_ATTEMPT` security event is simultaneously recorded in the append-only audit trail with the actor's user ID, IP address, and target analysis ID.
+
+### 23.4 Network & Transport Security Middleware (`nivesh.security.middleware`)
+
+1. **`SecurityHeadersMiddleware`**:
+   - `X-Content-Type-Options: nosniff` — Prevents MIME-type sniffing.
+   - `X-Frame-Options: DENY` — Prevents clickjacking framing.
+   - `Content-Security-Policy: default-src 'self'` — Restricts resource origins.
+   - `Referrer-Policy: strict-origin-when-cross-origin` — Protects referrer leakage.
+   - `Strict-Transport-Security: max-age=31536000; includeSubDomains` — Enforced automatically in production environments.
+   - `Cache-Control: no-store, no-cache, must-revalidate` — Automatically set on sensitive analysis and admin endpoints.
+
+2. **`CorrelationIdMiddleware`**:
+   - Extracts incoming `X-Request-ID` or generates a cryptographically random UUIDv4.
+   - Injects `request_id` into request state, audit records, and downstream responses via the `X-Request-ID` header.
+
+3. **`SlidingWindowRateLimiter` (`nivesh.security.rate_limiter`)**:
+   - Thread-safe in-memory sliding window rate limiter.
+   - Tracks requests per authenticated principal (`user:{id}`) or client IP (`ip:{addr}`).
+   - Returns `429 Too Many Requests` with `Retry-After`, `X-RateLimit-Limit`, and `X-RateLimit-Remaining` headers.
+
+### 23.5 Zero Secret Leakage & Credential Sanitization
+
+- `safe_dump()` in `Settings` masks all database passwords, `secret_key`, `admin_api_key`, and `service_api_key`.
+- `SqlAlchemyAuditRepository` and `log_security_event()` strictly reject and scrub forbidden credentials (`password`, `token`, `otp`, `cvv`, `card_number`, `secret`) before writing to the database.
+- Database URLs are dynamically masked (`://user:[REDACTED]@host`) in all health probes, connection logs, and telemetry.
+
+### 23.6 Security Verification & Test Suite
+
+The security layer is verified by a dedicated 20-test test suite (`tests/test_security.py`):
+
+```bash
+python -X utf8 -m pytest tests/test_security.py -v
+```
+**Results:** **20 passed in 40s** (100% pass rate).
+- Full backend regression suite: **541 passed in 264s** (100% pass rate).
+- Web frontend test suite: **103 passed in 38s** (100% pass rate).
+- Browser extension test suite: **141 passed in 19s** (100% pass rate).
+- Production bundle builds: **Clean (0 errors, 0 warnings)**.
+
+

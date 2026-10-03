@@ -109,7 +109,9 @@ FORBIDDEN_FIELD_NAMES = {
     "password", "passwd", "pwd", "otp", "pin", "cvv", "cvc",
     "card_number", "card_no", "account_number", "bank_account",
     "raw_credentials", "raw_credential", "keystrokes", "secret",
-    "private_key", "access_token",
+    "private_key", "access_token", "refresh_token", "api_key",
+    "bearer", "authorization", "auth_token", "jwt", "session_token",
+    "secret_key",
 }
 
 
@@ -262,6 +264,8 @@ class ProductOrchestrator:
         policy_context: Optional[PolicyContext] = None,
         cancellation_token: Optional[CancellationToken] = None,
         idempotency_key: Optional[str] = None,
+        user_id: Optional[str] = None,
+        organization_id: Optional[str] = None,
     ) -> OrchestrationResult:
         """Execute a complete end-to-end Nivesh Firewall analysis.
 
@@ -278,6 +282,10 @@ class ProductOrchestrator:
 
         channel = normalize_channel(channel)
         clean_metadata = sanitize_sensitive_data(metadata or {})
+        if user_id:
+            clean_metadata["user_id"] = user_id
+        if organization_id:
+            clean_metadata["organization_id"] = organization_id
         input_type = "text" if text is not None else "url" if url is not None else "image"
 
         context = AnalysisContext(
@@ -1151,7 +1159,12 @@ class ProductOrchestrator:
 
         if self.analysis_repo is not None:
             try:
-                self.analysis_repo.save_analysis(res, idempotency_key=idempotency_key)
+                self.analysis_repo.save_analysis(
+                    res,
+                    idempotency_key=idempotency_key,
+                    user_id=state.request_metadata.get("user_id"),
+                    organization_id=state.request_metadata.get("organization_id"),
+                )
             except Exception as e:
                 import logging
                 logging.getLogger("nivesh.orchestrator").warning(

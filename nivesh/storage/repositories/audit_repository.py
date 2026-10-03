@@ -72,6 +72,7 @@ class SqlAlchemyAuditRepository:
         analysis_id: Optional[str] = None,
         session_id: Optional[str] = None,
         event_type: Optional[str] = None,
+        actor: Optional[str] = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """List audit records matching optional filters."""
@@ -83,6 +84,8 @@ class SqlAlchemyAuditRepository:
                 q = q.filter(AuditRecordModel.session_id == session_id)
             if event_type:
                 q = q.filter(AuditRecordModel.event_type == event_type)
+            if actor:
+                q = q.filter(AuditRecordModel.actor == actor)
 
             records = q.order_by(AuditRecordModel.id.desc()).limit(limit).all()
             return [
@@ -92,6 +95,11 @@ class SqlAlchemyAuditRepository:
                     "session_id": r.session_id,
                     "event_type": r.event_type,
                     "actor": r.actor,
+                    "target_entity": getattr(r, "target_entity", None),
+                    "request_id": getattr(r, "request_id", None),
+                    "ip_address": getattr(r, "ip_address", None),
+                    "status": getattr(r, "status", "SUCCESS"),
+                    "reason_code": getattr(r, "reason_code", None),
                     "details": r.details,
                     "timestamp": r.timestamp,
                 }

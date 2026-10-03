@@ -37,6 +37,8 @@ class AnalysisModel(Base):
 
     analysis_id = Column(String(64), primary_key=True)
     session_id = Column(String(64), nullable=True, index=True)
+    user_id = Column(String(64), nullable=True, index=True)
+    organization_id = Column(String(64), nullable=True, index=True)
     pipeline_status = Column(String(32), nullable=False, index=True)
     created_at = Column(String(64), nullable=False, index=True)
     completed_at = Column(String(64), nullable=True)
@@ -74,7 +76,7 @@ class PolicyDecisionModel(Base):
     __tablename__ = "policy_decisions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    decision_id = Column(String(64), unique=True, nullable=True, index=True)
+    decision_id = Column(String(64), nullable=True, index=True)
     analysis_id = Column(
         String(64),
         ForeignKey("analyses.analysis_id", ondelete="CASCADE"),
@@ -233,6 +235,8 @@ class SessionModel(Base):
     __tablename__ = "sessions"
 
     session_id = Column(String(64), primary_key=True)
+    user_id = Column(String(64), nullable=True, index=True)
+    organization_id = Column(String(64), nullable=True, index=True)
     started_at = Column(String(64), nullable=True)
     last_event_at = Column(String(64), nullable=True)
     event_count = Column(Integer, default=0)
@@ -283,5 +287,10 @@ class AuditRecordModel(Base):
     session_id = Column(String(64), nullable=True, index=True)
     event_type = Column(String(64), nullable=False, index=True)
     actor = Column(String(64), nullable=False, default="system")
+    target_entity = Column(String(128), nullable=True, index=True)
+    request_id = Column(String(64), nullable=True, index=True)
+    ip_address = Column(String(64), nullable=True)
+    status = Column(String(32), nullable=False, default="SUCCESS")
+    reason_code = Column(String(64), nullable=True)
     details = Column(JSON, nullable=False, default=dict)
     timestamp = Column(String(64), nullable=False, index=True)

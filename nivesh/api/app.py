@@ -9,7 +9,7 @@ from typing import Optional
 from urllib.parse import urlparse
 import base64
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Depends, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -61,8 +61,34 @@ from nivesh.storage import (
     SqlAlchemySessionRepository,
     SqlAlchemyAuditRepository,
 )
+from nivesh.security import (
+    UserRole,
+    AuthenticatedUser,
+    create_access_token,
+    get_optional_user,
+    get_current_user,
+    require_admin,
+    require_analyst,
+    require_service,
+    enforce_rate_limit,
+    SecurityHeadersMiddleware,
+    CorrelationIdMiddleware,
+    log_security_event,
+    get_client_ip,
+)
 from pydantic import BaseModel
 from datetime import datetime, timezone
+
+class TokenIssueRequest(BaseModel):
+    user_id: str
+    organization_id: Optional[str] = None
+    roles: list[UserRole] = [UserRole.USER]
+    session_id: Optional[str] = None
+    expires_in_seconds: Optional[int] = None
+
+class FingerprintStatusUpdatePayload(BaseModel):
+    status: str
+    reason: Optional[str] = "Administrative status update"
 
 class BehaviouralAnalyzePayload(BaseModel):
     content: Optional[NormalizedContent] = None
@@ -166,6 +192,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(CorrelationIdMiddleware)
 
 
 @app.exception_handler(RequestValidationError)
@@ -519,15 +547,26 @@ async def match_fingerprint(request: Request):
     "/api/v1/fingerprints/create",
     response_model=ScamFingerprint,
     tags=["Scam Fingerprint (Engine 7)"],
-    summary="Register a new scam fingerprint in collective memory",
+    summary="Register a new scam fingerprint in collective memory (Admin only)",
 )
-async def create_fingerprint(request: Request):
-    """Creates and registers a new ScamFingerprint into repository."""
+async def create_fingerprint(
+    request: Request,
+    admin_user: AuthenticatedUser = Depends(require_admin),
+):
+    """Creates and registers a new ScamFingerprint into repository (admin only)."""
     try:
         body = await request.json()
         if "fingerprint_id" in body and "exact_signature" in body:
             fp = ScamFingerprint(**body)
-            return fingerprint_engine.repository.add_fingerprint(fp)
+            created = fingerprint_engine.repository.add_fingerprint(fp)
+            log_security_event(
+                action="FINGERPRINT_CREATED",
+                actor=admin_user.user_id,
+                target_entity=created.fingerprint_id,
+                status="SUCCESS",
+                details={"description": created.description},
+            )
+            return created
 
         if "content" in body:
             payload = FingerprintMatchPayload(**body)
@@ -566,12 +605,52 @@ async def create_fingerprint(request: Request):
         )
         now_iso = datetime.now(timezone.utc).isoformat()
         new_fp = fingerprint_engine._create_new_fingerprint(features, now_iso)
-        return fingerprint_engine.repository.add_fingerprint(new_fp)
+        created = fingerprint_engine.repository.add_fingerprint(new_fp)
+        log_security_event(
+            action="FINGERPRINT_CREATED",
+            actor=admin_user.user_id,
+            target_entity=created.fingerprint_id,
+            status="SUCCESS",
+            details={"description": created.description},
+        )
+        return created
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=400,
             detail=f"Fingerprint creation failed: {str(e)}"
         )
+
+
+@app.post(
+    "/api/v1/fingerprints/{fingerprint_id}/status",
+    response_model=ScamFingerprint,
+    tags=["Scam Fingerprint (Engine 7)"],
+    summary="Update status of a fingerprint (Admin only)",
+)
+async def update_fingerprint_status(
+    fingerprint_id: str,
+    payload: FingerprintStatusUpdatePayload,
+    admin_user: AuthenticatedUser = Depends(require_admin),
+):
+    """Administratively promote, deprecate, or modify fingerprint status."""
+    fp = fingerprint_engine.get_fingerprint(fingerprint_id)
+    if not fp:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Fingerprint '{fingerprint_id}' not found."
+        )
+    fp.status = payload.status.upper()
+    updated = fingerprint_engine.repository.add_fingerprint(fp)
+    log_security_event(
+        action="FINGERPRINT_STATUS_UPDATED",
+        actor=admin_user.user_id,
+        target_entity=fingerprint_id,
+        status="SUCCESS",
+        details={"status": fp.status, "reason": payload.reason},
+    )
+    return updated
 
 
 @app.get(
@@ -624,14 +703,26 @@ async def get_fingerprint(fingerprint_id: str):
     tags=["Scam Fingerprint (Engine 7)"],
     summary="Record a dispute against a fingerprint",
 )
-async def dispute_fingerprint(fingerprint_id: str, payload: FingerprintDisputePayload):
+async def dispute_fingerprint(
+    fingerprint_id: str,
+    payload: FingerprintDisputePayload,
+    user: Optional[AuthenticatedUser] = Depends(get_optional_user),
+):
     """Records a dispute note against a fingerprint and marks it DISPUTED."""
-    fp = fingerprint_engine.dispute_fingerprint(fingerprint_id, reason=payload.reason, actor=payload.actor)
+    actor = user.user_id if user else (payload.actor or "user")
+    fp = fingerprint_engine.dispute_fingerprint(fingerprint_id, reason=payload.reason, actor=actor)
     if not fp:
         raise HTTPException(
             status_code=404,
             detail=f"Fingerprint '{fingerprint_id}' not found."
         )
+    log_security_event(
+        action="FINGERPRINT_DISPUTED",
+        actor=actor,
+        target_entity=fingerprint_id,
+        status="SUCCESS",
+        details={"reason": payload.reason},
+    )
     return fp
 
 
@@ -1004,12 +1095,17 @@ MAX_URL_LENGTH = settings.max_url_length
     responses={
         400: {"model": FirewallApiError, "description": "Invalid client request or input payload"},
         403: {"model": FirewallApiError, "description": "Feature disabled by configuration"},
+        429: {"description": "Rate limit exceeded"},
         500: {"model": FirewallApiError, "description": "Internal pipeline execution failure"},
     },
     tags=["Nivesh Firewall (Unified Product API)"],
     summary="Execute unified end-to-end Nivesh Firewall security analysis",
+    dependencies=[Depends(enforce_rate_limit)],
 )
-async def firewall_analyze(payload: FirewallAnalyzeRequest):
+async def firewall_analyze(
+    payload: FirewallAnalyzeRequest,
+    user: Optional[AuthenticatedUser] = Depends(get_optional_user),
+):
     """Execute end-to-end security analysis across Engines 1 through 10.
 
     Canonical frontend-facing API endpoint. Returns unified decision from Engine 8
@@ -1122,8 +1218,11 @@ async def firewall_analyze(payload: FirewallAnalyzeRequest):
                 ).model_dump(),
             )
 
-    # 7. Execute Orchestration
+    # 7. Execute Orchestration with tenant context
     try:
+        user_id = user.user_id if user else None
+        organization_id = user.organization_id if user else None
+
         result = firewall_orchestrator.analyze(
             text=payload.text,
             url=payload.url,
@@ -1135,6 +1234,8 @@ async def firewall_analyze(payload: FirewallAnalyzeRequest):
             channel=payload.channel,
             policy_context=payload.policy_context,
             idempotency_key=payload.idempotency_key,
+            user_id=user_id,
+            organization_id=organization_id,
         )
         response = firewall_orchestrator.format_response(result)
         return response
@@ -1154,17 +1255,24 @@ async def firewall_analyze(payload: FirewallAnalyzeRequest):
     "/api/v1/firewall/analysis/{analysis_id}",
     response_model=FirewallAnalysisResponse,
     responses={
+        401: {"description": "Authentication required"},
         404: {"model": FirewallApiError, "description": "Analysis record not found"},
         500: {"model": FirewallApiError, "description": "Internal error during retrieval"},
     },
     tags=["Nivesh Firewall (Unified Product API)"],
     summary="Retrieve unified firewall analysis result by analysis ID",
+    dependencies=[Depends(enforce_rate_limit)],
 )
-async def get_firewall_analysis(analysis_id: str):
-    """Retrieve a previously executed Nivesh Firewall analysis.
+async def get_firewall_analysis(
+    analysis_id: str,
+    user: Optional[AuthenticatedUser] = Depends(get_optional_user),
+):
+    """Retrieve a previously executed Nivesh Firewall analysis with IDOR protection.
 
     Preserves privacy sanitization, final policy decision, and provenance
     without re-running the underlying intelligence pipeline.
+    Enforces server-side authorization: users cannot access analyses belonging
+    to other users or organizations.
     """
     if not get_settings().analysis_retrieval_enabled:
         return JSONResponse(
@@ -1174,6 +1282,56 @@ async def get_firewall_analysis(analysis_id: str):
                 message="Analysis retrieval endpoint is currently disabled by configuration.",
             ).model_dump(),
         )
+
+    # 1. Fetch analysis record for server-side ownership verification
+    record = analysis_repo.get_analysis_record(analysis_id)
+    if record is not None:
+        rec_uid = record.user_id
+        rec_oid = record.organization_id
+    else:
+        # Check in-memory orchestrator store
+        in_mem = firewall_orchestrator.get_analysis(analysis_id)
+        if not in_mem:
+            return JSONResponse(
+                status_code=404,
+                content=FirewallApiError(
+                    error_code="ANALYSIS_NOT_FOUND",
+                    message=f"Analysis with ID '{analysis_id}' was not found.",
+                    analysis_id=analysis_id,
+                    details={"reason": "The requested analysis ID does not exist or has expired."},
+                ).model_dump(),
+            )
+        ctx = getattr(in_mem, "context", None)
+        req_meta = getattr(ctx, "request_metadata", {}) or {}
+        rec_uid = req_meta.get("user_id")
+        rec_oid = req_meta.get("organization_id")
+
+    # 2. Strict IDOR / Authorization enforcement
+    if rec_uid or rec_oid:
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required to access this analysis.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if not user.can_access_analysis(rec_uid, rec_oid):
+            # Conceal existence of resource with 404 to defeat IDOR and enumeration
+            log_security_event(
+                action="IDOR_ACCESS_ATTEMPT",
+                actor=user.user_id,
+                target_entity=analysis_id,
+                status="DENIED",
+                reason_code="UNAUTHORIZED_ANALYSIS_ACCESS",
+            )
+            return JSONResponse(
+                status_code=404,
+                content=FirewallApiError(
+                    error_code="ANALYSIS_NOT_FOUND",
+                    message=f"Analysis with ID '{analysis_id}' was not found.",
+                    analysis_id=analysis_id,
+                    details={"reason": "The requested analysis ID does not exist or has expired."},
+                ).model_dump(),
+            )
 
     try:
         result = firewall_orchestrator.get_analysis(analysis_id)
@@ -1200,6 +1358,88 @@ async def get_firewall_analysis(analysis_id: str):
                 details={},
             ).model_dump(),
         )
+
+
+@app.delete(
+    "/api/v1/firewall/analysis/{analysis_id}",
+    tags=["Nivesh Firewall (Unified Product API)"],
+    summary="Delete an analysis record (Admin only)",
+)
+async def delete_firewall_analysis(
+    analysis_id: str,
+    admin_user: AuthenticatedUser = Depends(require_admin),
+):
+    """Permanently delete an individual analysis record and related intelligence summaries."""
+    deleted = analysis_repo.delete_analysis(analysis_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Analysis '{analysis_id}' not found.",
+        )
+    log_security_event(
+        action="ANALYSIS_DELETED",
+        actor=admin_user.user_id,
+        target_entity=analysis_id,
+        status="SUCCESS",
+    )
+    return {"status": "deleted", "analysis_id": analysis_id}
+
+
+@app.get(
+    "/api/v1/admin/audit-logs",
+    tags=["System Admin"],
+    summary="Retrieve security and operational audit logs (Admin only)",
+)
+async def get_audit_logs(
+    limit: int = 50,
+    event_type: Optional[str] = None,
+    actor: Optional[str] = None,
+    admin_user: AuthenticatedUser = Depends(require_admin),
+):
+    """Retrieve security audit records from persistent storage (administrator only)."""
+    records = audit_repo.list_audits(
+        event_type=event_type,
+        actor=actor,
+        limit=min(100, max(1, limit)),
+    )
+    return records
+
+
+@app.post(
+    "/api/v1/auth/token",
+    tags=["Authentication"],
+    summary="Issue a signed Bearer JWT token",
+)
+async def issue_token(
+    payload: TokenIssueRequest,
+    request: Request,
+):
+    """Issues a signed HMAC-SHA256 JWT access token for authenticated API consumption."""
+    settings = get_settings()
+    # In production, minting admin/service tokens requires existing admin authorization
+    if settings.is_production() and any(r in (UserRole.ADMIN, UserRole.SERVICE) for r in payload.roles):
+        current_admin = get_optional_user(request)
+        if not current_admin or not current_admin.is_admin():
+            raise HTTPException(
+                status_code=403,
+                detail="Administrator authorization required to mint privileged roles in production.",
+            )
+
+    token = create_access_token(
+        user_id=payload.user_id,
+        organization_id=payload.organization_id,
+        roles=payload.roles,
+        session_id=payload.session_id,
+        expires_in_seconds=payload.expires_in_seconds,
+    )
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "expires_in": payload.expires_in_seconds or settings.auth_token_expire_seconds,
+        "user_id": payload.user_id,
+        "organization_id": payload.organization_id,
+        "roles": [r.value for r in payload.roles],
+    }
 
 
 

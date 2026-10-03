@@ -63,8 +63,14 @@ class AnalysisRepository:
         self,
         result: OrchestrationResult,
         idempotency_key: Optional[str] = None,
+        user_id: Optional[str] = None,
+        organization_id: Optional[str] = None,
     ) -> AnalysisModel:
         """Persist analysis result, policy decision, and telemetry atomically."""
+        raise NotImplementedError
+
+    def get_analysis_record(self, analysis_id: str) -> Optional[AnalysisModel]:
+        """Retrieve raw AnalysisModel for ownership and permission verification."""
         raise NotImplementedError
 
     def get_analysis(self, analysis_id: str) -> Optional[FirewallAnalysisResponse]:
@@ -90,6 +96,8 @@ class SqlAlchemyAnalysisRepository(AnalysisRepository):
         self,
         result: OrchestrationResult,
         idempotency_key: Optional[str] = None,
+        user_id: Optional[str] = None,
+        organization_id: Optional[str] = None,
     ) -> AnalysisModel:
         """Atomically persist analysis, policy decision, result summaries, and engine executions."""
         state = result.state
@@ -137,9 +145,16 @@ class SqlAlchemyAnalysisRepository(AnalysisRepository):
                 )
                 contains_financial = getattr(c, "contains_financial_content", True)
 
+            # Extract user_id and organization_id from args or request_metadata
+            req_meta = getattr(context, "request_metadata", {}) or {}
+            final_user_id = user_id or req_meta.get("user_id")
+            final_org_id = organization_id or req_meta.get("organization_id") or req_meta.get("org_id")
+
             analysis = AnalysisModel(
                 analysis_id=result.analysis_id,
                 session_id=result.session_id,
+                user_id=final_user_id,
+                organization_id=final_org_id,
                 pipeline_status=result.pipeline_status,
                 created_at=getattr(context, "created_at", None) or result.telemetry.started_at,
                 completed_at=result.telemetry.completed_at or getattr(context, "updated_at", None),
@@ -231,6 +246,18 @@ class SqlAlchemyAnalysisRepository(AnalysisRepository):
 
             session.flush()
             return analysis
+
+    def get_analysis_record(self, analysis_id: str) -> Optional[AnalysisModel]:
+        """Retrieve raw AnalysisModel directly for ownership and permission verification."""
+        with get_db_session(session_factory=self._session_factory) as session:
+            record = (
+                session.query(AnalysisModel)
+                .filter(AnalysisModel.analysis_id == analysis_id)
+                .first()
+            )
+            if record:
+                session.expunge(record)
+            return record
 
     def get_analysis(self, analysis_id: str) -> Optional[FirewallAnalysisResponse]:
         """Retrieve a stored analysis and reconstruct the canonical FirewallAnalysisResponse."""

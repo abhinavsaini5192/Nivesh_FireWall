@@ -74,6 +74,26 @@ class Settings(BaseSettings):
         default=None,
         description="Database connection URI (required in production; safe fallback in dev/test)",
     )
+    admin_api_key: Optional[str] = Field(
+        default=None,
+        description="Static secret API key for administrative operations",
+    )
+    service_api_key: Optional[str] = Field(
+        default=None,
+        description="Static secret API key for internal service-to-service operations",
+    )
+    auth_token_expire_seconds: int = Field(
+        default=3600,
+        description="Authentication token validity duration in seconds (default 1 hour)",
+    )
+    rate_limit_enabled: bool = Field(
+        default=True,
+        description="Operational flag controlling API request rate limiting",
+    )
+    rate_limit_requests_per_minute: int = Field(
+        default=120,
+        description="Maximum permitted requests per minute per IP / token",
+    )
 
     # 4. Frontend & CORS
     frontend_url: str = Field(
@@ -279,7 +299,17 @@ class Settings(BaseSettings):
             data["database_url"] = mask_sensitive_url(data["database_url"])
         if data.get("secret_key"):
             data["secret_key"] = "***REDACTED***"
+        if data.get("admin_api_key"):
+            data["admin_api_key"] = "***REDACTED***"
+        if data.get("service_api_key"):
+            data["service_api_key"] = "***REDACTED***"
         return data
+
+    def get_secret_key(self) -> str:
+        """Return application secret key with safe dev/test fallback."""
+        if self.secret_key and self.secret_key.strip():
+            return self.secret_key.strip()
+        return "nivesh-firewall-secure-fallback-secret-key-32-chars-long"
 
     def __repr__(self) -> str:
         safe = self.safe_dump()

@@ -32,6 +32,8 @@ def upgrade() -> None:
         'analyses',
         sa.Column('analysis_id', sa.String(length=64), primary_key=True),
         sa.Column('session_id', sa.String(length=64), nullable=True),
+        sa.Column('user_id', sa.String(length=64), nullable=True),
+        sa.Column('organization_id', sa.String(length=64), nullable=True),
         sa.Column('pipeline_status', sa.String(length=32), nullable=False),
         sa.Column('created_at', sa.String(length=64), nullable=False),
         sa.Column('completed_at', sa.String(length=64), nullable=True),
@@ -44,6 +46,8 @@ def upgrade() -> None:
         sa.Column('idempotency_key', sa.String(length=128), nullable=True),
     )
     op.create_index('ix_analyses_session_id', 'analyses', ['session_id'])
+    op.create_index('ix_analyses_user_id', 'analyses', ['user_id'])
+    op.create_index('ix_analyses_organization_id', 'analyses', ['organization_id'])
     op.create_index('ix_analyses_pipeline_status', 'analyses', ['pipeline_status'])
     op.create_index('ix_analyses_created_at', 'analyses', ['created_at'])
     op.create_index('ix_analyses_channel', 'analyses', ['channel'])
@@ -68,7 +72,7 @@ def upgrade() -> None:
         sa.Column('created_at', sa.String(length=64), nullable=False),
     )
     op.create_index('ix_policy_decisions_analysis_id', 'policy_decisions', ['analysis_id'], unique=True)
-    op.create_index('ix_policy_decisions_decision_id', 'policy_decisions', ['decision_id'], unique=True)
+    op.create_index('ix_policy_decisions_decision_id', 'policy_decisions', ['decision_id'], unique=False)
     op.create_index('ix_policy_decisions_decision', 'policy_decisions', ['decision'])
 
     # 3. analysis_results table
@@ -173,6 +177,8 @@ def upgrade() -> None:
     op.create_table(
         'sessions',
         sa.Column('session_id', sa.String(length=64), primary_key=True),
+        sa.Column('user_id', sa.String(length=64), nullable=True),
+        sa.Column('organization_id', sa.String(length=64), nullable=True),
         sa.Column('started_at', sa.String(length=64), nullable=True),
         sa.Column('last_event_at', sa.String(length=64), nullable=True),
         sa.Column('event_count', sa.Integer(), nullable=True, server_default='0'),
@@ -180,6 +186,8 @@ def upgrade() -> None:
         sa.Column('created_at', sa.String(length=64), nullable=False),
         sa.Column('updated_at', sa.String(length=64), nullable=False),
     )
+    op.create_index('ix_sessions_user_id', 'sessions', ['user_id'])
+    op.create_index('ix_sessions_organization_id', 'sessions', ['organization_id'])
 
     # 8. session_events table
     op.create_table(
@@ -209,12 +217,19 @@ def upgrade() -> None:
         sa.Column('session_id', sa.String(length=64), nullable=True),
         sa.Column('event_type', sa.String(length=64), nullable=False),
         sa.Column('actor', sa.String(length=64), nullable=False, server_default='system'),
+        sa.Column('target_entity', sa.String(length=128), nullable=True),
+        sa.Column('request_id', sa.String(length=64), nullable=True),
+        sa.Column('ip_address', sa.String(length=64), nullable=True),
+        sa.Column('status', sa.String(length=32), nullable=False, server_default='SUCCESS'),
+        sa.Column('reason_code', sa.String(length=64), nullable=True),
         sa.Column('details', sa.JSON(), nullable=False),
         sa.Column('timestamp', sa.String(length=64), nullable=False),
     )
     op.create_index('ix_audit_records_analysis_id', 'audit_records', ['analysis_id'])
     op.create_index('ix_audit_records_session_id', 'audit_records', ['session_id'])
     op.create_index('ix_audit_records_event_type', 'audit_records', ['event_type'])
+    op.create_index('ix_audit_records_target_entity', 'audit_records', ['target_entity'])
+    op.create_index('ix_audit_records_request_id', 'audit_records', ['request_id'])
     op.create_index('ix_audit_records_timestamp', 'audit_records', ['timestamp'])
 
 
