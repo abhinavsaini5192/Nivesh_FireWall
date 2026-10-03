@@ -132,46 +132,106 @@ frontend/
 │       ├── App.test.tsx                    # 6 App shell & navigation tests
 │       └── api.test.ts                     # 6 API client tests
 ```
+## 3. Intelligence, Evidence & Timeline Views (Phase 12.4)
+
+### 3.1 Architecture & Progressive Disclosure
+Phase 12.4 introduces the structured intelligence visualization layer for Nivesh Firewall. The user journey proceeds naturally from high-level understanding to forensic technical verification:
+```text
+Executive Plain-English Summary (Level 1 & 2)
+              ↓
+Structured Findings & Action Progression (Level 3)
+              ↓
+Claim Verification, Entity Resolution & Attack Paths (Level 4)
+              ↓
+Fingerprint Blueprint, Interaction Timeline & Audit Trace (Level 5)
+```
+
+### 3.2 Dual Presentation Modes
+- **Executive Summary (`user` mode)**: Provides a 5-question plain-English synthesis answering:
+  1. *What happened?* (Policy decision, urgency, primary explanation)
+  2. *What was requested?* (Primary action, reversibility, target destination)
+  3. *What was claimed?* (Factual assertions vs regulatory verification findings)
+  4. *What did authoritative records show?* (SEBI/exchange cross-reference status)
+  5. *Why did Nivesh intervene?* (Intervention rationale with direct link to technical drilldown)
+- **Deep Intelligence & Timelines (`technical` mode)**: Organizes all 8 underlying engine dimensions into accessible, collapsible panels preserving full forensic auditability.
+
+### 3.3 Core Visualization Components
+1. **`ActionHierarchyCard` (Engine 3)**: 5-level action progression scale (Informational → Communication → Private Channel → External Application → Financial Extraction) with canonical action types, targets, and reversibility badges.
+2. **`ClaimsCard` (Engine 2 & 5)**: Structured Subject-Predicate-Object decomposition of extracted claims, modality tags, and semantic verification findings.
+3. **`ClaimEvidenceDetailCard` (Engine 4 & 5)**: Key verification metrics (Supported, Contradicted, Insufficient Evidence, Source Filings) with source mode provenance (`LIVE`, `CACHE`, `FIXTURE`).
+4. **`EntityRelationshipGraph` (Engine 9)**: Entity resolution graph tracing claimed identities to official regulatory registries using objective, non-accusatory status language.
+5. **`AttackPathVisualizer` (Engine 6)**: Visual attack-stage progression (`TRUST_BUILDING` → `CHANNEL_MIGRATION` → `SOFTWARE_INSTALLATION` → `FINANCIAL_EXTRACTION`), node inspection, screen-reader linear representation, and claim-to-action rationale linkage.
+6. **`FingerprintIntelligenceCard` (Engine 7)**: Structural pattern match type, equivalence ("YES" vs "NO"), 5 matched dimensions, observation count, and explicit disclaimer that structural matching is not legal proof of fraud.
+7. **`BehaviourTimelineView` (Engine 10)**: Chronological interaction timeline with timestamps, pattern confidence ("Confidence that this interaction pattern was observed", never "scam probability"), and non-psychological event logging.
+8. **`PolicyReasonTraceView` (Engine 8)**: 3-step causal evaluation tree linking upstream engine signals through reason codes to Engine 8's canonical policy decision.
+9. **`ProvenanceAuditPanel`**: Technical transparency panel with analysis ID, duration, session ID, copy-safe audit JSON, and pipeline execution metadata.
+10. **`PrivacySafeguardNotice`**: Privacy protection notice and frontend sanitization boundary stripping credentials (`password`, `pin`, `otp`, `cvv`, account numbers).
 
 ---
 
-## 4. Testing & Quality Standards
+## 4. Directory Structure
 
-Run all frontend checks:
-
-```bash
-# Lint check (Oxlint)
-npm --prefix frontend run lint
-
-# Vitest Suite (67/67 passed)
-npm --prefix frontend test
-
-# Production Build
-npm --prefix frontend run build
-```us, inputs, buttons
-│   │   └── api.test.ts                  # API client configuration and error handling tests
-│   ├── App.tsx                          # Root application with view-based routing and analysis lifecycle
-│   └── main.tsx                         # Entry point
-├── .env.example                         # Environment template
-├── .env                                 # Local development environment
-├── vite.config.ts                       # Vite & Vitest configuration
-├── tsconfig.json                        # TypeScript project configuration
-└── package.json                         # Package dependencies and scripts
+```text
+frontend/
+├── src/
+│   ├── api/
+│   │   └── client.ts                     # Unified Firewall API client
+│   ├── types/
+│   │   ├── firewall.ts                   # Core schemas matching backend contracts
+│   │   ├── intervention.ts               # Intervention presentation model & mapping
+│   │   └── intelligence.ts               # Presentation contracts & sanitization helpers
+│   ├── components/
+│   │   ├── common/                       # Reusable UI component library (Accordion, Modal, Card, etc.)
+│   │   ├── intervention/                 # Dedicated Phase 12.3 intervention components
+│   │   │   ├── ProtectionBanner.tsx      # Top banner for decision states
+│   │   │   ├── InterventionHeader.tsx    # Hero decision header & status
+│   │   │   ├── HighImpactActionAlert.tsx # Engine 3 high-impact action warning
+│   │   │   ├── ProtectionSummaryCard.tsx # 5-dimension summary card with deep links
+│   │   │   ├── WhyIntervenedSection.tsx  # Reason codes with link to engine panels
+│   │   │   ├── RecommendedNextStepCard.tsx # Protective UX instructions & actions
+│   │   │   ├── OverrideConfirmationModal.tsx # Accessible 2-step override dialog
+│   │   │   └── index.ts                  # Barrel export
+│   │   ├── intelligence/                 # Dedicated Phase 12.4 intelligence components
+│   │   │   ├── ActionHierarchyCard.tsx   # 5-stage action progression scale
+│   │   │   ├── ClaimsCard.tsx            # Subject-Predicate-Object claims decomposition
+│   │   │   ├── ClaimEvidenceDetailCard.tsx # Evidence verification & source filings
+│   │   │   ├── EntityRelationshipGraph.tsx # Regulatory registry resolution graph
+│   │   │   ├── AttackPathVisualizer.tsx  # Sequential attack stage progression
+│   │   │   ├── FingerprintIntelligenceCard.tsx # Structural pattern blueprint & dimensions
+│   │   │   ├── BehaviourTimelineView.tsx # Chronological interaction timeline
+│   │   │   ├── PolicyReasonTraceView.tsx # Engine 8 causal decision trace tree
+│   │   │   ├── ProvenanceAuditPanel.tsx  # Pipeline provenance & audit export
+│   │   │   ├── PrivacySafeguardNotice.tsx # Confidentiality notice
+│   │   │   ├── UserExecutiveSummaryCard.tsx # Plain-English 5-question consumer summary
+│   │   │   ├── IntelligenceDetailView.tsx # Master intelligence coordinator & view mode toggle
+│   │   │   └── index.ts                  # Barrel export
+│   │   ├── firewall/
+│   │   │   ├── AnalysisResultView.tsx    # Integrated Phase 12.2, 12.3 & 12.4 presentation
+│   │   │   ├── ContentEntryCard.tsx      # Primary input card
+│   │   │   └── PrivacyNotice.tsx         # Trust and privacy disclosure
+│   │   └── shell/                        # AppShell, Header, Navigation
+│   └── test/
+│       ├── intelligenceDetailView.test.tsx # 18 Tests covering Phase 12.4 requirements
+│       ├── interventionExperience.test.tsx # 20 Tests covering Phase 12.3 requirements
+│       ├── analysisWorkflow.test.tsx       # 22 Tests covering Phase 12.2 workflow
+│       ├── components.test.tsx             # 13 Reusable component tests
+│       ├── App.test.tsx                    # 6 App shell & navigation tests
+│       └── api.test.ts                     # 6 API client tests
 ```
 
 ---
 
-## 6. Testing & Quality Standards
+## 5. Testing & Quality Standards
 
 Run all frontend checks:
 
 ```bash
-# Lint check (Oxlint)
+# Lint check (Oxlint: 0 warnings, 0 errors)
 npm --prefix frontend run lint
 
-# Vitest Suite (47/47 passed)
+# Vitest Suite (85/85 passed)
 npm --prefix frontend test
 
-# Production Build
+# Production Build (TypeScript compilation + Vite bundling)
 npm --prefix frontend run build
 ```
