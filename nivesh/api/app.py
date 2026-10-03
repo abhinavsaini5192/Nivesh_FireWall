@@ -8,11 +8,14 @@ Provides:
 from typing import Optional
 from urllib.parse import urlparse
 import base64
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from nivesh.config import get_settings, setup_logging
+from nivesh.orchestrator.config import OrchestratorConfig
 from nivesh.engine import ContentIntelligenceEngine, ENGINE_VERSION
 from nivesh.claims.engine import ClaimIntelligenceEngine
 from nivesh.actions.engine import ActionIntelligenceEngine
@@ -121,44 +124,35 @@ class PolicyDecidePayload(BaseModel):
     context: Optional[PolicyContext] = None
 
 
+# Initialize Settings
+settings = get_settings()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan context managing startup and shutdown."""
+    current_settings = get_settings()
+    setup_logging(current_settings)
+    if current_settings.is_production():
+        current_settings.validate_production_readiness()
+    yield
+
 # Initialize FastAPI application
 app = FastAPI(
     title="Nivesh Firewall — Backend API",
     description="Multi-engine security API for financial content and claim intelligence.",
     version=ENGINE_VERSION,
+    lifespan=lifespan,
 )
 
-# Enable CORS for browser integration
+# Enable CORS with centralized environment-aware origin management
+cors_origins = settings.get_cors_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.get("/health")
-@app.get("/api/v1/health")
-def health_check():
-    return {
-        "status": "healthy",
-        "engine": "Content Intelligence Engine",
-        "version": ENGINE_VERSION,
-        "engines": [
-            "Engine 1: Content Intelligence Engine",
-            "Engine 2: Claim Intelligence Engine",
-            "Engine 3: Action Intelligence Engine",
-            "Engine 4: Source Intelligence Engine",
-            "Engine 5: Evidence Verification Engine",
-            "Engine 6: Threat & Attack-Path Intelligence Engine",
-            "Engine 7: Scam Fingerprint & Collective Threat Intelligence Engine",
-            "Engine 8: Policy & Intervention Engine",
-            "Engine 9: Identity Verification & Entity Resolution Engine",
-            "Engine 10: Behavioural Signal Intelligence Engine",
-        ],
-        "firewall": "Nivesh Firewall Phase 11.4",
-    }
 
 
 @app.exception_handler(RequestValidationError)
@@ -191,7 +185,7 @@ policy_engine = PolicyInterventionEngine()
 identity_engine = IdentityVerificationEngine()
 behaviour_engine = BehaviouralSignalEngine()
 
-# Canonical Product Orchestrator singleton wiring all 10 engines
+# Canonical Product Orchestrator singleton wiring all 10 engines with central configuration
 firewall_orchestrator = ProductOrchestrator(
     engines={
         "engine_1": content_engine,
@@ -204,17 +198,26 @@ firewall_orchestrator = ProductOrchestrator(
         "engine_8": policy_engine,
         "engine_9": identity_engine,
         "engine_10": behaviour_engine,
-    }
+    },
+    config=OrchestratorConfig(
+        source_mode=settings.source_mode,
+        timeout_ms=settings.timeout_pipeline_ms,
+        engine_timeout_ms=settings.timeout_engine_ms,
+    ),
 )
 
 
 @app.get("/health", tags=["System"])
 @app.get("/api/v1/health", tags=["System"])
-async def health_check():
-    """Health status check."""
+def health_check():
+    """System health check endpoint preserving full engine and environment status."""
+    current_settings = get_settings()
     return {
         "status": "healthy",
-        "engine": "Nivesh Firewall Unified API",
+        "engine": "Content Intelligence Engine",
+        "service": "Nivesh Firewall Unified API",
+        "environment": current_settings.env,
+        "version": ENGINE_VERSION,
         "unified_firewall_api": "/api/v1/firewall/analyze",
         "retrieval_api": "/api/v1/firewall/analysis/{analysis_id}",
         "engines": [
@@ -229,7 +232,7 @@ async def health_check():
             "Engine 9: Identity Verification & Entity Resolution Engine",
             "Engine 10: Behavioural Signal Intelligence Engine",
         ],
-        "version": ENGINE_VERSION,
+        "firewall": f"Nivesh Firewall Phase 11.4 ({current_settings.env})",
     }
 
 
@@ -962,9 +965,10 @@ async def record_behaviour_event(payload: BehaviouralEventPayload):
 # Unified Nivesh Firewall Product API (Phase 11.4)
 # ==============================================================================
 
-MAX_TEXT_LENGTH = 50_000
-MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10MB
-MAX_SESSION_ID_LENGTH = 128
+MAX_TEXT_LENGTH = settings.max_content_length
+MAX_IMAGE_BYTES = settings.max_image_bytes
+MAX_SESSION_ID_LENGTH = settings.max_session_id_length
+MAX_URL_LENGTH = settings.max_url_length
 
 
 @app.post(
@@ -972,6 +976,7 @@ MAX_SESSION_ID_LENGTH = 128
     response_model=FirewallAnalysisResponse,
     responses={
         400: {"model": FirewallApiError, "description": "Invalid client request or input payload"},
+        403: {"model": FirewallApiError, "description": "Feature disabled by configuration"},
         500: {"model": FirewallApiError, "description": "Internal pipeline execution failure"},
     },
     tags=["Nivesh Firewall (Unified Product API)"],
@@ -984,6 +989,18 @@ async def firewall_analyze(payload: FirewallAnalyzeRequest):
     along with structured summaries for claims, actions, evidence, identity,
     threat, fingerprint, and behavioural patterns. Does not expose credentials or PII.
     """
+    current_settings = get_settings()
+
+    # Feature flag: Browser Extension Ingestion
+    if payload.channel == "browser" and not current_settings.browser_extension_enabled:
+        return JSONResponse(
+            status_code=403,
+            content=FirewallApiError(
+                error_code="FEATURE_DISABLED",
+                message="Browser extension ingestion is currently disabled by configuration.",
+            ).model_dump(),
+        )
+
     # 1. Validate Input Type
     if payload.input_type not in ("text", "url", "image"):
         return JSONResponse(
@@ -1011,18 +1028,27 @@ async def firewall_analyze(payload: FirewallAnalyzeRequest):
         )
 
     # 3. Payload size checks
-    if payload.text and len(payload.text) > MAX_TEXT_LENGTH:
+    if payload.text and len(payload.text) > current_settings.max_content_length:
         return JSONResponse(
             status_code=400,
             content=FirewallApiError(
                 error_code="INPUT_TOO_LARGE",
-                message=f"Payload text exceeds maximum permitted limit of {MAX_TEXT_LENGTH} characters.",
-                details={"provided_length": len(payload.text), "max_limit": MAX_TEXT_LENGTH},
+                message=f"Payload text exceeds maximum permitted limit of {current_settings.max_content_length} characters.",
+                details={"provided_length": len(payload.text), "max_limit": current_settings.max_content_length},
             ).model_dump(),
         )
 
     # 4. URL Validation
     if payload.url:
+        if len(payload.url.strip()) > current_settings.max_url_length:
+            return JSONResponse(
+                status_code=400,
+                content=FirewallApiError(
+                    error_code="INPUT_TOO_LARGE",
+                    message=f"Target URL exceeds maximum permitted limit of {current_settings.max_url_length} characters.",
+                    details={"provided_length": len(payload.url), "max_limit": current_settings.max_url_length},
+                ).model_dump(),
+            )
         parsed = urlparse(payload.url.strip())
         if not parsed.scheme or parsed.scheme.lower() not in ("http", "https") or not parsed.netloc:
             return JSONResponse(
@@ -1035,13 +1061,13 @@ async def firewall_analyze(payload: FirewallAnalyzeRequest):
             )
 
     # 5. Session ID Validation
-    if payload.session_id and len(payload.session_id) > MAX_SESSION_ID_LENGTH:
+    if payload.session_id and len(payload.session_id) > current_settings.max_session_id_length:
         return JSONResponse(
             status_code=400,
             content=FirewallApiError(
                 error_code="INVALID_SESSION",
-                message=f"Session identifier exceeds maximum length of {MAX_SESSION_ID_LENGTH} characters.",
-                details={"session_id_length": len(payload.session_id), "max_limit": MAX_SESSION_ID_LENGTH},
+                message=f"Session identifier exceeds maximum length of {current_settings.max_session_id_length} characters.",
+                details={"session_id_length": len(payload.session_id), "max_limit": current_settings.max_session_id_length},
             ).model_dump(),
         )
 
@@ -1113,6 +1139,15 @@ async def get_firewall_analysis(analysis_id: str):
     Preserves privacy sanitization, final policy decision, and provenance
     without re-running the underlying intelligence pipeline.
     """
+    if not get_settings().analysis_retrieval_enabled:
+        return JSONResponse(
+            status_code=403,
+            content=FirewallApiError(
+                error_code="FEATURE_DISABLED",
+                message="Analysis retrieval endpoint is currently disabled by configuration.",
+            ).model_dump(),
+        )
+
     try:
         result = firewall_orchestrator.get_analysis(analysis_id)
         if not result:

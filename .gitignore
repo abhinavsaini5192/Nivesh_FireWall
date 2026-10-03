@@ -6,8 +6,35 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+.venv/
+
+# Environment files and secrets
 .env
-.venv
+.env.*
+.env.local
+.env.*.local
+!.env.example
+
+# Node / Frontend / Extension
 node_modules/
+*.tsbuildinfo
 frontend/dist/
 frontend/node_modules/
+frontend/.env
+frontend/.env.*
+frontend/.env.local
+!frontend/.env.example
+
+extension/dist/
+extension/node_modules/
+extension/.env
+extension/.env.*
+extension/.env.local
+!extension/.env.example
+
+# Local databases and logs
+*.db
+*.sqlite
+*.sqlite3
+*.log
+scratch/

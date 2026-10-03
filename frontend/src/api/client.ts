@@ -11,6 +11,7 @@ import type {
   FirewallApiError,
   ProtectionSystemStatus,
 } from '../types/firewall';
+import { config } from '../config/env';
 
 export class FirewallClientError extends Error {
   public errorCode: string;
@@ -38,12 +39,8 @@ export class FirewallApiClient {
   private baseUrl: string;
 
   constructor(baseUrl?: string) {
-    // Resolve base URL from configuration or environment
-    const envUrl = typeof import.meta !== 'undefined' && import.meta.env
-      ? import.meta.env.VITE_API_BASE_URL
-      : undefined;
-
-    this.baseUrl = (baseUrl || envUrl || 'http://localhost:8000').replace(/\/+$/, '');
+    // Resolve base URL from explicit argument or centralized environment configuration
+    this.baseUrl = (baseUrl || config.apiBaseUrl).replace(/\/+$/, '');
   }
 
   public getBaseUrl(): string {

@@ -1711,7 +1711,101 @@ Engine 8 Decision (Sole Policy Authority)
 6. **Explicit User Override**:
    - A 2-step confirmation modal with non-shaming language for overridable policy states, preserving the original policy state if cancelled.
 7. **Verification & Quality Standards**:
-   - **Frontend Tests**: 67 Vitest tests passing across 5 test suites (`interventionExperience.test.tsx`, `analysisWorkflow.test.tsx`, `components.test.tsx`, `App.test.tsx`, `api.test.ts`).
-   - **Lint**: 0 warnings, 0 errors (Oxlint on 52 files).
+   - **Frontend Tests**: 103 Vitest tests passing across 7 test suites.
+   - **Lint**: 0 warnings, 0 errors (Oxlint).
    - **Production Build**: Built cleanly with Vite and TypeScript compiler.
-   - **Backend Compatibility**: 481 backend tests passing (100% pass rate in `pytest`).
+   - **Extension Tests**: 141 Vitest tests passing across 15 test suites.
+   - **Backend Compatibility**: 498 backend tests passing (100% pass rate in `pytest`).
+
+---
+
+## 21. Production Configuration & Environment Architecture (Phase 14.1)
+
+Phase 14.1 establishes a centralized, typed configuration management system across backend (FastAPI), web application (React/Vite), and browser extension (MV3/Vite). The system enforces environment separation between `development`, `test`, and `production` with zero hardcoded environment-specific credentials or secrets.
+
+```text
+Environment (.env / Process Environment)
+           │
+           ▼
+Central Settings Layer (nivesh.config.Settings)
+           │
+   ┌───────┴────────────────────────┬────────────────────────┐
+   ▼                                ▼                        ▼
+FastAPI Server              Product Orchestrator      Logging System
+- CORS Middleware           - Source Mode (LIVE/FIX)  - Sensitive Redaction
+- Lifespan Validation       - Engine Timeouts         - Level Control
+- Payload Constraints       - Resilience Controls
+```
+
+### 21.1 Environment Separation Matrix
+
+| Parameter | Development | Test | Production |
+| :--- | :--- | :--- | :--- |
+| **`NIVESH_ENV`** | `development` | `test` | `production` |
+| **`NIVESH_DEBUG`** | `True` or `False` | `False` | **Strictly `False`** (validated at startup) |
+| **`NIVESH_DATABASE_URL`** | `sqlite:///./nivesh_dev.db` (safe fallback) | `sqlite:///:memory:` (isolated) | **Required persistent URI** (e.g. PostgreSQL) |
+| **`NIVESH_ALLOWED_ORIGINS`** | Local dev origins (`localhost:5173`, `127.0.0.1:5173`) | Test fixtures | **Strict explicit origin whitelist** (Wildcard `*` rejected) |
+| **`NIVESH_LOG_LEVEL`** | `DEBUG` / `INFO` | `WARNING` | `INFO` / `WARNING` (Sensitive data auto-redacted) |
+| **`NIVESH_SOURCE_MODE`** | `FIXTURE` / `CACHE` | `FIXTURE` (deterministic) | `FIXTURE`, `CACHE`, or gated `LIVE` |
+| **`NIVESH_LIVE_SOURCES_ENABLED`** | `False` | `False` | Explicit gate (required if `source_mode=LIVE`) |
+
+### 21.2 Backend Configuration Reference
+
+All backend variables use the `NIVESH_` prefix and are defined in `nivesh.config.Settings`:
+
+- **Core Server**:
+  - `NIVESH_ENV`: Operating environment (`development`, `test`, `production`). Default: `development`.
+  - `NIVESH_HOST`: Binding host interface. Default: `127.0.0.1`.
+  - `NIVESH_PORT`: HTTP server port. Default: `8000`.
+  - `NIVESH_DEBUG`: Debug flag. Strictly rejected if `True` in production.
+  - `NIVESH_SECRET_KEY`: Cryptographic signing and token key. Must be set securely in production.
+  - `NIVESH_DATABASE_URL`: Database connection string. Required in production; SQLite in-memory or dev fallback rejected in production.
+- **Frontend & CORS**:
+  - `NIVESH_FRONTEND_URL`: URL of the web UI. Default: `http://localhost:5173`.
+  - `NIVESH_ALLOWED_ORIGINS`: Comma-separated or JSON list of allowed origins. Wildcard `*` strictly rejected in production.
+  - `NIVESH_ALLOWED_EXTENSION_IDS`: Browser extension IDs permitted to contact the backend (`chrome-extension://<id>`).
+- **Logging & Redaction**:
+  - `NIVESH_LOG_LEVEL`: System log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`).
+  - `SensitiveDataRedactor`: Custom logging filter automatically redacting passwords, tokens, OTPs, PINs, CVVs, and card numbers.
+- **Source Intelligence & Safety**:
+  - `NIVESH_SOURCE_MODE`: Retrieval mode (`FIXTURE`, `CACHE`, `LIVE`).
+  - `NIVESH_LIVE_SOURCES_ENABLED`: Boolean gate. `source_mode=LIVE` in production requires this to be `True`.
+- **Operational Feature Flags**:
+  - `NIVESH_FEATURE_BROWSER_EXTENSION`: Controls browser content ingestion (`True`/`False`).
+  - `NIVESH_FEATURE_ANALYSIS_RETRIEVAL`: Controls `/api/v1/firewall/analysis/{id}` endpoint (`True`/`False`).
+- **Network Timeouts & Payload Limits**:
+  - `NIVESH_TIMEOUT_REQUEST_SECONDS`: API request timeout (default: `30.0s`).
+  - `NIVESH_TIMEOUT_RETRIEVAL_SECONDS`: Source retrieval timeout (default: `10.0s`).
+  - `NIVESH_TIMEOUT_PIPELINE_MS`: End-to-end orchestration timeout (default: unconstrained / `None`).
+  - `NIVESH_MAX_REQUEST_BYTES`: Max HTTP request body size (default: `10MB`).
+  - `NIVESH_MAX_CONTENT_LENGTH`: Max text length (default: `50,000` chars).
+  - `NIVESH_MAX_URL_LENGTH`: Max URL length (default: `2,048` chars).
+  - `NIVESH_MAX_IMAGE_BYTES`: Max image payload (default: `10MB`).
+  - `NIVESH_MAX_SESSION_ID_LENGTH`: Max session ID length (default: `128` chars).
+
+### 21.3 Web Frontend & Browser Extension Configuration
+
+- **Frontend (`frontend/`)**:
+  - Configured via `frontend/src/config/env.ts` reading Vite `import.meta.env`.
+  - Public variables:
+    - `VITE_API_BASE_URL`: Firewall backend URL (default: `http://localhost:8000`).
+    - `VITE_APP_NAME`: Application name.
+    - `VITE_APP_VERSION`: Release version.
+  - Development template: `frontend/.env.example`.
+- **Browser Extension (`extension/`)**:
+  - Configured via `extension/src/config/index.ts`.
+  - Build-time variables:
+    - `VITE_API_BASE_URL`: Backend API URL (default: `http://localhost:8000`).
+    - `VITE_WEB_APP_URL`: Deep-link web app URL (default: `http://localhost:5173`).
+  - Development template: `extension/.env.example`.
+  - Security guarantee: Zero secrets, tokens, or backend credentials are embedded in extension bundles.
+
+### 21.4 Startup Validation & Fail-Safe Enforcements
+
+On application startup, `Settings.validate_production_readiness()` verifies that:
+1. `NIVESH_DEBUG` is not `True`.
+2. `NIVESH_DATABASE_URL` is configured and does not use SQLite in-memory or dev fallback.
+3. `NIVESH_ALLOWED_ORIGINS` does not contain `*` and contains at least one explicit origin.
+4. `NIVESH_SOURCE_MODE=LIVE` is backed by `NIVESH_LIVE_SOURCES_ENABLED=True`.
+5. Any failure aborts startup safely without printing passwords, credentials, or secrets in logs or exceptions.
+

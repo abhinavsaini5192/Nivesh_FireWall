@@ -7,9 +7,17 @@
 
 import type { ExtensionPersistentConfig } from '../types/state';
 
+const envBackendUrl = typeof import.meta !== 'undefined' && import.meta.env
+  ? (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_URL)
+  : undefined;
+
+const envWebAppUrl = typeof import.meta !== 'undefined' && import.meta.env
+  ? import.meta.env.VITE_WEB_APP_URL
+  : undefined;
+
 export const DEFAULT_CONFIG: ExtensionPersistentConfig = {
-  backendApiUrl: 'http://localhost:8000',
-  webAppBaseUrl: 'http://localhost:5173',
+  backendApiUrl: (envBackendUrl || 'http://localhost:8000').replace(/\/+$/, ''),
+  webAppBaseUrl: (envWebAppUrl || 'http://localhost:5173').replace(/\/+$/, ''),
   autoConnectHealthCheck: true,
   theme: 'dark',
 };
