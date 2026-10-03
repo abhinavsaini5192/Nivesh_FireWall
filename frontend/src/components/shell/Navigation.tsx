@@ -34,7 +34,7 @@ export const Navigation: React.FC<NavigationProps> = ({
       style={{
         display: 'flex',
         flexDirection: orientation === 'vertical' ? 'column' : 'row',
-        gap: 'var(--space-1)',
+        gap: '2px',
         width: '100%',
       }}
     >
@@ -50,40 +50,47 @@ export const Navigation: React.FC<NavigationProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              padding: 'var(--space-3) var(--space-4)',
+              padding: 'var(--space-2) var(--space-3)',
               borderRadius: 'var(--radius-sm)',
               backgroundColor: isActive ? 'var(--color-bg-active)' : 'transparent',
               color: isActive ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
               borderLeft: orientation === 'vertical' && isActive
-                ? '3px solid var(--color-accent)'
-                : '3px solid transparent',
-              fontWeight: isActive ? 'var(--font-weight-semibold)' : 'var(--font-weight-normal)',
+                ? '2px solid var(--color-accent)'
+                : '2px solid transparent',
+              borderTop: orientation === 'horizontal' && isActive
+                ? '2px solid var(--color-accent)'
+                : 'none',
+              fontWeight: isActive ? 'var(--font-weight-medium)' : 'var(--font-weight-normal)',
               fontSize: 'var(--font-size-sm)',
               textAlign: 'left',
-              transition: 'all var(--transition-fast)',
+              transition: 'background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast)',
               cursor: 'pointer',
               width: '100%',
+              position: 'relative',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
               <span
                 style={{
                   color: isActive ? 'var(--color-accent)' : 'var(--color-text-muted)',
                   display: 'flex',
+                  alignItems: 'center',
                 }}
               >
                 {item.icon}
               </span>
-              <span>{item.label}</span>
+              <span style={{ letterSpacing: '0.01em' }}>{item.label}</span>
             </div>
             {item.badge && (
               <span
                 style={{
-                  fontSize: 'var(--font-size-xs)',
-                  padding: '2px 6px',
-                  borderRadius: 'var(--radius-full)',
+                  fontSize: '11px',
+                  fontFamily: 'var(--font-mono)',
+                  padding: '1px 5px',
+                  borderRadius: 'var(--radius-xs)',
                   backgroundColor: 'var(--color-bg-surface-elevated)',
                   color: 'var(--color-text-muted)',
+                  border: '1px solid var(--color-border-subtle)',
                 }}
               >
                 {item.badge}
@@ -95,3 +102,4 @@ export const Navigation: React.FC<NavigationProps> = ({
     </nav>
   );
 };
+

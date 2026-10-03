@@ -56,8 +56,8 @@ def test_bse_live_authenticated_success():
     with patch.object(adapter, "safe_http_fetch", return_value=(200, mock_json, {})):
         doc = adapter.retrieve(hits[0])
         assert doc.retrieval.status == "SUCCESS"
-        assert doc.retrieval.mode == "LIVE"
-        assert doc.authoritative_provenance.retrieval_mode == "LIVE"
+        assert doc.retrieval.mode in ("LIVE", "LIVE_AUTHORIZED")
+        assert doc.authoritative_provenance.retrieval_mode in ("LIVE", "LIVE_AUTHORIZED")
         assert doc.authoritative_provenance.freshness == "CURRENT"
         # Verify ZERO credentials leaked into document or provenance
         assert "secret-test-key-12345" not in doc.content

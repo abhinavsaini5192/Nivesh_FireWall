@@ -17,6 +17,11 @@ import {
   RotateCcw,
   Copy,
   Check,
+  LayoutDashboard,
+  CheckCircle2,
+  UserCheck,
+  Activity,
+  Compass,
 } from 'lucide-react';
 import type { FirewallAnalysisResponse } from '../../types/firewall';
 import { deriveInterventionModel, type UserActionType } from '../../types/intervention';
@@ -277,6 +282,52 @@ export const AnalysisResultView: React.FC<AnalysisResultViewProps> = ({
             <SemanticStatusBadge decision={decision.decision} size="lg" />
           </div>
 
+          {/* SOC Operational State Strip */}
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 'var(--space-2)',
+              padding: 'var(--space-2) var(--space-3)',
+              backgroundColor: 'var(--color-bg-subtle)',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--color-border-subtle)',
+              fontSize: 'var(--font-size-xs)',
+              fontFamily: 'var(--font-mono)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <span style={{ color: 'var(--color-text-muted)' }}>PRIMARY REASON CODE:</span>
+              <strong style={{ color: 'var(--color-text-primary)' }}>
+                {decision.reason_codes[0] || 'DECISION_FINALIZED'}
+              </strong>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <span style={{ color: 'var(--color-text-muted)' }}>OPERATIONAL DIRECTIVE:</span>
+              <span
+                style={{
+                  fontWeight: 600,
+                  color:
+                    decision.decision === 'ALLOW'
+                      ? 'var(--color-allow)'
+                      : decision.decision === 'BLOCK'
+                      ? 'var(--color-block)'
+                      : decision.decision === 'PAUSE'
+                      ? 'var(--color-pause)'
+                      : 'var(--color-warn)',
+                }}
+              >
+                {decision.decision === 'ALLOW' && 'SAFE — NO INTERVENTION REQUIRED'}
+                {decision.decision === 'INFORM' && 'ADVISORY — DISCLOSURE AWARENESS'}
+                {decision.decision === 'WARN' && 'CAUTION — USER SCRUTINY ADVISED'}
+                {decision.decision === 'PAUSE' && 'INTERVENTION — MANDATORY PAUSE & VERIFICATION'}
+                {decision.decision === 'BLOCK' && 'ENFORCEMENT — ACTION STRICTLY BLOCKED'}
+              </span>
+            </div>
+          </div>
+
           {/* User-facing Non-accusatory Message */}
           <div
             style={{
@@ -358,6 +409,150 @@ export const AnalysisResultView: React.FC<AnalysisResultViewProps> = ({
         </CardContent>
       </Card>
 
+      {/* 2.2 Structured Intelligence Panel Navigator */}
+      <div
+        role="navigation"
+        aria-label="Intelligence Sections"
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 'var(--space-2)',
+          padding: 'var(--space-2) var(--space-3)',
+          backgroundColor: 'var(--color-bg-surface)',
+          border: '1px solid var(--color-border-subtle)',
+          borderRadius: 'var(--radius-md)',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => handleSelectSection('section-overview')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            padding: 'var(--space-2) var(--space-3)',
+            backgroundColor: 'var(--color-bg-subtle)',
+            border: '1px solid var(--color-border-subtle)',
+            borderRadius: 'var(--radius-sm)',
+            fontSize: 'var(--font-size-xs)',
+            fontWeight: 600,
+            color: 'var(--color-text-primary)',
+            cursor: 'pointer',
+          }}
+        >
+          <LayoutDashboard size={14} color="var(--color-accent)" />
+          Overview / Executive Summary
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSelectSection('panel-evidence')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            padding: 'var(--space-2) var(--space-3)',
+            backgroundColor: 'var(--color-bg-subtle)',
+            border: '1px solid var(--color-border-subtle)',
+            borderRadius: 'var(--radius-sm)',
+            fontSize: 'var(--font-size-xs)',
+            fontWeight: 600,
+            color: 'var(--color-text-primary)',
+            cursor: 'pointer',
+          }}
+        >
+          <CheckCircle2 size={14} color="var(--color-accent)" />
+          Evidence & Verification
+          <Badge
+            size="sm"
+            variant={
+              analysis.evidence.overall_status === 'SUPPORTED'
+                ? 'success'
+                : analysis.evidence.overall_status === 'CONTRADICTED'
+                ? 'danger'
+                : 'warning'
+            }
+          >
+            {analysis.evidence.overall_status}
+          </Badge>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSelectSection('panel-identity')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            padding: 'var(--space-2) var(--space-3)',
+            backgroundColor: 'var(--color-bg-subtle)',
+            border: '1px solid var(--color-border-subtle)',
+            borderRadius: 'var(--radius-sm)',
+            fontSize: 'var(--font-size-xs)',
+            fontWeight: 600,
+            color: 'var(--color-text-primary)',
+            cursor: 'pointer',
+          }}
+        >
+          <UserCheck size={14} color="var(--color-accent)" />
+          Identity Resolution
+          <Badge
+            size="sm"
+            variant={analysis.identity.identity_status === 'ESTABLISHED' ? 'success' : 'warning'}
+          >
+            {analysis.identity.identity_status}
+          </Badge>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSelectSection('panel-threat')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            padding: 'var(--space-2) var(--space-3)',
+            backgroundColor: 'var(--color-bg-subtle)',
+            border: '1px solid var(--color-border-subtle)',
+            borderRadius: 'var(--radius-sm)',
+            fontSize: 'var(--font-size-xs)',
+            fontWeight: 600,
+            color: 'var(--color-text-primary)',
+            cursor: 'pointer',
+          }}
+        >
+          <Activity size={14} color="var(--color-accent)" />
+          Threat & Action Chain
+          <Badge
+            size="sm"
+            variant={analysis.threat.high_impact_action_count > 0 ? 'danger' : 'neutral'}
+          >
+            {analysis.threat.attack_stage || (analysis.threat.high_impact_action_count > 0 ? 'HIGH' : 'STANDARD')}
+          </Badge>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSelectSection('section-response')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            padding: 'var(--space-2) var(--space-3)',
+            backgroundColor: 'var(--color-bg-subtle)',
+            border: '1px solid var(--color-border-subtle)',
+            borderRadius: 'var(--radius-sm)',
+            fontSize: 'var(--font-size-xs)',
+            fontWeight: 600,
+            color: 'var(--color-text-primary)',
+            cursor: 'pointer',
+          }}
+        >
+          <Compass size={14} color="var(--color-accent)" />
+          Recommended Response
+        </button>
+      </div>
+
       {/* 2.5 Intervention Experience Layer (Phase 12.3) */}
       {isConfirmedOverride && (
         <ProtectionBanner
@@ -367,36 +562,46 @@ export const AnalysisResultView: React.FC<AnalysisResultViewProps> = ({
         />
       )}
 
-      {/* High-Impact Consequence Action (Engine 3) */}
-      {model.highImpactActions.length > 0 && (
-        <HighImpactActionAlert
-          actions={model.highImpactActions}
-          onSelectAction={() => handleSelectSection('panel-actions')}
+      {/* Section 1: Overview & Executive Summary */}
+      <section
+        id="section-overview"
+        aria-label="Executive Overview"
+        style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}
+      >
+        {/* High-Impact Consequence Action (Engine 3) */}
+        {model.highImpactActions.length > 0 && (
+          <HighImpactActionAlert
+            actions={model.highImpactActions}
+            onSelectAction={() => handleSelectSection('panel-actions')}
+          />
+        )}
+
+        {/* Protection Summary (5 Core Analytical Dimensions) */}
+        <ProtectionSummaryCard
+          dimensions={model.protectionSummary}
+          onSelectSection={handleSelectSection}
         />
-      )}
 
-      {/* Protection Summary (5 Core Analytical Dimensions) */}
-      <ProtectionSummaryCard
-        dimensions={model.protectionSummary}
-        onSelectSection={handleSelectSection}
-      />
+        {/* Why Did Nivesh Intervene? */}
+        <WhyIntervenedSection
+          primaryReason={decision.primary_reason}
+          reasonCodes={decision.reason_codes}
+          reasons={model.reasons}
+          onSelectSection={handleSelectSection}
+        />
+      </section>
 
-      {/* Why Did Nivesh Intervene? */}
-      <WhyIntervenedSection
-        primaryReason={decision.primary_reason}
-        reasonCodes={decision.reason_codes}
-        reasons={model.reasons}
-        onSelectSection={handleSelectSection}
-      />
-
-      {/* Recommended Next Step & Contextual Action Controls */}
-      <RecommendedNextStepCard
-        decision={decision.decision}
-        recommendedInstruction={model.recommendedNextStep}
-        availableActions={model.availableActions}
-        onActionClick={handleActionClick}
-        isConfirmedOverride={isConfirmedOverride}
-      />
+      {/* Section 2: Recommended Response */}
+      <section id="section-response" aria-label="Recommended Response">
+        {/* Recommended Next Step & Contextual Action Controls */}
+        <RecommendedNextStepCard
+          decision={decision.decision}
+          recommendedInstruction={model.recommendedNextStep}
+          availableActions={model.availableActions}
+          onActionClick={handleActionClick}
+          isConfirmedOverride={isConfirmedOverride}
+        />
+      </section>
 
       {/* Override Confirmation Modal */}
       <OverrideConfirmationModal

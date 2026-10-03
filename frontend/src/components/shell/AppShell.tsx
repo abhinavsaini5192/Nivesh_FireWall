@@ -59,25 +59,27 @@ export const AppShell: React.FC<AppShellProps> = ({
             width: 'var(--sidebar-width)',
             backgroundColor: 'var(--color-bg-surface)',
             borderRight: '1px solid var(--color-border-subtle)',
-            padding: 'var(--space-6) var(--space-3)',
+            padding: 'var(--space-4) var(--space-3)',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between',
             flexShrink: 0,
           }}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
             <div
               style={{
-                fontSize: '11px',
-                fontWeight: 'var(--font-weight-semibold)',
+                fontSize: '10px',
+                fontFamily: 'var(--font-mono)',
+                fontWeight: 'var(--font-weight-medium)',
                 color: 'var(--color-text-muted)',
                 textTransform: 'uppercase',
                 letterSpacing: '0.08em',
                 paddingLeft: 'var(--space-3)',
+                paddingTop: 'var(--space-1)',
               }}
             >
-              Firewall Menu
+              Navigation
             </div>
             <Navigation activeTab={activeTab} onSelectTab={handleSelectTab} />
           </div>
@@ -89,16 +91,31 @@ export const AppShell: React.FC<AppShellProps> = ({
               borderRadius: 'var(--radius-sm)',
               backgroundColor: 'var(--color-bg-subtle)',
               border: '1px solid var(--color-border-subtle)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
             }}
           >
-            <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
-              Calm Protection Core
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
+                Calm Protection Core
+              </span>
+              <span
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: 'var(--radius-full)',
+                  backgroundColor: 'var(--color-allow)',
+                  boxShadow: '0 0 6px var(--color-allow)',
+                }}
+              />
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginTop: '2px', lineHeight: 1.4 }}>
+            <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)', lineHeight: 1.4 }}>
               Engines 1–10 Intelligence
             </div>
           </div>
         </aside>
+
 
         {/* Mobile Navigation Drawer */}
         {isMobileMenuOpen && (

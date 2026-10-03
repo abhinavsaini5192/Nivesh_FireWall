@@ -185,6 +185,14 @@ class Settings(BaseSettings):
         default=None,
         description="Server-side secret API secret for BSE Corporate Data API",
     )
+    bse_provider_preference: str = Field(
+        default="AUTO",
+        description="BSE provider selection priority: AUTO (official -> public -> snapshot), OFFICIAL, PUBLIC, or SNAPSHOT",
+    )
+    bse_public_enabled: bool = Field(
+        default=False,
+        description="Explicit gate permitting public BSE web dissemination queries when live sources are enabled",
+    )
     source_freshness_ttl_seconds: int = Field(
         default=3600,
         description="Max cache freshness duration before evidence is considered stale (seconds)",

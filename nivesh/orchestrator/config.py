@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 class OrchestratorConfig(BaseModel):
     """Execution options for the Product Orchestrator."""
-    source_mode: Literal["LIVE", "CACHE", "FIXTURE"] = Field(
+    source_mode: Literal["LIVE", "OFFICIAL_SNAPSHOT", "CACHE", "FIXTURE"] = Field(
         default="FIXTURE",
         description="Source Intelligence retrieval mode for Engine 4",
     )

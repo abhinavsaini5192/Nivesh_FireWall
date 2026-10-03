@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../components/common/C
 import { ContentEntryCard } from '../components/firewall/ContentEntryCard';
 import { PrivacyNotice } from '../components/firewall/PrivacyNotice';
 import { SemanticStatusBadge } from '../components/status/SemanticStatusBadge';
+import { PolicyDecisionFramework } from '../components/status/PolicyDecisionFramework';
 import { LoadingState } from '../components/common/LoadingState';
 import { ErrorState } from '../components/common/ErrorState';
 import { AnalysisResultView } from '../components/firewall/AnalysisResultView';
@@ -68,9 +69,9 @@ export const ProtectView: React.FC<ProtectViewProps> = ({
     );
   }
 
-  // 3. Error State with Retry
+  // 3. Main Workspace View
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-8)', width: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', width: '100%' }}>
       {analysisState === 'ERROR' && error && (
         <ErrorState
           title="Analysis Could Not Be Completed"
@@ -80,112 +81,189 @@ export const ProtectView: React.FC<ProtectViewProps> = ({
         />
       )}
 
-      {/* Hero / Value Proposition Section */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+      {/* Header & Protection Intelligence Pipeline Section */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
         <SectionHeader
           title="Protect before you act."
           description="Analyze financial messages, investment links, and fund transfer requests before taking consequential actions."
         />
 
-        {/* 4 Protection Pillars (Honest, Technical, Calm) */}
+        {/* 4 Connected Protection Intelligence Stages */}
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: 'var(--space-4)',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: 'var(--space-3)',
           }}
         >
+          {/* Stage 01: VERIFY */}
           <div
             style={{
-              padding: 'var(--space-4)',
+              padding: 'var(--space-3) var(--space-4)',
               backgroundColor: 'var(--color-bg-surface)',
               borderRadius: 'var(--radius-sm)',
               border: '1px solid var(--color-border-subtle)',
               display: 'flex',
               flexDirection: 'column',
-              gap: 'var(--space-2)',
+              gap: 'var(--space-1)',
+              position: 'relative',
             }}
           >
-            <div style={{ color: 'var(--color-accent)', display: 'flex' }}>
-              <Search size={18} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <span style={{ color: 'var(--color-accent)', display: 'flex' }}>
+                  <Search size={15} />
+                </span>
+                <span
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '11px',
+                    fontWeight: 'var(--font-weight-bold)',
+                    color: 'var(--color-accent)',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  01 VERIFY
+                </span>
+              </div>
+              <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)' }}>
+                REGISTRIES
+              </span>
             </div>
             <strong style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-primary)' }}>
-              Verify Assertions
+              Claims & Authoritative Evidence
             </strong>
-            <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', margin: 0 }}>
-              Checks return guarantees and regulatory claims against official registry records.
+            <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.4 }}>
+              Resolves assertions against SEBI, RBI, NSE, and BSE official disclosure records.
             </p>
           </div>
 
+          {/* Stage 02: IDENTITY */}
           <div
             style={{
-              padding: 'var(--space-4)',
+              padding: 'var(--space-3) var(--space-4)',
               backgroundColor: 'var(--color-bg-surface)',
               borderRadius: 'var(--radius-sm)',
               border: '1px solid var(--color-border-subtle)',
               display: 'flex',
               flexDirection: 'column',
-              gap: 'var(--space-2)',
+              gap: 'var(--space-1)',
             }}
           >
-            <div style={{ color: 'var(--color-accent)', display: 'flex' }}>
-              <UserCheck size={18} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <span style={{ color: 'var(--color-accent)', display: 'flex' }}>
+                  <UserCheck size={15} />
+                </span>
+                <span
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '11px',
+                    fontWeight: 'var(--font-weight-bold)',
+                    color: 'var(--color-accent)',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  02 IDENTITY
+                </span>
+              </div>
+              <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)' }}>
+                ENTITIES
+              </span>
             </div>
             <strong style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-primary)' }}>
-              Check Identities
+              Entity & Source Verification
             </strong>
-            <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', margin: 0 }}>
-              Resolves claimed entities and flags domain lookalikes or unauthorized representation.
+            <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.4 }}>
+              Unmasks lookalike domains, registration mismatches, and impersonated intermediaries.
             </p>
           </div>
 
+          {/* Stage 03: THREAT PATH */}
           <div
             style={{
-              padding: 'var(--space-4)',
+              padding: 'var(--space-3) var(--space-4)',
               backgroundColor: 'var(--color-bg-surface)',
               borderRadius: 'var(--radius-sm)',
               border: '1px solid var(--color-border-subtle)',
               display: 'flex',
               flexDirection: 'column',
-              gap: 'var(--space-2)',
+              gap: 'var(--space-1)',
             }}
           >
-            <div style={{ color: 'var(--color-accent)', display: 'flex' }}>
-              <AlertTriangle size={18} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <span style={{ color: 'var(--color-warn)', display: 'flex' }}>
+                  <AlertTriangle size={15} />
+                </span>
+                <span
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '11px',
+                    fontWeight: 'var(--font-weight-bold)',
+                    color: 'var(--color-warn)',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  03 THREAT PATH
+                </span>
+              </div>
+              <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)' }}>
+                ACTIONS
+              </span>
             </div>
             <strong style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-primary)' }}>
-              Trace Threat Paths
+              Action-Chain Reconstruction
             </strong>
-            <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', margin: 0 }}>
-              Identifies high-impact actions, remote app installations, and off-platform migrations.
+            <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.4 }}>
+              Maps consequential actions, off-platform migrations, and irreversible fund transfers.
             </p>
           </div>
 
+          {/* Stage 04: INTERVENTION */}
           <div
             style={{
-              padding: 'var(--space-4)',
+              padding: 'var(--space-3) var(--space-4)',
               backgroundColor: 'var(--color-bg-surface)',
               borderRadius: 'var(--radius-sm)',
               border: '1px solid var(--color-border-subtle)',
               display: 'flex',
               flexDirection: 'column',
-              gap: 'var(--space-2)',
+              gap: 'var(--space-1)',
             }}
           >
-            <div style={{ color: 'var(--color-accent)', display: 'flex' }}>
-              <Shield size={18} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <span style={{ color: 'var(--color-allow)', display: 'flex' }}>
+                  <Shield size={15} />
+                </span>
+                <span
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '11px',
+                    fontWeight: 'var(--font-weight-bold)',
+                    color: 'var(--color-allow)',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  04 INTERVENTION
+                </span>
+              </div>
+              <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)' }}>
+                POLICY
+              </span>
             </div>
             <strong style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-primary)' }}>
-              Calm Decision Support
+              Policy Decision Support
             </strong>
-            <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', margin: 0 }}>
-              Presents transparent evidence, reason codes, and cooling pauses instead of alarming scores.
+            <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.4 }}>
+              Enforces calm, proportional interventions: Allow, Inform, Warn, Pause, or Block.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Main Content Entry Card */}
+      {/* Dominant Hero Inspection Workspace */}
       <ContentEntryCard
         onAnalyze={onAnalyze}
         isLoading={isLoading}
@@ -194,36 +272,33 @@ export const ProtectView: React.FC<ProtectViewProps> = ({
         onClearError={onClearError}
       />
 
-      {/* Presentation System Preview for Engine 8 Decisions */}
+      {/* Safety Policy Decision Framework (Engine 8) */}
       <Card variant="surface">
-        <CardHeader>
-          <CardTitle style={{ fontSize: 'var(--font-size-md)' }}>
-            Safety Policy Decision Framework
-          </CardTitle>
+        <CardHeader style={{ paddingBottom: 'var(--space-2)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <CardTitle style={{ fontSize: 'var(--font-size-md)', letterSpacing: '-0.01em' }}>
+              Safety Policy Decision Framework
+            </CardTitle>
+            <div style={{ display: 'none' }}>
+              <SemanticStatusBadge decision="ALLOW" />
+              <SemanticStatusBadge decision="INFORM" />
+              <SemanticStatusBadge decision="WARN" />
+              <SemanticStatusBadge decision="PAUSE" />
+              <SemanticStatusBadge decision="BLOCK" />
+            </div>
+          </div>
           <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', margin: 0 }}>
-            Visual presentation states mapped directly to Engine 8 authoritative policy outcomes.
+            Authoritative Engine 8 evaluation hierarchy. Calm and proportional intervention before harm occurs.
           </p>
         </CardHeader>
         <CardContent>
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 'var(--space-3)',
-              alignItems: 'center',
-            }}
-          >
-            <SemanticStatusBadge decision="ALLOW" />
-            <SemanticStatusBadge decision="INFORM" />
-            <SemanticStatusBadge decision="WARN" />
-            <SemanticStatusBadge decision="PAUSE" />
-            <SemanticStatusBadge decision="BLOCK" />
-          </div>
+          <PolicyDecisionFramework />
         </CardContent>
       </Card>
 
-      {/* Trust & Privacy Notice */}
+      {/* Trust & Boundary Notice */}
       <PrivacyNotice />
     </div>
   );
 };
+

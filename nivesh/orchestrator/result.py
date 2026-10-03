@@ -8,6 +8,15 @@ from typing import Optional, Any
 from pydantic import BaseModel, Field
 
 from nivesh.policy.schemas import PolicyDecision, PolicyDecisionType
+from nivesh.schemas.normalized import NormalizedContent
+from nivesh.schemas.claims import ClaimAnalysis
+from nivesh.schemas.actions import ActionAnalysis
+from nivesh.schemas.sources import SourceAnalysis
+from nivesh.schemas.evidence import EvidenceAnalysis
+from nivesh.schemas.threat import ThreatAnalysis
+from nivesh.schemas.fingerprint import FingerprintAnalysis
+from nivesh.identity.schemas import IdentityAnalysis
+from nivesh.behaviour.schemas import BehaviouralAnalysis
 from .state import OrchestrationState
 from .telemetry import PipelineTelemetry
 from .context import AnalysisContext
@@ -81,3 +90,49 @@ class OrchestrationResult(BaseModel):
     def user_message(self) -> Optional[str]:
         """Convenience accessor for Engine 8 user explanation."""
         return self.policy_decision.user_message if self.policy_decision else None
+
+    @property
+    def content(self) -> Optional[NormalizedContent]:
+        """Engine 1: Normalized content."""
+        return self.state.content
+
+    @property
+    def claims(self) -> Optional[ClaimAnalysis]:
+        """Engine 2: Extracted canonical claims."""
+        return self.state.claims
+
+    @property
+    def actions(self) -> Optional[ActionAnalysis]:
+        """Engine 3: Extracted canonical actions."""
+        return self.state.actions
+
+    @property
+    def sources(self) -> Optional[SourceAnalysis]:
+        """Engine 4: Retrieved source documents."""
+        return self.state.sources
+
+    @property
+    def evidence(self) -> Optional[EvidenceAnalysis]:
+        """Engine 5: Verified evidence results."""
+        return self.state.evidence
+
+    @property
+    def threat(self) -> Optional[ThreatAnalysis]:
+        """Engine 6: Threat signals & attack path."""
+        return self.state.threat
+
+    @property
+    def fingerprint(self) -> Optional[FingerprintAnalysis]:
+        """Engine 7: Scam fingerprint analysis."""
+        return self.state.fingerprint
+
+    @property
+    def identity(self) -> Optional[IdentityAnalysis]:
+        """Engine 9: Identity verification results."""
+        return self.state.identity
+
+    @property
+    def behaviour(self) -> Optional[BehaviouralAnalysis]:
+        """Engine 10: Behavioural sequence signals."""
+        return self.state.behaviour
+

@@ -170,6 +170,12 @@ class ThreatCombination(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0, description="Confidence in the composite pattern")
     description: str = Field(description="Detailed explanation of the combination risk")
 
+    @property
+    def combination_type(self) -> str:
+        """Alias mechanism for backward-compatible rule evaluation."""
+        return self.mechanism
+
+
 
 class ThreatExplanation(BaseModel):
     """Synthesized, auditable explanation of the interaction's threat structure."""

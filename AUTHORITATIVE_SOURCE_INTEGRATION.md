@@ -1,167 +1,152 @@
-# NIVESH FIREWALL — AUTHORITATIVE SOURCE GATEWAY & LIVE VERIFICATION
-**Phase 15.A Engineering Documentation**
+# NIVESH FIREWALL — AUTHORITATIVE SOURCE GATEWAY & FOUR-SOURCE VERIFICATION SYSTEM
+**Phase 15.E Engineering Documentation & Production Release Reference**
 
 ---
 
 ## 1. Executive Summary
 
-Nivesh Firewall's financial verification architecture has been upgraded to interface directly with authoritative external sources through legitimate live and official data-access mechanisms across the Indian financial and securities ecosystem:
-- **SEBI** (Securities and Exchange Board of India)
-- **RBI** (Reserve Bank of India)
-- **NSE** (National Stock Exchange of India)
-- **BSE** (Bombay Stock Exchange)
+Phase 15.E represents the final engineering consolidation of Nivesh Firewall's authoritative-source verification architecture. Nivesh Firewall integrates four primary authoritative institutions across the Indian financial and securities ecosystem:
 
-The system does NOT function as an unbounded web crawler or scraper. It enforces a strict, closed-loop verification pipeline:
-```text
-CLAIM
-  ↓
-IDENTIFY REQUIRED AUTHORITATIVE EVIDENCE
-  ↓
-SELECT AUTHORITATIVE SOURCE (GATEWAY)
-  ↓
-RETRIEVE ACTUAL DATA (LIVE / SNAPSHOT / CACHE / FIXTURE)
-  ↓
-NORMALIZE
-  ↓
-PRESERVE PROVENANCE (STRICT RETRIEVAL MODES & TIMESTAMPS)
-  ↓
-VERIFY CLAIM (EVIDENCE VERIFICATION ENGINE)
-  ↓
-RETURN TRUTHFUL RESULT
-```
+1. **SEBI** (Securities and Exchange Board of India) — Statutory Intermediary Master Registry, regulatory circulars, and orders.
+2. **RBI** (Reserve Bank of India) — Policy rates, MPC gazettes, DBIE publications, registered NBFC entities, and statutory MLM/prize chit prohibitions.
+3. **NSE** (National Stock Exchange of India) — Corporate actions (bonus issues, splits, dividends), board meetings, filings, and financial disclosures.
+4. **BSE** (Bombay Stock Exchange) — Corporate data API disclosures, scrip filings, corporate action announcements, and statutory filings.
 
----
-
-## 2. Authoritative Source Integration Matrix
-
-| Source | Verification Capability | Access Method | Live Available | Credentials | Snapshot | Cache | Current Limitation |
-|---|---|---|---|---|---|---|---|
-| **SEBI** | Intermediary registration lookup (Investment Advisers `INA`, Research Analysts `INH`, Stock Brokers `INZ`, Portfolio Managers `INP`); official circulars & orders | Public Recognized Intermediary Query Interface (`OtherAction.do?doRecognisedFmr=yes`) via HTTPS GET & HTML table parsing | **YES** (Confirmed via live HTTP 200 responses) | None required for public registry lookup | Official regulatory snapshot dataset dated 2026-09-30 (embedded in adapter) | SHA-256 in-memory cache with 3600s TTL | Captcha-protected historical circular archives not scraped; returns `SOURCE_UNAVAILABLE` on upstream portal maintenance. |
-| **RBI** | DBIE policy repo rates, statutory investor advisories (Prize Chits & Money Circulation prohibition), registered NBFC entities | Official DBIE & Press Release portal endpoints (`rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx`) via HTTPS GET | **YES** (Confirmed via live HTTP 200 responses) | None required for public statistical and press release datasets | Pre-downloaded official regulatory snapshot of MPC decisions & banned MLM schemes (dated 2026-09-30) | SHA-256 in-memory cache with 3600s TTL | Private banking supervisory inspection reports and internal bank ledger data are confidential and strictly out of scope. |
-| **NSE** | Corporate announcements, board meeting outcomes, bonus equity share filings, audited financial results | Official Corporate Filings & Announcements portal API (`nseindia.com/companies-listing/corporate-filings-*`) | **CONDITIONAL** (Requires server-side API credentials; unauthenticated requests receive HTTP 403 Akamai anti-bot protection and safely fallback to `OFFICIAL_SNAPSHOT`) | Server-side `NSE_API_KEY` & `NSE_API_SECRET` loaded from environment / secret manager | Official corporate action & disclosure snapshot records for listed securities (dated 2026-09-30) | SHA-256 in-memory cache with 3600s TTL | Live unauthenticated access without API key triggers explicit fallback to `OFFICIAL_SNAPSHOT` (never fakes `LIVE`). Real-time tick data excluded. |
-| **BSE** | Corporate Data API, company disclosures, corporate actions (bonus, split, dividend), board announcements | Official BSE Corporate Data API v1 (`api.bseindia.com/corporate-data/v1/announcements`) and announcements portal | **CONDITIONAL** (Requires server-side `BSE_API_KEY`; unconfigured credentials yield `SOURCE_UNAVAILABLE` without leaking secrets) | Server-side `BSE_API_KEY` & `BSE_API_SECRET` | Official BSE corporate disclosures dataset with acknowledgement IDs (dated 2026-09-30) | SHA-256 in-memory cache with 3600s TTL | Production live API access requires active BSE corporate subscription and KYC approval. Real-time market streaming excluded. |
-
----
-
-## 3. Foundational Retrieval Mode Separation & Invariants
-
-The system enforces strict provenance boundaries across all 10 intelligence engines, the orchestration layer, the unified API, and the user interface.
-
-### Retrieval States
-1. **`LIVE`**: The record was obtained via an actual real-time HTTP query directly to the official regulatory endpoint during the verification transaction.
-2. **`OFFICIAL_SNAPSHOT`**: The record was matched from a pre-downloaded, officially verified regulatory snapshot dataset (e.g. SEBI Master Intermediary Registry, RBI Gazettes).
-3. **`CACHE`**: The record was served from the local cache following a previous retrieval during the TTL window.
-4. **`FIXTURE`**: The record was obtained from an offline test fixture in development/test mode.
-5. **`SOURCE_UNAVAILABLE`**: The authoritative source could not be reached, network timed out, credentials were missing, or upstream service was degraded.
-
-### Absolute Safety Invariants
-- **NEVER represent `FIXTURE` as `LIVE`**.
-- **NEVER represent `CACHE` as `LIVE`**.
-- **NEVER represent `OFFICIAL_SNAPSHOT` as `LIVE`**.
-- A network fallback to an official snapshot **NEVER silently becomes `SUPPORTED + LIVE`**.
-- An unverified entity (`NO_MATCH`) is **NEVER converted into a fraud verdict** without independent evidence.
-- An unregistered status (`NOT_ESTABLISHED`) is **NEVER converted into `IDENTITY_MISMATCH`** without positive conflicting entity proof.
-- An unreachable source (`SOURCE_UNAVAILABLE`) yields **`INSUFFICIENT_EVIDENCE`**, never an affirmative or contradictory verdict.
-
----
-
-## 4. Architecture & Data Flow
+The system does NOT function as a generic crawler or unconstrained scraper. It operates under a deterministic, evidence-based verification pipeline:
 
 ```text
-                     CANONICAL CLAIM
-                            │
-                            ▼
-             AUTHORITATIVE SOURCE GATEWAY
-              (nivesh.sources.gateway)
-                            │
-      ┌─────────────────────┼─────────────────────┐
-      │                     │                     │
- SEBI ADAPTER          RBI ADAPTER           NSE ADAPTER
- (Intermediaries,      (DBIE Rates,          (Corporate Actions,
-  Circulars)            MLM Bans)             Filings)
-      │                     │                     │
-      └─────────────────────┼─────────────────────┘
-                            │
-                       BSE ADAPTER
-                     (Corporate Data,
-                      Disclosures)
-                            │
-                            ▼
-              NORMALIZED EVIDENCE CANDIDATES
-                            │
-                            ▼
-               EVIDENCE VERIFICATION ENGINE
-               (nivesh.evidence.engine)
-                            │
-                            ▼
-              PRODUCT ORCHESTRATION LAYER
-              (nivesh.orchestrator.service)
-                            │
-                            ▼
-              UNIFIED FIREWALL API RESPONSE
-         (authoritative_sources[] with Provenance)
-                            │
-                            ▼
-                 FRONTEND & EXTENSION UI
-         (Audit Badges: LIVE, SNAPSHOT, CACHE, UNAVAILABLE)
+Content Input
+    ↓
+Engine 1: Content Intelligence (Ingestion, Normalization, Entity & Signal Extraction)
+    ↓
+Engine 2: Claim Intelligence (Modal Claims, Attribution, Verification Requirements)
+    ↓
+Engine 3: Action Intelligence (Observable Actions, Urgency, Consequential Next Steps)
+    ↓
+Engine 4: Source Intelligence (Authoritative Gateway Routing & Provider Hierarchy)
+    ↓
+Engine 5: Evidence Verification (Cross-Source Corroboration, Conflict Detection, Numerical Evaluation)
+    ↓
+Engine 6: Threat & Attack-Path Intelligence (Consequential Paths, No Psychological Fraud Scoring)
+    ↓
+Engine 7: Scam Fingerprint & Collective Intelligence (Structural Variant Hashes, Zero PII)
+    ↓
+Engine 9: Identity Verification & Entity Resolution (Attribution Separation, Lookalike Checks)
+    ↓
+Engine 10: Behavioural Signal Intelligence (Multi-Step Trajectory & Interaction Velocities)
+    ↓
+Engine 8: Policy & Intervention Engine (Sole Policy Authority: ALLOW, INFORM, WARN, PAUSE, BLOCK)
 ```
 
----
-
-## 5. Security & Secret Management
-
-1. **SSRF Protection Intact**:
-   - Outbound requests pass through strict URL validation, private/loopback/cloud metadata IP blocking (`127.0.0.1`, `10.0.0.0/8`, `169.254.169.254`, `192.168.0.0/16`, etc.).
-   - Schemes are strictly restricted to `http` and `https`.
-   - Maximum response sizes (2MB) and timeouts (5.0s default) are strictly enforced.
-
-2. **Server-Side Credentials Isolation**:
-   - Exchange credentials (`NSE_API_KEY`, `NSE_API_SECRET`, `BSE_API_KEY`, `BSE_API_SECRET`) exist exclusively on the server runtime.
-   - Credentials are NEVER exposed to the frontend, browser extension, client API responses, logs, or telemetry traces.
-   - Missing credentials fail gracefully with `SOURCE_UNAVAILABLE` and descriptive status codes (e.g. HTTP 401).
-
-3. **No Anti-Bot or CAPTCHA Bypass**:
-   - The firewall strictly respects anti-bot systems.
-   - If an exchange or regulator requires interactive CAPTCHA or blocks unauthenticated traffic, Nivesh does NOT use headless browser automation or rotating proxy networks to bypass access controls. It cleanly uses the `OFFICIAL_SNAPSHOT` dataset and transparently marks provenance as `OFFICIAL_SNAPSHOT`.
+Truthful, unforgeable provenance is preserved end-to-end.
 
 ---
 
-## 6. Verification & Test Execution Results
+## 2. Four-Source Architecture & Provider Hierarchy
 
-Targeted Authoritative Test Suite:
-- **37/37 tests passed** (`tests/test_authoritative_gateway.py`, `tests/test_sebi_live_verification.py`, `tests/test_rbi_authoritative.py`, `tests/test_nse_authoritative.py`, `tests/test_bse_authoritative.py`, `tests/test_cross_source_corroboration.py`, `tests/test_live_vs_fallback_safety.py`).
+Every supported source routes deterministically through `AuthoritativeSourceGateway` (`nivesh/sources/gateway.py`). Provider selection is deterministic and strictly prioritized; no random or provider-score resolution is used.
 
-Core Source & Evidence Regression:
-- **70/70 tests passed** (`tests/test_source_*.py`, `tests/test_evidence_*.py`).
+### Provider Hierarchy Matrix
 
-Live Endpoint Connectivity Verification:
-- **SEBI Public Portal**: `HTTP 200` — Live Intermediary verification validated against actual SEBI servers.
-- **RBI Public Portal**: `HTTP 200` — Live press releases and policy rates validated against actual RBI servers.
-- **BSE Public Portal**: `HTTP 200` — Live connectivity validated.
-- **NSE Portal**: `HTTP 403` — Blocked by Akamai anti-bot on unauthenticated requests; verified safe fallback to `OFFICIAL_SNAPSHOT`.
+| Source | Provider Priority Order | Access Method | Retrieval Modes | Fallback Behavior |
+|---|---|---|---|---|
+| **SEBI** | 1. `PublicSEBIProvider`<br>2. `OfficialSnapshotSEBIProvider` | HTTPS GET to Recognized Intermediary Query Interface (`OtherAction.do?doRecognisedFmr=yes`) | `LIVE`, `OFFICIAL_SNAPSHOT`, `CACHE`, `SOURCE_UNAVAILABLE` | Live network failure, captcha, or upstream portal outage deterministically falls back to pre-downloaded official regulatory snapshot dataset. |
+| **RBI** | 1. `PublicRBIProvider`<br>2. `OfficialSnapshotRBIProvider` | HTTPS GET to DBIE publications & Press Release portal (`rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx`) | `LIVE`, `OFFICIAL_SNAPSHOT`, `CACHE`, `SOURCE_UNAVAILABLE` | Live network failure or upstream portal outage falls back to official MPC & regulatory prohibition snapshot dataset. |
+| **NSE** | 1. `OfficialAuthorizedProvider`<br>2. `PublicNSEProvider`<br>3. `NSEPythonProvider`<br>4. `OfficialSnapshotNSEProvider` | Authenticated enterprise API, public portal query, or NSEPython wrapper | `LIVE_AUTHORIZED`, `LIVE_PUBLIC`, `OFFICIAL_SNAPSHOT`, `CACHE`, `SOURCE_UNAVAILABLE` | If API credentials missing or unauthenticated access blocked (Akamai HTTP 403), falls back through Public/NSEPython (`LIVE_PUBLIC`) to `OfficialSnapshotNSEProvider`. |
+| **BSE** | 1. `OfficialAuthorizedBSEProvider`<br>2. `PublicBSEProvider`<br>3. `OfficialSnapshotBSEProvider` | Authenticated BSE Corporate Data API v1, public announcements portal, or snapshot | `LIVE_AUTHORIZED`, `LIVE_PUBLIC`, `OFFICIAL_SNAPSHOT`, `CACHE`, `SOURCE_UNAVAILABLE` | If `BSE_API_KEY` missing, falls back to Public Dissemination if enabled; otherwise falls back directly to `OfficialSnapshotBSEProvider`. |
 
 ---
 
-## 7. Configuration Reference
+## 3. Strict Retrieval Mode & Provenance Semantics
+
+Retrieval modes are never collapsed into a generic "live" state. The firewall preserves truthful semantics at all layers:
+
+1. **`LIVE_AUTHORIZED`**: The query was executed against an official authenticated provider with validated server-side credentials (`NSE_API_KEY` or `BSE_API_KEY`).
+2. **`LIVE_PUBLIC`**: The query was executed against an official public endpoint or public library (e.g. `NSEPythonProvider`). **`NSEPythonProvider` is ALWAYS `LIVE_PUBLIC` and NEVER `LIVE_AUTHORIZED`**.
+3. **`LIVE`**: The query was executed against an unauthenticated but official regulatory endpoint (e.g. SEBI or RBI public query portals).
+4. **`OFFICIAL_SNAPSHOT`**: The query was serviced from pre-verified, tamper-evident regulatory snapshots dated and embedded in the source adapters.
+5. **`CACHE`**: The query was serviced from in-memory SHA-256 keyed cache within the configured TTL (`SOURCE_FRESHNESS_TTL_SECONDS`).
+6. **`FIXTURE`**: The query was serviced from offline developer test fixtures. Fixtures are strictly isolated to test environments.
+7. **`SOURCE_UNAVAILABLE`**: The source could not be contacted, required credentials were not configured, or the upstream endpoint was down.
+
+### Core Invariants
+
+- **A technical source failure is NEVER evidence of fraud.** If SEBI, RBI, NSE, or BSE is offline or times out, the system produces `SOURCE_UNAVAILABLE` and `INSUFFICIENT_EVIDENCE`. It NEVER classifies the subject as fraudulent due to network errors.
+- **NEVER report `LIVE` when fallback occurred.** If live retrieval fails and snapshot data is used, the resulting provenance explicitly reports `retrieval_mode = "OFFICIAL_SNAPSHOT"`.
+- **Credential isolation.** API keys and secrets exist only in runtime memory. They are redacted in `Settings`, excluded from `safe_dump()`, scrubbed from logs via `scrub_sensitive_tokens`, and stripped from client outputs.
+
+---
+
+## 4. Cross-Source Intelligence & Evidence Correlation
+
+Engine 5 correlates evidence across multiple authoritative sources under the principle of **Evidence Over Guessing**:
+
+### Corroboration Semantics
+- When NSE and BSE independently confirm the same corporate action (e.g., dual-listed company bonus ratio or AGM approval), the evidence picture is corroborated.
+- Corroboration strengthens the factual basis, but **does NOT artificially multiply or inflate confidence** (no `2 sources = 2x confidence`). Confidence remains strictly bounded ($\le 0.99$).
+- Provenance documents both participating sources and their respective provider modes independently.
+
+### Conflict Detection & Preservation
+- If Source A (e.g. NSE) and Source B (e.g. BSE) provide conflicting factual assertions (e.g. different record dates or ratios), the conflict is **explicitly preserved** as `SOURCE_CONFLICT`.
+- The system never silently chooses whichever source returned first or hides discrepancies.
+
+### Identity Separation
+- **Entity Existence $\ne$ Attribution Proof**: Verifying that a research analyst or broker exists in SEBI's registry establishes that the entity exists; it does **not** prove that the current message author is that entity.
+- **Absence of Record $\ne$ Criminal Fraud**: If a claimed registration number is not found in SEBI's database, the identity status is `NOT_ESTABLISHED` (or `UNVERIFIED`). It is **never** escalated to `IDENTITY_MISMATCH` or criminal impersonation without evidentiary lookalike or domain conflict proof.
+
+### Numerical Evaluator
+- Compares asserted quantitative metrics against official filings:
+  - **Exact Match**: Fully supported ratio / amount.
+  - **Material Contradiction**: Claimed 5:1 bonus vs. official filing 1:1 bonus yields `CONTRADICTED`.
+  - **Missing Elements**: Ratio matches but announcement date is unconfirmed yields `PARTIALLY_SUPPORTED`.
+
+---
+
+## 5. Security & Isolation Boundaries
+
+All four authoritative sources adhere to strict defensive controls:
+
+1. **SSRF Prevention**: All outbound URLs pass through `SsrfValidator`. Private IP ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8`, `169.254.169.254`), loopbacks, and non-HTTP/HTTPS schemes are blocked.
+2. **Redirect Validation**: Redirects are followed with continuous SSRF re-validation at each hop.
+3. **Payload Limits**: Inbound responses are capped at 2MB to prevent memory exhaustion.
+4. **Rate Limiting**: Host-level token-bucket rate limiting prevents throttling and denial-of-service.
+5. **No Anti-Bot Bypass**: Nivesh does not employ CAPTCHA solving, rotating residential proxies, or headless browser automation to bypass exchange protections. When public access is blocked, it fails safely to official snapshots.
+6. **Data Sanitization**: Sensitive inputs (passwords, OTPs, PINs, card numbers) are scrubbed before reaching fingerprints, logs, provenance, threat models, or client outputs.
+
+---
+
+## 6. Configuration & Credential Requirements
 
 ```env
-# Phase 15.A Authoritative Gateway Configuration
-SOURCE_MODE=OFFICIAL_SNAPSHOT          # Default mode: LIVE, OFFICIAL_SNAPSHOT, CACHE, FIXTURE
-LIVE_SOURCES_ENABLED=true              # Master switch for outbound live queries
+# Master Authoritative Gateway Configuration
+SOURCE_MODE=OFFICIAL_SNAPSHOT          # Supported: LIVE, OFFICIAL_SNAPSHOT, CACHE, FIXTURE
+LIVE_SOURCES_ENABLED=true              # Master outbound switch
 
 # Source-Specific Live Query Switches
-SEBI_LIVE_ENABLED=true
-RBI_LIVE_ENABLED=true
+SEBI_LIVE_ENABLED=true                 # SEBI public intermediary verification
+RBI_LIVE_ENABLED=true                  # RBI public DBIE & press release queries
 NSE_LIVE_ENABLED=false                 # Enabled when NSE_API_KEY is provisioned
+NSE_PUBLIC_ENABLED=true                # Enabled for NSE public endpoints & NSEPython
 BSE_LIVE_ENABLED=false                 # Enabled when BSE_API_KEY is provisioned
+BSE_PUBLIC_ENABLED=false               # BSE public dissemination endpoints
 
-# Server-Side Exchange API Credentials (Optional)
+# Server-Side Exchange Credentials (Optional)
 NSE_API_KEY=
 NSE_API_SECRET=
 BSE_API_KEY=
 BSE_API_SECRET=
 
-# Freshness & Cache TTL Settings
-SOURCE_FRESHNESS_TTL_SECONDS=3600      # 1 hour cache validity
-SNAPSHOT_FRESHNESS_DAYS=30             # Maximum snapshot age before warning
+# Freshness & Cache Settings
+SOURCE_FRESHNESS_TTL_SECONDS=3600      # 1-hour cache lifetime
+SNAPSHOT_FRESHNESS_DAYS=30             # Maximum snapshot age
 ```
+
+### Operational States Matrix
+
+| Condition | Internal Status | Retrieval Mode | Evidence Status | Policy Action |
+|---|---|---|---|---|
+| Credentials Missing | `CREDENTIALS_MISSING` | `OFFICIAL_SNAPSHOT` or `SOURCE_UNAVAILABLE` | Evaluated against snapshot if available, else `INSUFFICIENT_EVIDENCE` | Proportional intervention based on remaining signals |
+| Network Timeout | `TIMEOUT` | `OFFICIAL_SNAPSHOT` or `SOURCE_UNAVAILABLE` | Snapshot fallback or `INSUFFICIENT_EVIDENCE` | No punitive or alarming fraud verdict |
+| Upstream HTTP 403 (WAF/Anti-Bot) | `ACCESS_UNAUTHORIZED` | `OFFICIAL_SNAPSHOT` | Fallback to official snapshot | Truthful snapshot provenance |
+| Entity Not in Registry | `NOT_FOUND` | Source query successful | `INSUFFICIENT_EVIDENCE` | `NOT_ESTABLISHED` identity status |
+| Numerical Value Contradicted | `SUCCESS` | Official filing retrieved | `CONTRADICTED` | `WARN` or `PAUSE` policy intervention |

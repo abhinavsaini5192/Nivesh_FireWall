@@ -110,7 +110,7 @@ CANONICAL_PATTERNS = [
     ),
     # Corporate events: Bonus (ABC announced a 1:1 bonus)
     (
-        re.compile(r"\b([A-Za-z0-9&.\s]{1,30}?)\s+announced\s+(?:a\s+)?(\d+:\d+)\s+bonus\b", re.IGNORECASE),
+        re.compile(r"\b([A-Za-z0-9&.\s]{1,30}?)\s+(?:announced|approved|declared)\s+(?:a\s+)?(?:massive\s+)?(\d+:\d+)\s+bonus\b", re.IGNORECASE),
         "CORPORATE_EVENT",
         "ANNOUNCED_BONUS",
         1,

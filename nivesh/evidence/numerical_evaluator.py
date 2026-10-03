@@ -354,8 +354,42 @@ class NumericalEvaluator:
                     "missing_elements": [],
                     "context_gaps": [],
                     "reasoning_trace": reasoning_trace,
-                    "uncertainty": [],
                 }
+
+            # Check for conflicting ratio in official corporate action filing
+            source_ratio_match = re.search(r"(?:bonus ratio|ratio|split ratio)[\s:]*(\d+:\d+)", text, re.IGNORECASE)
+            if not source_ratio_match:
+                source_ratio_match = re.search(r"\b(\d+:\d+)\b\s*(?:bonus|split|shares|equity shares)", text, re.IGNORECASE)
+            if source_ratio_match:
+                found_ratio = source_ratio_match.group(1)
+                if found_ratio != claimed_ratio:
+                    reasoning_trace.extend([
+                        f"3. Official corporate filing reports ratio: '{found_ratio}'",
+                        f"4. Claim assertion '{claimed_ratio}' materially contradicts official exchange disclosure '{found_ratio}'",
+                        "5. Conflict detected: claim is contradicted by official filing.",
+                    ])
+                    return {
+                        "status": "CONTRADICTED",
+                        "confidence": 0.97,
+                        "evidence_strength": "HIGH",
+                        "supporting_evidence": [],
+                        "contradicting_evidence": [
+                            EvidenceItemEvaluation(
+                                evidence_id=cand.evidence_id,
+                                source_document_id=cand.source_document_id,
+                                source_url=cand.provenance.source_url,
+                                organization=cand.source_type,
+                                relation="CONTRADICTS",
+                                excerpt=cand.excerpt,
+                                reasoning=f"Official corporate filing records {found_ratio}, contradicting claimed {claimed_ratio}.",
+                                matched_signals=[claimed_ratio, found_ratio],
+                            )
+                        ],
+                        "missing_elements": [],
+                        "context_gaps": [],
+                        "reasoning_trace": reasoning_trace,
+                        "uncertainty": [],
+                    }
 
         return None
 

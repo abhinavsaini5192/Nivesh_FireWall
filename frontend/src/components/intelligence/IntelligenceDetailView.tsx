@@ -186,6 +186,7 @@ export const IntelligenceDetailView: React.FC<IntelligenceDetailViewProps> = ({ 
               <ClaimEvidenceDetailCard
                 evidence={analysis.evidence}
                 sourceMode={analysis.evidence.retrieval_status}
+                claims={analysis.claims}
               />
             </AccordionItem>
 

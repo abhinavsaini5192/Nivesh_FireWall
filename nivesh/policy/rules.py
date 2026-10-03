@@ -262,7 +262,13 @@ def _rule_block_credential_harvesting(
         if status_val == "IDENTITY_MISMATCH":
             has_impersonation = True
     has_contradiction = _has_factual_contradiction(evidence, identity=identity)
-    has_cred_combo = any(c.combination_type == "CREDENTIAL_HARVESTING" for c in threat.threat_combinations)
+    has_cred_combo = (
+        ("CREDENTIAL_HARVESTING" in getattr(threat, "threat_families", []))
+        or any(
+            getattr(c, "combination_type", getattr(c, "mechanism", "")) in ("CREDENTIAL_HARVESTING", "private_channel_credential_harvesting")
+            for c in getattr(threat, "threat_combinations", [])
+        )
+    )
 
     if (has_impersonation or has_contradiction or has_cred_combo) and _has_confirmed_threat_match(fingerprint):
         return PolicyRuleResult(

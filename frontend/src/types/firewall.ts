@@ -120,7 +120,7 @@ export interface FirewallActionSummary {
 export interface AuthoritativeSourceProvenance {
   source: string;
   source_authority: string;
-  retrieval_mode: 'LIVE' | 'OFFICIAL_SNAPSHOT' | 'CACHE' | 'FIXTURE' | 'SOURCE_UNAVAILABLE' | string;
+  retrieval_mode: 'LIVE' | 'LIVE_AUTHORIZED' | 'LIVE_PUBLIC' | 'OFFICIAL_SNAPSHOT' | 'CACHE' | 'FIXTURE' | 'SOURCE_UNAVAILABLE' | string;
   retrieved_at: string;
   published_at?: string;
   updated_at?: string;
@@ -131,6 +131,8 @@ export interface AuthoritativeSourceProvenance {
   freshness: 'CURRENT' | 'HISTORICAL' | 'STALE' | 'SNAPSHOT' | 'UNKNOWN' | string;
   response_status: string;
   evidence: string;
+  provider?: string;
+  access_method?: string;
 }
 
 export interface FirewallEvidenceSummary {

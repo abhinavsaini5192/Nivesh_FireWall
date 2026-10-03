@@ -199,6 +199,11 @@ class AuthoritativeSourceGateway:
         elif source_key == "BSE":
             live_on = bool(self.settings.live_sources_enabled or getattr(self.settings, "bse_live_enabled", False))
             bse_adapter = self.get_adapter("BSEAdapter")
+            if bse_adapter:
+                if hasattr(bse_adapter, "provider_preference"):
+                    bse_adapter.provider_preference = getattr(self.settings, "bse_provider_preference", "AUTO")
+                if hasattr(bse_adapter, "public_enabled"):
+                    bse_adapter.public_enabled = getattr(self.settings, "bse_public_enabled", False)
             active_p = getattr(bse_adapter, "resolve_active_provider", lambda: None)() if bse_adapter else None
             from nivesh.sources.adapters.bse_providers import PublicBSEProvider
 
@@ -316,10 +321,28 @@ class AuthoritativeSourceGateway:
                     missing_cred_name = "NSE_API_KEY"
         elif "bse" in source_id.lower():
             live_enabled = self.settings.live_sources_enabled or getattr(self.settings, "bse_live_enabled", False)
-            requires_credentials = True
-            if not getattr(self.settings, "bse_api_key", None):
-                has_credentials = False
-                missing_cred_name = "BSE_API_KEY"
+            bse_adapter = self.get_adapter("BSEAdapter")
+            if bse_adapter:
+                if hasattr(bse_adapter, "provider_preference"):
+                    bse_adapter.provider_preference = getattr(self.settings, "bse_provider_preference", "AUTO")
+                if hasattr(bse_adapter, "public_enabled"):
+                    bse_adapter.public_enabled = getattr(self.settings, "bse_public_enabled", False)
+                active_p = getattr(bse_adapter, "resolve_active_provider", lambda: None)()
+
+            from nivesh.sources.adapters.bse_providers import PublicBSEProvider, OfficialSnapshotBSEProvider
+            if active_p and isinstance(active_p, PublicBSEProvider):
+                requires_credentials = False
+                has_credentials = active_p.is_available
+                if not has_credentials:
+                    missing_cred_name = "BSE safe fetch client"
+            elif active_p and isinstance(active_p, OfficialSnapshotBSEProvider):
+                requires_credentials = False
+                has_credentials = True
+            else:
+                requires_credentials = True
+                if not getattr(self.settings, "bse_api_key", None):
+                    has_credentials = False
+                    missing_cred_name = "BSE_API_KEY"
 
         if mode in ("LIVE", "LIVE_PUBLIC", "LIVE_AUTHORIZED"):
             if not live_enabled:
@@ -327,6 +350,8 @@ class AuthoritativeSourceGateway:
             if requires_credentials and not has_credentials:
                 return "SOURCE_UNAVAILABLE", f"Required server credentials ({missing_cred_name}) unconfigured for {source_id} (CREDENTIALS_MISSING)."
             if "nse" in source_id.lower() and active_p:
+                return active_p.default_success_mode, None
+            if "bse" in source_id.lower() and active_p:
                 return active_p.default_success_mode, None
             return "LIVE", None
 

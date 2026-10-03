@@ -1,8 +1,9 @@
 import React from 'react';
-import { ShieldAlert, Menu, X, Terminal } from 'lucide-react';
+import { Shield, Menu, X, Terminal, Cpu } from 'lucide-react';
 import type { ProtectionSystemStatus } from '../../types/firewall';
 import { ProtectionStatus } from '../status/ProtectionStatus';
 import { IconButton } from '../common/IconButton';
+import { config } from '../../config/env';
 
 export interface HeaderProps {
   systemStatus: ProtectionSystemStatus;
@@ -27,7 +28,7 @@ export const Header: React.FC<HeaderProps> = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '0 var(--space-6)',
+        padding: '0 var(--space-5)',
         position: 'sticky',
         top: 0,
         zIndex: 40,
@@ -37,60 +38,85 @@ export const Header: React.FC<HeaderProps> = ({
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
         <div
           style={{
-            width: '32px',
-            height: '32px',
+            width: '28px',
+            height: '28px',
             borderRadius: 'var(--radius-sm)',
-            backgroundColor: 'var(--color-accent-subtle)',
-            border: '1px solid rgba(14, 165, 233, 0.4)',
-            color: 'var(--color-accent)',
+            backgroundColor: 'var(--color-bg-surface-elevated)',
+            border: '1px solid var(--color-border-default)',
+            color: 'var(--color-accent-hover)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            boxShadow: 'var(--shadow-sm)',
           }}
         >
-          <ShieldAlert size={20} />
+          <Shield size={16} />
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            <span
-              style={{
-                fontSize: 'var(--font-size-md)',
-                fontWeight: 'var(--font-weight-bold)',
-                letterSpacing: '0.04em',
-                color: 'var(--color-text-primary)',
-              }}
-            >
-              NIVESH FIREWALL
-            </span>
-            <span
-              style={{
-                fontSize: '10px',
-                fontFamily: 'var(--font-mono)',
-                textTransform: 'uppercase',
-                padding: '1px 5px',
-                backgroundColor: 'var(--color-bg-surface-elevated)',
-                color: 'var(--color-accent-hover)',
-                borderRadius: 'var(--radius-xs)',
-                border: '1px solid var(--color-border-subtle)',
-              }}
-            >
-              v1.0
-            </span>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <span
+            style={{
+              fontSize: 'var(--font-size-base)',
+              fontWeight: 'var(--font-weight-semibold)',
+              letterSpacing: '0.04em',
+              color: 'var(--color-text-primary)',
+            }}
+          >
+            NIVESH FIREWALL
+          </span>
+          <span
+            style={{
+              fontSize: '10px',
+              fontFamily: 'var(--font-mono)',
+              textTransform: 'uppercase',
+              padding: '1px 6px',
+              backgroundColor: 'var(--color-bg-subtle)',
+              color: 'var(--color-text-muted)',
+              borderRadius: 'var(--radius-xs)',
+              border: '1px solid var(--color-border-subtle)',
+              letterSpacing: '0.03em',
+            }}
+          >
+            v{config.appVersion}
+          </span>
           <span
             style={{
               fontSize: '11px',
               color: 'var(--color-text-muted)',
-              letterSpacing: '0.02em',
+              paddingLeft: 'var(--space-2)',
+              borderLeft: '1px solid var(--color-border-subtle)',
+              display: 'none',
             }}
+            className="desktop-hint"
           >
             Financial Content Protection Core
           </span>
+
         </div>
       </div>
 
       {/* Right Controls: Protection Status & Session */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+        {/* Environment Tag */}
+        <div
+          style={{
+            display: 'none',
+            alignItems: 'center',
+            gap: '4px',
+            fontSize: '10px',
+            fontFamily: 'var(--font-mono)',
+            textTransform: 'uppercase',
+            color: 'var(--color-text-muted)',
+            backgroundColor: 'var(--color-bg-subtle)',
+            padding: '2px 7px',
+            borderRadius: 'var(--radius-xs)',
+            border: '1px solid var(--color-border-subtle)',
+          }}
+          className="desktop-hint"
+        >
+          <Cpu size={11} color="var(--color-accent)" />
+          <span>{config.mode === 'production' ? 'PROD' : 'LOCAL'}</span>
+        </div>
+
         {/* Real-time System Protection Indicator */}
         <ProtectionStatus status={systemStatus} />
 
@@ -101,8 +127,8 @@ export const Header: React.FC<HeaderProps> = ({
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 'var(--space-1)',
-              fontSize: 'var(--font-size-xs)',
+              gap: '4px',
+              fontSize: '11px',
               fontFamily: 'var(--font-mono)',
               color: 'var(--color-text-muted)',
               backgroundColor: 'var(--color-bg-subtle)',
@@ -110,9 +136,10 @@ export const Header: React.FC<HeaderProps> = ({
               borderRadius: 'var(--radius-xs)',
               border: '1px solid var(--color-border-subtle)',
             }}
+            title={`Active Firewall Session: ${sessionId}`}
           >
             <Terminal size={12} />
-            <span>{sessionId.slice(0, 8)}...</span>
+            <span>{sessionId.slice(0, 8)}</span>
           </div>
         )}
 
@@ -129,3 +156,4 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
+

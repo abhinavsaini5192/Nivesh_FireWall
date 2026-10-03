@@ -64,7 +64,7 @@ class BaseSourceAdapter(ABC):
         published_at: Optional[str] = None
     ) -> FreshnessStatus:
         """Determines explicit freshness status based on retrieval mode and timestamps."""
-        if retrieval_mode == "LIVE":
+        if retrieval_mode in ("LIVE", "LIVE_AUTHORIZED", "LIVE_PUBLIC"):
             return "CURRENT"
         elif retrieval_mode == "OFFICIAL_SNAPSHOT":
             return "SNAPSHOT"

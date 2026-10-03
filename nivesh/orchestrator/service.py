@@ -715,6 +715,8 @@ class ProductOrchestrator:
                     if not self.config.fail_fast and state.content is not None:
                         state.threat = create_empty_threat_analysis(state.content.content_id)
                 else:
+                    clean_threat_dict = sanitize_sensitive_data(threat.model_dump())
+                    threat = ThreatAnalysis.model_validate(clean_threat_dict)
                     state.threat = threat
                     rec_e6.completed_at = datetime.now(timezone.utc).isoformat()
                     rec_e6.duration_ms = dur_e6

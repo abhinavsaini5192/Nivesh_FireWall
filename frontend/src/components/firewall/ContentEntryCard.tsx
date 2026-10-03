@@ -61,22 +61,52 @@ export const ContentEntryCard: React.FC<ContentEntryCardProps> = ({
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      if (isReady && onAnalyze) {
+        e.preventDefault();
+        handleSubmit(e);
+      }
+    }
+  };
+
   const handleClear = () => {
     setContent('');
     if (onClearError) onClearError();
   };
 
   return (
-    <Card variant="surface" style={{ width: '100%' }}>
+    <Card
+      variant="surface"
+      style={{
+        width: '100%',
+        border: '1px solid var(--color-border-default)',
+        boxShadow: 'var(--shadow-md)',
+        backgroundColor: 'var(--color-bg-surface-elevated)',
+      }}
+    >
       <form onSubmit={handleSubmit}>
-        <CardHeader>
+        <CardHeader style={{ paddingBottom: 'var(--space-3)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <CardTitle>Protect your next financial action</CardTitle>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <div
+                style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: 'var(--radius-full)',
+                  backgroundColor: 'var(--color-accent)',
+                  boxShadow: '0 0 8px var(--color-accent)',
+                }}
+              />
+              <CardTitle style={{ fontSize: 'var(--font-size-lg)', letterSpacing: '-0.01em' }}>
+                Protect your next financial action
+              </CardTitle>
+            </div>
             <Badge variant="accent" icon={<Shield size={12} />}>
               Inspection Shell
             </Badge>
           </div>
-          <CardDescription>
+          <CardDescription style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
             Inspect messages, URLs, or requested actions before clicking links, downloading apps, or sending money.
           </CardDescription>
         </CardHeader>
@@ -90,20 +120,36 @@ export const ContentEntryCard: React.FC<ContentEntryCardProps> = ({
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: 'var(--space-3)',
-              padding: 'var(--space-3)',
+              padding: 'var(--space-2) var(--space-3)',
               backgroundColor: 'var(--color-bg-subtle)',
               borderRadius: 'var(--radius-sm)',
               border: '1px solid var(--color-border-subtle)',
             }}
           >
             {/* Input Mode Selector */}
-            <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                padding: '2px',
+                backgroundColor: 'rgba(0, 0, 0, 0.25)',
+                borderRadius: 'var(--radius-xs)',
+                border: '1px solid var(--color-border-subtle)',
+                gap: '2px',
+              }}
+            >
               <Button
                 type="button"
                 variant={mode === 'text' ? 'secondary' : 'ghost'}
                 size="sm"
                 onClick={() => setMode('text')}
                 disabled={isLoading}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: 'var(--font-size-xs)',
+                  fontWeight: mode === 'text' ? 600 : 400,
+                  backgroundColor: mode === 'text' ? 'var(--color-bg-surface-elevated)' : 'transparent',
+                  borderColor: mode === 'text' ? 'var(--color-border-default)' : 'transparent',
+                }}
               >
                 Text Message
               </Button>
@@ -112,15 +158,22 @@ export const ContentEntryCard: React.FC<ContentEntryCardProps> = ({
                 variant={mode === 'url' ? 'secondary' : 'ghost'}
                 size="sm"
                 onClick={() => setMode('url')}
-                leftIcon={<Globe size={14} />}
+                leftIcon={<Globe size={13} />}
                 disabled={isLoading}
+                style={{
+                  padding: '4px 12px',
+                  fontSize: 'var(--font-size-xs)',
+                  fontWeight: mode === 'url' ? 600 : 400,
+                  backgroundColor: mode === 'url' ? 'var(--color-bg-surface-elevated)' : 'transparent',
+                  borderColor: mode === 'url' ? 'var(--color-border-default)' : 'transparent',
+                }}
               >
                 Link / URL
               </Button>
             </div>
 
             {/* Ingestion Channel Dropdown */}
-            <div style={{ minWidth: '200px' }}>
+            <div style={{ minWidth: '220px' }}>
               <Select
                 aria-label="Origin Channel"
                 value={channel}
@@ -144,6 +197,7 @@ export const ContentEntryCard: React.FC<ContentEntryCardProps> = ({
             maxLength={10000}
             showCount
             value={content}
+            onKeyDown={handleKeyDown}
             onChange={(e) => {
               setContent(e.target.value);
               if (error && onClearError) onClearError();
@@ -175,7 +229,7 @@ export const ContentEntryCard: React.FC<ContentEntryCardProps> = ({
           )}
         </CardContent>
 
-        <CardFooter style={{ justifyContent: 'space-between' }}>
+        <CardFooter style={{ justifyContent: 'space-between', paddingTop: 'var(--space-3)' }}>
           <div>
             {!isEmpty && (
               <Button
@@ -192,13 +246,13 @@ export const ContentEntryCard: React.FC<ContentEntryCardProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
             <span
               style={{
-                fontSize: 'var(--font-size-xs)',
+                fontSize: '11px',
                 color: 'var(--color-text-muted)',
                 display: 'none',
               }}
               className="desktop-hint"
             >
-              Press <kbd style={{ padding: '1px 4px', border: '1px solid var(--color-border-subtle)', borderRadius: '2px' }}>Ctrl + Enter</kbd> to analyze
+              Press <kbd style={{ padding: '2px 5px', backgroundColor: 'var(--color-bg-subtle)', border: '1px solid var(--color-border-subtle)', borderRadius: '3px', fontFamily: 'var(--font-mono)' }}>Ctrl + Enter</kbd> to analyze
             </span>
             <Button
               type="submit"
@@ -206,7 +260,7 @@ export const ContentEntryCard: React.FC<ContentEntryCardProps> = ({
               size="md"
               disabled={!isReady}
               isLoading={isLoading}
-              rightIcon={<Send size={16} />}
+              rightIcon={<Send size={15} />}
             >
               Analyze Content
             </Button>
@@ -216,3 +270,4 @@ export const ContentEntryCard: React.FC<ContentEntryCardProps> = ({
     </Card>
   );
 };
+

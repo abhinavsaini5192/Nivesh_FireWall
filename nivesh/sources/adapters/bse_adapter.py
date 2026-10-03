@@ -1,12 +1,12 @@
 """BSE Source Adapter for Engine 4 (Source Intelligence Engine).
 
-Phase 15.A: Authoritative Source Gateway & BSE Authoritative Integration.
+Phase 15.A & Phase 15.D.2: Authoritative Source Gateway & Hardened BSE Integration.
 Interacts with Bombay Stock Exchange (BSE) Corporate Data API and official disclosure platform:
-- Official Corporate Data API for company disclosures, announcements, and corporate actions
+- Modular provider architecture: OfficialAuthorizedBSEProvider, PublicBSEProvider, OfficialSnapshotBSEProvider
 - Server-side credentials loaded from environment / configuration (BSE_API_KEY, BSE_API_SECRET)
 - Strictly protects credentials: never exposed in responses, logs, or client interfaces
-- Strictly separates LIVE, OFFICIAL_SNAPSHOT, CACHE, FIXTURE, and SOURCE_UNAVAILABLE execution modes.
-- Never represents FIXTURE, CACHE, or OFFICIAL_SNAPSHOT as LIVE.
+- Strictly separates LIVE_AUTHORIZED, LIVE_PUBLIC, OFFICIAL_SNAPSHOT, CACHE, FIXTURE, and SOURCE_UNAVAILABLE execution modes.
+- Never represents FIXTURE, CACHE, or OFFICIAL_SNAPSHOT as LIVE or LIVE_AUTHORIZED.
 """
 
 from datetime import datetime, timezone
@@ -27,10 +27,12 @@ from nivesh.schemas.sources import (
 )
 from nivesh.sources.adapters.base import BaseSourceAdapter
 from nivesh.sources.cache import SourceCache
+from nivesh.sources.rate_limiter import RateLimiter
 from nivesh.sources.adapters.bse_providers import (
     BaseBSEProvider,
     OfficialAuthorizedBSEProvider,
     PublicBSEProvider,
+    OfficialSnapshotBSEProvider,
     BSE_PUBLIC_WEB_URL,
     BSE_ANN_PAGE_URL,
     BSE_CORP_ACTION_PAGE_URL,
@@ -86,6 +88,69 @@ OFFICIAL_BSE_SNAPSHOT_DATASET: list[dict[str, Any]] = [
         "url": f"{BSE_PUBLIC_BASE_URL}?scrip=500325",
         "acknowledgement_no": "BSE/CORP/DISC/2024/09/44819",
     },
+    {
+        "scrip_code": "526371",
+        "symbol": "NMDC",
+        "company_name": "NMDC Limited",
+        "category": "CORPORATE_ACTION",
+        "subject": "Dividend - Re 1 Per Share",
+        "broadcast_date": "2026-10-05T00:00:00Z",
+        "details": (
+            "BOMBAY STOCK EXCHANGE (BSE) — CORPORATE ACTION\n"
+            "Scrip Code: 526371\n"
+            "Security ID: NMDC\n"
+            "Company Name: NMDC Limited\n"
+            "Category: Dividend\n"
+            "Purpose: Dividend - Re 1 Per Share\n"
+            "Record Date: 2026-10-05\n"
+            "Ex-Date: 2026-10-05\n"
+            "BSE Acknowledgement Number: BSE/CORP/ACTION/2026/10/526371"
+        ),
+        "url": f"{BSE_PUBLIC_BASE_URL}?scrip=526371",
+        "acknowledgement_no": "BSE/CORP/ACTION/2026/10/526371",
+    },
+    {
+        "scrip_code": "539267",
+        "symbol": "SAMSRITA",
+        "company_name": "Samsrita Labs Ltd",
+        "category": "CORPORATE_ANNOUNCEMENT",
+        "subject": "Submission Of Notice For The 1St Extraordinary General Meeting Of The Company",
+        "broadcast_date": "2026-10-03T15:16:30Z",
+        "details": (
+            "BOMBAY STOCK EXCHANGE (BSE) — CORPORATE DISCLOSURE\n"
+            "Company Name: Samsrita Labs Ltd\n"
+            "Scrip Code: 539267\n"
+            "Security ID: SAMSRITA\n"
+            "Category: AGM/EGM\n"
+            "Subject: Submission Of Notice For The 1St Extraordinary General Meeting Of The Company\n"
+            "Date: 2026-10-03T15:16:30\n"
+            "BSE Reference ID: 701133b8-8d99-4b23-bcba-adb0d71e52eb\n"
+            "Attachment: https://www.bseindia.com/xml-data/corpfiling/AttachLive/e002b523-8fcd-4156-8e89-99953448a042.pdf"
+        ),
+        "url": "https://www.bseindia.com/xml-data/corpfiling/AttachLive/e002b523-8fcd-4156-8e89-99953448a042.pdf",
+        "acknowledgement_no": "701133b8-8d99-4b23-bcba-adb0d71e52eb",
+    },
+    {
+        "scrip_code": "540772",
+        "symbol": "DPABHUSHAN",
+        "company_name": "D. P. Abhushan Limited",
+        "category": "BOARD_MEETING",
+        "subject": "Board Meeting Intimation for Considering Raising Of Funds",
+        "broadcast_date": "2026-10-03T12:00:00Z",
+        "details": (
+            "BOMBAY STOCK EXCHANGE (BSE) — CORPORATE DISCLOSURE\n"
+            "Company Name: D. P. Abhushan Limited\n"
+            "Scrip Code: 540772\n"
+            "Security ID: DPABHUSHAN\n"
+            "Category: BOARD_MEETING\n"
+            "Subject: Board Meeting Intimation for Considering Raising Of Funds\n"
+            "Date: 2026-10-03T12:00:00\n"
+            "BSE Reference ID: BSE/BM/540772/2026\n"
+            "Meeting Date: 2026-10-05"
+        ),
+        "url": f"{BSE_PUBLIC_BASE_URL}?scrip=540772",
+        "acknowledgement_no": "BSE/BM/540772/2026",
+    },
 ]
 
 OFFICIAL_BSE_FIXTURES: list[dict[str, Any]] = list(OFFICIAL_BSE_SNAPSHOT_DATASET)
@@ -115,26 +180,46 @@ class BSEAdapter(BaseSourceAdapter):
         api_secret: Optional[str] = None,
         provider: Optional[BaseBSEProvider] = None,
         provider_preference: str = "AUTO",
+        public_enabled: bool = False,
+        snapshot_fallback_enabled: bool = True,
     ):
         super().__init__(cache, rate_limiter, timeout, default_mode)
         self.api_key = api_key
         self.api_secret = api_secret
         self.provider = provider
         self.provider_preference = provider_preference
+        self.public_enabled = public_enabled
+        self.snapshot_fallback_enabled = snapshot_fallback_enabled
 
-    def resolve_active_provider(self) -> Optional[BaseBSEProvider]:
-        """Resolves active BSE provider based on configuration, credentials, and preference."""
+        self.official_provider = OfficialAuthorizedBSEProvider(api_key=self.api_key, api_secret=self.api_secret)
+        self.public_provider = PublicBSEProvider(safe_fetch_fn=self.safe_http_fetch, timeout=self.timeout, rate_limiter=self.rate_limiter)
+        self.snapshot_provider = OfficialSnapshotBSEProvider(dataset=OFFICIAL_BSE_SNAPSHOT_DATASET)
+
+    def resolve_active_provider(self) -> BaseBSEProvider:
+        """Deterministically resolves active BSE provider based on configuration, credentials, and preference."""
         if self.provider:
             return self.provider
 
         pref = (self.provider_preference or "AUTO").upper()
-        if pref == "OFFICIAL" or (pref == "AUTO" and self.api_key):
-            if self.api_key:
-                return OfficialAuthorizedBSEProvider(api_key=self.api_key, api_secret=self.api_secret)
-            return None
+        if pref == "OFFICIAL":
+            return self.official_provider
         elif pref == "PUBLIC":
-            return PublicBSEProvider(safe_fetch_fn=self.safe_http_fetch, timeout=self.timeout, rate_limiter=self.rate_limiter)
-        return None
+            return self.public_provider
+        elif pref == "SNAPSHOT":
+            return self.snapshot_provider
+        elif pref == "AUTO":
+            # Priority:
+            # 1. Official Authorized (if in LIVE mode and credentials configured)
+            # 2. Public Dissemination (if in LIVE mode and public_enabled)
+            # 3. Official Snapshot
+            if self.default_mode == "LIVE":
+                if self.api_key:
+                    return self.official_provider
+                elif self.public_enabled and self.public_provider.is_available:
+                    return self.public_provider
+            return self.snapshot_provider
+
+        return self.snapshot_provider
 
     def search(self, query: SourceQuery) -> list[SourceSearchResult]:
         """Searches BSE corporate disclosures by scrip code, symbol, or company name."""
@@ -175,6 +260,7 @@ class BSEAdapter(BaseSourceAdapter):
 
         symbol = (result.metadata.get("symbol") or "").upper().strip()
         keywords = [k.lower() for k in result.metadata.get("keywords", [])]
+        category = "CORPORATE_ACTION" if any(k in ("bonus", "split", "dividend") for k in keywords) else "CORPORATE_ANNOUNCEMENT"
 
         live_content: Optional[str] = None
         http_code: Optional[int] = None
@@ -187,10 +273,68 @@ class BSEAdapter(BaseSourceAdapter):
         source_authority: str = "Bombay Stock Exchange"
         pub_date: Optional[str] = None
 
-        if self.default_mode == "LIVE":
-            if self.provider:
-                cat = "CORPORATE_ACTION" if any(k in ("bonus", "split", "dividend") for k in keywords) else "CORPORATE_ANNOUNCEMENT"
-                p_status, p_rec, p_err = self.provider.fetch_corporate_data(cat, symbol, keywords)
+        # 2. SOURCE_UNAVAILABLE explicit mode
+        if self.default_mode == "SOURCE_UNAVAILABLE":
+            content = f"BSE corporate data service is currently unavailable: Access unconfigured"
+            prov = self.build_provenance(
+                source="BSE",
+                source_authority=source_authority,
+                retrieval_mode="SOURCE_UNAVAILABLE",
+                retrieved_at=retrieved_at_iso,
+                source_reference=result.url,
+                response_status="SOURCE_UNAVAILABLE",
+                evidence="BSE service unavailable: Default mode is SOURCE_UNAVAILABLE",
+                provider="BSEAdapter",
+                access_method=access_method,
+            )
+            doc = SourceDocument(
+                document_id=f"DOC-BSE-{self.compute_hash(result.url + str(symbol))[:8].upper()}",
+                source_id=result.source_id,
+                organization="BSE",
+                source_type="CORPORATE_ANNOUNCEMENT",
+                title=result.title,
+                url=result.url,
+                retrieved_at=retrieved_at_iso,
+                content=content,
+                content_hash=self.compute_hash(content),
+                retrieval=RetrievalMetadata(
+                    status="SOURCE_UNAVAILABLE",
+                    duration_ms=(time.time() - start_time) * 1000,
+                    http_status=None,
+                    error_message="Source unavailable",
+                    method=self.adapter_name,
+                    mode="SOURCE_UNAVAILABLE",
+                ),
+                authoritative_provenance=prov,
+            )
+            return doc
+
+        # 3. Handle LIVE execution
+        active_provider = self.resolve_active_provider()
+        if self.default_mode in ("LIVE", "LIVE_PUBLIC", "LIVE_AUTHORIZED"):
+            if active_provider and isinstance(active_provider, PublicBSEProvider):
+                p_status, p_rec, p_err = active_provider.fetch_corporate_data(category, symbol, keywords)
+                if p_status == "SUCCESS" and p_rec:
+                    live_content = p_rec["details"]
+                    mode_used = active_provider.default_success_mode
+                    status = "SUCCESS"
+                    rec_id = p_rec.get("accession_number")
+                    pub_date = p_rec.get("broadcast_date")
+                    provider_name = active_provider.provider_name
+                    access_method = active_provider.access_method
+                    source_authority = active_provider.source_authority
+                elif p_status in ("CREDENTIALS_MISSING", "ACCESS_UNAUTHORIZED"):
+                    retrieval_err = p_err
+                    status = p_status
+                    mode_used = "SOURCE_UNAVAILABLE"
+                    provider_name = active_provider.provider_name
+                    access_method = active_provider.access_method
+                else:
+                    retrieval_err = p_err or f"BSE Public provider failure ({p_status})"
+                    status = p_status
+                    mode_used = "OFFICIAL_SNAPSHOT"
+            elif self.provider:
+                p_status, p_rec, p_err = self.provider.fetch_corporate_data(category, symbol, keywords)
                 if p_status == "SUCCESS" and p_rec:
                     live_content = p_rec["details"]
                     mode_used = self.provider.default_success_mode
@@ -210,12 +354,13 @@ class BSEAdapter(BaseSourceAdapter):
                     retrieval_err = p_err
                     status = p_status
                     mode_used = "OFFICIAL_SNAPSHOT"
-            # Live query requires valid server-side credentials
             elif not self.api_key:
                 retrieval_err = "BSE Corporate Data API credentials missing (BSE_API_KEY unconfigured). Live exchange access requires legitimate production credentials."
                 status = "CREDENTIALS_MISSING"
                 mode_used = "SOURCE_UNAVAILABLE"
+                provider_name = "OfficialAuthorizedBSEProvider"
             else:
+                # Authenticated enterprise API query
                 try:
                     headers = {
                         "X-BSE-API-KEY": self.api_key,
@@ -226,7 +371,7 @@ class BSEAdapter(BaseSourceAdapter):
                         try:
                             data = json.loads(resp_text)
                             live_content = json.dumps(data, indent=2)
-                            mode_used = "LIVE"
+                            mode_used = "LIVE_AUTHORIZED"
                             status = "SUCCESS"
                         except json.JSONDecodeError:
                             retrieval_err = "Malformed upstream JSON response from BSE API"
@@ -241,7 +386,8 @@ class BSEAdapter(BaseSourceAdapter):
                     retrieval_err = str(e)
                     mode_used = "OFFICIAL_SNAPSHOT"
 
-        if live_content and (mode_used == "LIVE" or mode_used.startswith("LIVE")):
+        # 4. Success in LIVE, LIVE_AUTHORIZED, or LIVE_PUBLIC
+        if live_content and (mode_used in ("LIVE", "LIVE_AUTHORIZED", "LIVE_PUBLIC")):
             content = live_content
             status = "SUCCESS"
             prov = self.build_provenance(
@@ -256,7 +402,8 @@ class BSEAdapter(BaseSourceAdapter):
                 provider=provider_name,
                 access_method=access_method,
             )
-        elif mode_used == "SOURCE_UNAVAILABLE" or self.default_mode == "SOURCE_UNAVAILABLE":
+            final_mode = mode_used
+        elif mode_used == "SOURCE_UNAVAILABLE":
             if status not in ("CREDENTIALS_MISSING", "ACCESS_UNAUTHORIZED"):
                 status = "SOURCE_UNAVAILABLE"
             content = f"BSE corporate data service is currently unavailable: {retrieval_err or 'Access unconfigured'}"
@@ -272,33 +419,15 @@ class BSEAdapter(BaseSourceAdapter):
                 access_method=access_method,
             )
             pub_date = None
+            final_mode = "SOURCE_UNAVAILABLE"
         else:
-            # OFFICIAL_SNAPSHOT or FIXTURE mode
-            matched_item = None
-            dataset_to_use = OFFICIAL_BSE_SNAPSHOT_DATASET if mode_used == "OFFICIAL_SNAPSHOT" else OFFICIAL_BSE_FIXTURES
-            for item in dataset_to_use:
-                is_match = (
-                    item["symbol"] == symbol
-                    or item.get("scrip_code") == symbol
-                    or item.get("company_name", "").upper() == symbol
-                    or (symbol and item["symbol"] in symbol.split())
-                    or (symbol and symbol in item.get("company_name", "").upper())
-                )
-                if is_match:
-                    if keywords:
-                        text_to_check = (item["subject"] + " " + item["details"]).lower()
-                        if any(kw in text_to_check for kw in keywords):
-                            matched_item = item
-                            break
-                    else:
-                        matched_item = item
-                        break
-
-            if matched_item:
-                content = matched_item["details"]
+            # OFFICIAL_SNAPSHOT or FIXTURE mode (or fallback from live)
+            snap_status, snap_rec, snap_err = self.snapshot_provider.fetch_corporate_data(category, symbol, keywords)
+            if snap_status == "SUCCESS" and snap_rec:
+                content = snap_rec["details"]
                 status = "SUCCESS"
-                pub_date = matched_item["broadcast_date"]
-                rec_id = matched_item["acknowledgement_no"]
+                pub_date = snap_rec.get("broadcast_date")
+                rec_id = snap_rec.get("accession_number")
             else:
                 content = (
                     f"BOMBAY STOCK EXCHANGE (BSE) — DISCLOSURE SEARCH\n"
@@ -312,7 +441,8 @@ class BSEAdapter(BaseSourceAdapter):
                 pub_date = None
                 rec_id = None
 
-            resolved_mode = "OFFICIAL_SNAPSHOT" if mode_used == "OFFICIAL_SNAPSHOT" else "FIXTURE"
+            resolved_mode = "OFFICIAL_SNAPSHOT" if mode_used == "OFFICIAL_SNAPSHOT" or self.default_mode in ("OFFICIAL_SNAPSHOT", "LIVE", "LIVE_PUBLIC", "LIVE_AUTHORIZED") else "FIXTURE"
+            fallback_note = f" (fallback from {self.default_mode}: {retrieval_err})" if retrieval_err else ""
             prov = self.build_provenance(
                 source="BSE",
                 source_authority="Bombay Stock Exchange",
@@ -323,33 +453,34 @@ class BSEAdapter(BaseSourceAdapter):
                 source_record_id=rec_id,
                 source_reference=result.url,
                 response_status=status,
-                evidence=f"{'Official regulatory snapshot' if resolved_mode == 'OFFICIAL_SNAPSHOT' else 'Test fixture'} evaluation: {status}",
+                evidence=f"{'Official regulatory snapshot' if resolved_mode == 'OFFICIAL_SNAPSHOT' else 'Test fixture'} evaluation: {status}{fallback_note}",
                 provider="OfficialSnapshot" if resolved_mode == "OFFICIAL_SNAPSHOT" else "Fixture",
                 access_method="Verified regulatory snapshot dataset" if resolved_mode == "OFFICIAL_SNAPSHOT" else "Test fixture",
             )
+            final_mode = resolved_mode
 
         doc = SourceDocument(
             document_id=f"DOC-BSE-{self.compute_hash(result.url + str(symbol))[:8].upper()}",
             source_id=result.source_id,
             organization="BSE",
-            source_type="CORPORATE_ACTION" if "action" in result.title.lower() else "CORPORATE_ANNOUNCEMENT",
+            source_type="CORPORATE_ACTION" if any(k in ("bonus", "split", "dividend") for k in keywords) else "CORPORATE_ANNOUNCEMENT",
             title=result.title,
             url=result.url,
             retrieved_at=retrieved_at_iso,
-            published_at=pub_date,
             content=content,
             content_hash=self.compute_hash(content),
-            metadata=result.metadata,
             retrieval=RetrievalMetadata(
                 status=status,
-                http_status=http_code or (200 if status in ("SUCCESS", "NO_MATCH") else None),
-                method="BSEAdapter",
-                mode=prov.retrieval_mode,
-                response_time_ms=(time.time() - start_time) * 1000,
-                error_message=retrieval_err
+                duration_ms=(time.time() - start_time) * 1000,
+                http_status=http_code,
+                error_message=retrieval_err,
+                method=self.adapter_name,
+                mode=final_mode,
             ),
             authoritative_provenance=prov,
         )
 
-        self.cache.set_document(cache_key, doc)
+        if status == "SUCCESS" and doc.retrieval.mode != "CACHE":
+            self.cache.set_document(cache_key, doc)
+
         return doc
