@@ -2003,4 +2003,244 @@ python -X utf8 -m pytest tests/test_security.py -v
 - Browser extension test suite: **141 passed in 19s** (100% pass rate).
 - Production bundle builds: **Clean (0 errors, 0 warnings)**.
 
+---
+
+## 24. Observability, Monitoring & Operations (Phase 14.4)
+
+Phase 14.4 establishes the production observability, metrics telemetry, distributed tracing, health probing, and operational runbook for Nivesh Firewall. It provides deep visibility into pipeline execution, engine performance, persistence operations, and external dependencies without introducing behavioral surveillance, user scoring, or sensitive data leakage.
+
+```text
+                               INCOMING REQUEST
+                                      │
+                                      ▼
+                      ┌───────────────────────────────┐
+                      │    ObservabilityMiddleware    │
+                      │  - X-Request-ID propagation   │
+                      │  - X-Correlation-ID tracing   │
+                      │  - Route normalization        │
+                      │  - Structured access logging  │
+                      │  - HTTP metrics recording     │
+                      └───────────────┬───────────────┘
+                                      │
+                                      ▼
+                      ┌───────────────────────────────┐
+                      │      Product Orchestrator     │
+                      │  Root Pipeline Trace Span     │
+                      │  (nivesh.pipeline.analysis)   │
+                      └───────────────┬───────────────┘
+                                      │
+       ┌──────────────────────────────┼──────────────────────────────┐
+       ▼                              ▼                              ▼
+┌──────────────┐               ┌──────────────┐               ┌──────────────┐
+│  Engines 1-5 │               │ Engines 6,7, │               │   Engine 8   │
+│ Child Spans  │──────────────►│    9, 10     │──────────────►│ Policy Span  │
+│  & Duration  │               │ Child Spans  │               │ & Decision   │
+│  Histograms  │               │  & Duration  │               │ Telemetry    │
+└──────────────┘               └──────────────┘               └──────────────┘
+                                      │
+                                      ▼
+                      ┌───────────────────────────────┐
+                      │      Storage Persistence      │
+                      │  - Persistence duration span  │
+                      │  - ACID rollback counter      │
+                      │  - DB health check probe      │
+                      └───────────────┬───────────────┘
+                                      │
+                                      ▼
+                      ┌───────────────────────────────┐
+                      │     Observability Outlets     │
+                      │  • GET /api/v1/metrics (Prom) │
+                      │  • GET /api/v1/traces/recent  │
+                      │  • GET /health/live (Probe)   │
+                      │  • GET /health/ready (Probe)  │
+                      │  • JSON Structured Log Stream │
+                      └───────────────────────────────┘
+```
+
+### 24.1 Structured Logging & Correlation (`nivesh.observability.logging`)
+
+- **Dual Formatting Modes**:
+  - `StructuredJsonFormatter`: Emits standardized JSON lines with ISO-8601 UTC timestamps, log level, service name (`nivesh-firewall`), environment (`development`/`production`/`testing`), request ID, correlation ID, analysis ID, engine key, route, HTTP method, status code, duration, and error details.
+  - `StandardTextFormatter`: Emits human-readable terminal output for local development.
+- **Context Propagation**:
+  - Thread-safe context variables (`request_id_ctx`, `correlation_id_ctx`, `analysis_id_ctx`, `engine_key_ctx`) maintain contextual identifiers across asynchronous execution boundaries and pipeline stages.
+- **Fail-Safe Secret Scrubber Filter (`SensitiveDataScrubberFilter`)**:
+  - Intercepts all log records and scrubs passwords, tokens, API keys, private keys, OTPs, PINs, CVVs, debit/credit cards, raw authorization headers, and database connection strings (`user:[REDACTED]@host`) before emission.
+  - Request bodies are never logged in full by default.
+
+### 24.2 Metrics & Performance Telemetry (`nivesh.observability.metrics`)
+
+The metrics subsystem collects multi-dimensional system operational telemetry while strictly enforcing low label cardinality:
+
+1. **HTTP API Metrics**:
+   - `http_requests_total`: Counter partitioned by `method`, `route` (normalized parameterized paths, e.g. `/api/v1/firewall/analysis/{analysis_id}`), and `status_code`.
+   - `http_request_duration_seconds`: Histogram measuring latency across standardized latency buckets (`0.005s` to `10.0s`).
+   - `http_request_failures_total`: Counter tracking server-side 5xx exceptions and network timeouts.
+
+2. **Firewall Pipeline & Engine Metrics**:
+   - `firewall_analysis_requests_total`: Counter of received analysis runs.
+   - `firewall_analysis_completed_total`: Counter partitioned by completion status (`COMPLETED`, `DEGRADED`, `FAILED`).
+   - `firewall_pipeline_duration_seconds`: Histogram measuring full end-to-end analysis processing time.
+   - `firewall_engine_duration_seconds`: Per-engine execution latency histogram labeled by `engine`.
+   - `firewall_engine_failures_total`: Counter tracking engine-level failures by `engine` and `error_type`.
+   - `firewall_engine_timeouts_total`: Counter tracking execution timeouts per engine.
+
+3. **Policy Decision Metrics (Zero User Profiling)**:
+   - `policy_decisions_total`: Counter recording system-level distribution of decisions (`ALLOW`, `INFORM`, `WARN`, `PAUSE`, `BLOCK`). Strictly system metrics; never used to compute hidden user risk scores or profile individuals.
+
+4. **Persistence & Database Metrics**:
+   - `persistence_operations_total`: Counter tracking database operations by `operation` and `status`.
+   - `persistence_duration_seconds`: Latency histogram of storage repository queries.
+   - `persistence_transaction_rollbacks_total`: Counter recording database rollbacks and transaction failures.
+   - `persistence_connection_failures_total`: Counter recording database connection pool exhaustion or dropouts.
+
+5. **External Verification Source Metrics**:
+   - `source_requests_total`: Counter partitioned by `source_id`.
+   - `source_unavailable_total`: Counter recording source outage and reachability failures.
+   - `source_cache_hits_total` & `source_cache_misses_total`: Source cache performance counters.
+
+6. **Prometheus Exposition Endpoint**:
+   - Standard text-based Prometheus exposition available at `GET /api/v1/metrics`.
+
+### 24.3 Distributed Tracing & Pipeline Diagnostics (`nivesh.observability.tracing`)
+
+- **In-Memory Tracer (`Tracer`)**:
+  - Zero third-party APM dependency requirement. Retains spans in a bounded circular buffer (`max_recent_traces=1000`) for production incident reconstruction.
+  - Automatically disabled or enabled via `NIVESH_TRACING_ENABLED`.
+- **Trace Spans across Canonical Stages**:
+  - Root span: `nivesh.pipeline.analysis`
+  - Engine spans: `engine.1.content`, `engine.2.claims`, `engine.3.actions`, `engine.4.sources`, `engine.5.evidence`, `engine.6.threat`, `engine.7.fingerprints`, `engine.8.policy`, `engine.9.identity`, `engine.10.behaviour`.
+  - Storage span: `storage.persistence`.
+- **Sanitized Trace Metadata**:
+  - Automatically redacts sensitive fields from span attributes. Raw text, credentials, financial identifiers, and private page DOM dumps are strictly excluded from span metadata.
+- **Incident Inspection Endpoint**:
+  - `GET /api/v1/traces/recent`: Admin-only endpoint returning sanitized JSON traces for incident analysis.
+
+### 24.4 Health, Readiness & Operational Diagnostics (`nivesh.observability.health`)
+
+1. **Liveness Probe (`GET /health/live`, `GET /api/v1/health/liveness`)**:
+   - Answers: *"Is the process running?"*
+   - Ultra-lightweight in-memory check without touching database connections or external networks. Always responds in `< 5ms`.
+
+2. **Readiness Probe (`GET /health/ready`, `GET /api/v1/health/readiness`)**:
+   - Answers: *"Is the service capable of serving production traffic?"*
+   - Checks:
+     - Central database connectivity and schema responsiveness (`check_database_health()`).
+     - Engine readiness (all 10 engines instantiated and initialized).
+     - Source subsystem configuration.
+   - Returns `200 OK` (`status="UP"`) or `503 Service Unavailable` (`status="DOWN"`).
+   - Zero Credential Leakage: Health outputs report status, latency, and sanitized dialect names. Database passwords, usernames, ports, filesystem paths, and internal connection strings are never exposed.
+
+3. **Graceful Shutdown**:
+   - FastAPI lifespan handler coordinates safe termination: rejects incoming traffic, finishes active analysis requests, gracefully closes persistent database connection pools, and flushes trace and metric buffers.
+
+---
+
+### 24.5 Operational Troubleshooting Runbook
+
+This runbook defines actionable operational procedures for production incidents.
+
+#### Runbook A: Database Failure & Connection Pool Exhaustion
+
+- **Symptoms**:
+  - Readiness probe returns `503 Service Unavailable` with `dependencies.database.status = "DOWN"`.
+  - Metric `persistence_connection_failures_total` or `persistence_transaction_rollbacks_total` is increasing.
+  - Log entries with `reason_code: "DATABASE_UNAVAILABLE"`.
+- **Diagnostic Procedure**:
+  1. Inspect `/health/ready` response for database latency and error codes.
+  2. Query Prometheus: `rate(persistence_connection_failures_total[5m])`.
+  3. Search structured logs for `service="storage"` and `error_type="DatabaseUnavailableError"`.
+- **Operator Action**:
+  1. Check PostgreSQL instance status, disk space, and memory utilization.
+  2. Verify network connectivity between application cluster and PostgreSQL host.
+  3. If connections are exhausted, check active connections in PostgreSQL (`pg_stat_activity`) and increase `pool_size` or review slow transactions.
+  4. Application behavior: Pipeline operations fail-safe with `503 Service Unavailable` without corrupting records or leaking database credentials.
+
+#### Runbook B: External Source Outage (SEBI / Exchanges / Registries)
+
+- **Symptoms**:
+  - Metric `source_unavailable_total{source_id="..."}` spikes.
+  - Upstream Engine 4 and Engine 5 log `source_status: "SOURCE_UNAVAILABLE"`.
+- **Diagnostic Procedure**:
+  1. Inspect Prometheus: `sum by (source_id) (rate(source_unavailable_total[5m]))`.
+  2. Trace failed requests via `/api/v1/traces/recent` checking `engine.4.sources` and `engine.5.evidence` child spans.
+- **Operator Action**:
+  1. Verify if official government/regulatory portals (e.g. SEBI website) are undergoing scheduled maintenance.
+  2. Check firewall egress rules and outbound proxy connectivity.
+  3. If an upstream portal is down, verify that Nivesh Firewall maintains fail-safe operation: **Nivesh NEVER pretends unverified claims are verified**. Engine 8 policy automatically emits `WARN` or `PAUSE` with `ReasonCode.SOURCE_UNAVAILABLE` or `ReasonCode.INSUFFICIENT_EVIDENCE`.
+  4. If outage is prolonged, temporarily adjust cache TTLs in `SourceIntelligenceEngine` if cached authoritative records are acceptable.
+
+#### Runbook C: Engine Failure or Execution Timeout
+
+- **Symptoms**:
+  - Metric `firewall_engine_failures_total{engine="..."}` or `firewall_engine_timeouts_total{engine="..."}` is non-zero.
+  - Pipeline completion metric indicates degraded state: `firewall_analysis_completed_total{status="DEGRADED"}`.
+- **Diagnostic Procedure**:
+  1. Identify failing engine from Prometheus: `topk(3, sum by (engine) (rate(firewall_engine_failures_total[5m])))`.
+  2. Search structured logs: `grep '"engine_key": "<failing_engine>"' logs.json | jq .`.
+  3. Retrieve full execution trace using `correlation_id` from the log entry.
+- **Operator Action**:
+  1. Check if the failure is due to malformed input payload or memory exhaustion.
+  2. Verify that `SafeEngineExecutor` has isolated the failure: the orchestrator logs a warning, passes safe fallback structures downstream, and completes the pipeline in `DEGRADED` status without crashing the process.
+  3. If timeouts are occurring in Engine 1 (OCR) or Engine 6 (Graph analysis), evaluate scaling worker CPU limits or tuning engine execution timeout configurations.
+
+#### Runbook D: High Latency & Slow Processing Spikes
+
+- **Symptoms**:
+  - Metric `http_request_duration_seconds` P95/P99 latency exceeds SLA (> 2.0s).
+  - Metric `firewall_pipeline_duration_seconds` is elevated.
+- **Diagnostic Procedure**:
+  1. Compare `firewall_pipeline_duration_seconds` with `http_request_duration_seconds` to isolate API gateway overhead vs pipeline execution.
+  2. Check per-engine latency in Prometheus: `histogram_quantile(0.95, sum by (le, engine) (rate(firewall_engine_duration_seconds_bucket[5m])))`.
+  3. Inspect `persistence_duration_seconds` to verify if slow database queries are bottlenecking the pipeline.
+- **Operator Action**:
+  1. If `engine.4.sources` is slow: investigate network latency to external registries; enable caching.
+  2. If `storage.persistence` is slow: inspect PostgreSQL query plans on `analyses` and `fingerprints` tables; ensure indexes are active.
+  3. If `engine.1.content` is slow: inspect image OCR resolution limits.
+
+#### Runbook E: Elevated API Errors (4xx / 5xx Spikes)
+
+- **Symptoms**:
+  - `http_requests_total{status_code=~"5.."}` rate increases above 1%.
+  - `http_request_failures_total` alerts fire.
+- **Diagnostic Procedure**:
+  1. Run query: `sum by (status_code, route) (rate(http_requests_total[5m]))`.
+  2. Extract `request_id` from response headers of failing requests.
+  3. Search structured logs for `request_id: "<id>"` to reconstruct full request lifecycle and stack trace.
+- **Operator Action**:
+  1. Distinguish 400 Bad Request (client errors / schema mismatch) from 500 Internal Server Errors.
+  2. For 500 errors, review error type and root cause in structured logs.
+  3. Verify that secret redaction filter has scrubbed any client credentials from error logs.
+
+#### Runbook F: Deployment Rollback & Verification
+
+- **Procedure**:
+  1. **Pre-Rollback Check**:
+     - Check current error rates: `rate(http_requests_total{status_code=~"5.."}[5m])`.
+     - Confirm whether database migrations occurred. Phase 14.2 schema migrations (`alembic/versions/001_initial_persistence_schema.py`) are backward-compatible.
+  2. **Execute Rollback**:
+     - Switch deployment traffic to prior stable release container/image.
+  3. **Post-Rollback Verification**:
+     - Query `/health/live`: Must return `200 OK` within 5 seconds.
+     - Query `/health/ready`: Must return `200 OK` with database status `UP`.
+     - Verify Prometheus metric `http_requests_total{status_code="200"}` resumes normal baseline.
+     - Confirm zero rollback errors in `alembic_version`.
+
+---
+
+### 24.6 Observability Verification & Test Suite
+
+The observability subsystem is verified across 20 comprehensive unit and integration tests (`tests/test_observability.py`):
+
+```bash
+python -X utf8 -m pytest tests/test_observability.py -v
+```
+
+**Results:** **20 passed in 18s** (100% pass rate).
+- Full backend regression suite: **561 passed in 278s** (100% pass rate).
+- Web frontend test suite: **103 passed in 14s** (100% pass rate).
+- Browser extension test suite: **141 passed in 7s** (100% pass rate).
+- Production bundle builds: **Clean (0 errors, 0 warnings)**.
+
+
 

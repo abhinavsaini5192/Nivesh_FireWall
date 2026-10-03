@@ -91,6 +91,11 @@ def get_db_session(
         session.commit()
     except Exception:
         session.rollback()
+        try:
+            from nivesh.observability import metrics
+            metrics.persistence_rollbacks_total.inc(operation="db_session")
+        except Exception:
+            pass
         raise
     finally:
         session.close()
@@ -109,6 +114,11 @@ def check_database_health(engine: Optional[Engine] = None) -> dict[str, Any]:
             "connected": True,
         }
     except Exception as e:
+        try:
+            from nivesh.observability import metrics
+            metrics.persistence_connection_failures_total.inc()
+        except Exception:
+            pass
         return {
             "status": "unavailable",
             "dialect": dialect,

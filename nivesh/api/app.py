@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Depends, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from nivesh.config import get_settings, setup_logging
 from nivesh.orchestrator.config import OrchestratorConfig
@@ -75,6 +75,14 @@ from nivesh.security import (
     CorrelationIdMiddleware,
     log_security_event,
     get_client_ip,
+)
+from nivesh.observability import (
+    ObservabilityMiddleware,
+    configure_observability_logging,
+    check_liveness,
+    check_readiness,
+    metrics,
+    tracer,
 )
 from pydantic import BaseModel
 from datetime import datetime, timezone
@@ -165,7 +173,7 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """Application lifespan context managing startup and shutdown."""
     current_settings = get_settings()
-    setup_logging(current_settings)
+    configure_observability_logging(current_settings)
     if current_settings.is_production():
         current_settings.validate_production_readiness()
     try:
@@ -174,6 +182,17 @@ async def lifespan(app: FastAPI):
         import logging
         logging.getLogger("nivesh.startup").warning("Database schema check notice: %s", e)
     yield
+    # Graceful shutdown lifecycle
+    import logging
+    shutdown_logger = logging.getLogger("nivesh.shutdown")
+    shutdown_logger.info("Initiating graceful shutdown of Nivesh Firewall services...")
+    try:
+        from nivesh.storage.database import _ENGINE
+        if _ENGINE is not None:
+            _ENGINE.dispose()
+    except Exception as e:
+        shutdown_logger.warning("Notice during database connection pool shutdown: %s", e)
+    shutdown_logger.info("Graceful shutdown completed successfully.")
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -193,6 +212,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(ObservabilityMiddleware)
 app.add_middleware(CorrelationIdMiddleware)
 
 
@@ -289,6 +309,42 @@ def health_check():
         ],
         "firewall": f"Nivesh Firewall Phase 11.4 ({current_settings.env})",
     }
+
+
+@app.get("/health/live", tags=["System"])
+@app.get("/api/v1/health/liveness", tags=["System"])
+def liveness_probe():
+    """Liveness probe: verifies process is alive without hitting persistent or external dependencies."""
+    return check_liveness()
+
+
+@app.get("/health/ready", tags=["System"])
+@app.get("/api/v1/health/readiness", tags=["System"])
+def readiness_probe():
+    """Readiness probe: validates required dependencies (database, core engines, source subsystem)."""
+    is_ready, details = check_readiness()
+    if not is_ready:
+        return JSONResponse(status_code=503, content=details)
+    return details
+
+
+@app.get("/api/v1/metrics", tags=["Operations"])
+def get_operational_metrics(request: Request, format: Optional[str] = None):
+    """Operational telemetry endpoint exposing Prometheus or JSON metrics."""
+    accept = request.headers.get("Accept", "")
+    if format == "json" or "application/json" in accept:
+        return JSONResponse(content=metrics.export_json())
+    return Response(content=metrics.export_prometheus(), media_type="text/plain; version=0.0.4; charset=utf-8")
+
+
+@app.get("/api/v1/traces/recent", tags=["Operations"])
+def get_recent_traces(
+    limit: int = 50,
+    trace_id: Optional[str] = None,
+    admin_user: AuthenticatedUser = Depends(require_admin),
+):
+    """Admin-only operational endpoint retrieving recent in-memory trace spans."""
+    return tracer.get_recent_spans(limit=min(limit, 200), trace_id=trace_id)
 
 
 

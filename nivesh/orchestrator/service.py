@@ -74,6 +74,7 @@ from .pipeline import (
     PolicyGate,
     SafeEngineExecutor,
 )
+from nivesh.observability import metrics, tracer, analysis_id_ctx
 from nivesh.schemas.firewall import (
     FirewallAnalysisResponse,
     FirewallDecisionSummary,
@@ -279,6 +280,7 @@ class ProductOrchestrator:
         pipe_start_perf = time.perf_counter()
         started_at_iso = datetime.now(timezone.utc).isoformat()
         analysis_id = f"ORCH-{uuid.uuid4().hex[:12].upper()}"
+        analysis_id_ctx.set(analysis_id)
 
         channel = normalize_channel(channel)
         clean_metadata = sanitize_sensitive_data(metadata or {})
@@ -287,6 +289,7 @@ class ProductOrchestrator:
         if organization_id:
             clean_metadata["organization_id"] = organization_id
         input_type = "text" if text is not None else "url" if url is not None else "image"
+        metrics.pipeline_requests_total.inc(input_type=input_type, channel=channel)
 
         context = AnalysisContext(
             analysis_id=analysis_id,
@@ -1157,7 +1160,19 @@ class ProductOrchestrator:
         if idempotency_key:
             self._idempotency_cache[idempotency_key] = res
 
+        # Record policy decision operational metric
+        if res.policy_decision is not None:
+            dec_str = str(getattr(res.policy_decision.decision, "value", res.policy_decision.decision))
+            sev_str = str(getattr(res.policy_decision.severity, "value", res.policy_decision.severity))
+            metrics.policy_decisions_total.inc(decision=dec_str, severity=sev_str)
+
+        # Record pipeline completion metrics
+        dur_sec = time.perf_counter() - pipe_start_perf
+        metrics.pipeline_completed_total.inc(status=res.pipeline_status)
+        metrics.pipeline_duration_seconds.observe(dur_sec, status=res.pipeline_status)
+
         if self.analysis_repo is not None:
+            persist_start = time.perf_counter()
             try:
                 self.analysis_repo.save_analysis(
                     res,
@@ -1165,7 +1180,10 @@ class ProductOrchestrator:
                     user_id=state.request_metadata.get("user_id"),
                     organization_id=state.request_metadata.get("organization_id"),
                 )
+                metrics.persistence_operations_total.inc(operation="save_analysis", status="SUCCESS")
+                metrics.persistence_duration_seconds.observe(time.perf_counter() - persist_start, operation="save_analysis")
             except Exception as e:
+                metrics.persistence_operations_total.inc(operation="save_analysis", status="ERROR")
                 import logging
                 logging.getLogger("nivesh.orchestrator").warning(
                     "Failed to persist analysis %s: %s", analysis_id, e

@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from .context import AnalysisContext, EngineStatus, PipelineStatus
 from .errors import OrchestrationError
+from nivesh.observability import metrics, tracer, engine_key_ctx
 
 
 class CancellationToken:
@@ -289,44 +290,75 @@ class SafeEngineExecutor:
         Returns:
             (result, duration_ms, retry_count, error)
         """
-        if cancellation_token and cancellation_token.is_cancelled:
-            return None, 0.0, 0, OrchestrationError(f"Cancelled before {engine_name} execution")
-
-        t_start = time.perf_counter()
-        attempt = 0
-        last_error: Optional[Exception] = None
-
-        while attempt <= max_retries:
+        engine_token = engine_key_ctx.set(engine_key)
+        span = tracer.start_span(
+            name=f"engine_{engine_key}",
+            attributes={"engine_key": engine_key, "engine_name": engine_name},
+        )
+        try:
             if cancellation_token and cancellation_token.is_cancelled:
-                return None, round((time.perf_counter() - t_start) * 1000, 2), attempt, OrchestrationError(
-                    f"Cancelled during retry of {engine_name}"
-                )
+                span.finish(status="CANCELLED")
+                return None, 0.0, 0, OrchestrationError(f"Cancelled before {engine_name} execution")
 
-            t_attempt_start = time.perf_counter()
-            try:
-                if timeout_ms is not None and timeout_ms > 0:
-                    timeout_sec = timeout_ms / 1000.0
-                    with ThreadPoolExecutor(max_workers=1) as executor:
-                        future = executor.submit(func, *args, **kwargs)
-                        try:
-                            result = future.result(timeout=timeout_sec)
-                            dur = round((time.perf_counter() - t_start) * 1000, 2)
-                            return result, dur, attempt, None
-                        except FutureTimeoutError as te:
-                            raise TimeoutError(
-                                f"{engine_name} exceeded execution timeout of {timeout_ms}ms"
-                            ) from te
-                else:
-                    result = func(*args, **kwargs)
+            t_start = time.perf_counter()
+            attempt = 0
+            last_error: Optional[Exception] = None
+
+            while attempt <= max_retries:
+                if cancellation_token and cancellation_token.is_cancelled:
                     dur = round((time.perf_counter() - t_start) * 1000, 2)
-                    return result, dur, attempt, None
+                    span.finish(status="CANCELLED")
+                    return None, dur, attempt, OrchestrationError(
+                        f"Cancelled during retry of {engine_name}"
+                    )
 
-            except Exception as e:
-                last_error = e
-                attempt += 1
-                if attempt <= max_retries:
-                    if retry_delay_ms > 0:
-                        time.sleep(retry_delay_ms / 1000.0)
+                t_attempt_start = time.perf_counter()
+                try:
+                    if timeout_ms is not None and timeout_ms > 0:
+                        timeout_sec = timeout_ms / 1000.0
+                        with ThreadPoolExecutor(max_workers=1) as executor:
+                            future = executor.submit(func, *args, **kwargs)
+                            try:
+                                result = future.result(timeout=timeout_sec)
+                                dur = round((time.perf_counter() - t_start) * 1000, 2)
+                                metrics.engine_executions_total.inc(engine_key=engine_key, status="SUCCESS")
+                                metrics.engine_duration_seconds.observe(dur / 1000.0, engine_key=engine_key, status="SUCCESS")
+                                if attempt > 0:
+                                    metrics.engine_retries_total.inc(value=attempt, engine_key=engine_key)
+                                span.finish(status="OK")
+                                return result, dur, attempt, None
+                            except FutureTimeoutError as te:
+                                metrics.engine_timeouts_total.inc(engine_key=engine_key)
+                                raise TimeoutError(
+                                    f"{engine_name} exceeded execution timeout of {timeout_ms}ms"
+                                ) from te
+                    else:
+                        result = func(*args, **kwargs)
+                        dur = round((time.perf_counter() - t_start) * 1000, 2)
+                        metrics.engine_executions_total.inc(engine_key=engine_key, status="SUCCESS")
+                        metrics.engine_duration_seconds.observe(dur / 1000.0, engine_key=engine_key, status="SUCCESS")
+                        if attempt > 0:
+                            metrics.engine_retries_total.inc(value=attempt, engine_key=engine_key)
+                        span.finish(status="OK")
+                        return result, dur, attempt, None
 
-        total_dur = round((time.perf_counter() - t_start) * 1000, 2)
-        return None, total_dur, attempt - 1, last_error
+                except Exception as e:
+                    last_error = e
+                    attempt += 1
+                    if attempt <= max_retries:
+                        if retry_delay_ms > 0:
+                            time.sleep(retry_delay_ms / 1000.0)
+
+            total_dur = round((time.perf_counter() - t_start) * 1000, 2)
+            metrics.engine_executions_total.inc(engine_key=engine_key, status="FAILED")
+            metrics.engine_duration_seconds.observe(total_dur / 1000.0, engine_key=engine_key, status="FAILED")
+            if attempt > 1:
+                metrics.engine_retries_total.inc(value=attempt - 1, engine_key=engine_key)
+            if isinstance(last_error, TimeoutError):
+                span.finish(status="TIMEOUT")
+            else:
+                span.record_exception(last_error or Exception("Unknown engine error"))
+                span.finish(status="ERROR")
+            return None, total_dur, attempt - 1, last_error
+        finally:
+            engine_key_ctx.reset(engine_token)

@@ -9,13 +9,13 @@ import logging
 from typing import Optional
 
 from nivesh.config.settings import Settings
-from nivesh.orchestrator.service import sanitize_sensitive_data
 
 
 class SensitiveDataRedactor(logging.Filter):
     """Logging filter that sanitizes passwords, credentials, OTPs, PINs, and card numbers."""
 
     def filter(self, record: logging.LogRecord) -> bool:
+        from nivesh.orchestrator.service import sanitize_sensitive_data
         if isinstance(record.msg, str):
             record.msg = sanitize_sensitive_data(record.msg)
         if record.args:

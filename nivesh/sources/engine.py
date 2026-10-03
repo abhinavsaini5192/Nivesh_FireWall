@@ -136,9 +136,32 @@ class SourceIntelligenceEngine:
 
                         if doc.retrieval.mode == "CACHE":
                             cache_hits += 1
+                            try:
+                                from nivesh.observability import metrics
+                                metrics.source_cache_hits_total.inc(source_name=source_id)
+                            except Exception:
+                                pass
+                        else:
+                            try:
+                                from nivesh.observability import metrics
+                                metrics.source_cache_misses_total.inc(source_name=source_id)
+                            except Exception:
+                                pass
 
                         if doc.retrieval.status in ("RETRIEVAL_FAILED", "SOURCE_UNAVAILABLE", "RATE_LIMITED"):
                             total_retrieval_failures += 1
+                            try:
+                                from nivesh.observability import metrics
+                                metrics.source_unavailable_total.inc(source_name=source_id)
+                                metrics.source_requests_total.inc(source_name=source_id, status="UNAVAILABLE")
+                            except Exception:
+                                pass
+                        else:
+                            try:
+                                from nivesh.observability import metrics
+                                metrics.source_requests_total.inc(source_name=source_id, status="SUCCESS")
+                            except Exception:
+                                pass
 
                         # Extract structured evidence candidates
                         candidates = SourceNormalizer.extract_evidence_candidates(

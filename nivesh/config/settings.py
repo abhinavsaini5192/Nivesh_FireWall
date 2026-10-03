@@ -18,6 +18,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 EnvironmentMode = Literal["development", "test", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+LogFormat = Literal["json", "text"]
 SourceMode = Literal["LIVE", "CACHE", "FIXTURE"]
 
 
@@ -109,10 +110,30 @@ class Settings(BaseSettings):
         description="Allowed browser extension IDs for chrome-extension:// origins",
     )
 
-    # 5. Logging
+    # 5. Logging & Observability
     log_level: LogLevel = Field(
         default="INFO",
         description="System logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL",
+    )
+    log_format: LogFormat = Field(
+        default="json",
+        description="Log output structure: 'json' (production structured) or 'text' (console)",
+    )
+    tracing_enabled: bool = Field(
+        default=True,
+        description="Operational flag controlling distributed tracing span generation",
+    )
+    metrics_enabled: bool = Field(
+        default=True,
+        description="Operational flag controlling Prometheus/JSON metrics collection",
+    )
+    metrics_path: str = Field(
+        default="/api/v1/metrics",
+        description="Endpoint path where operational metrics are exposed",
+    )
+    health_db_timeout_seconds: float = Field(
+        default=2.0,
+        description="Timeout for database probe during readiness check",
     )
 
     # 6. Authoritative Source Intelligence (Engine 4)
