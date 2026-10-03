@@ -284,6 +284,15 @@ class Settings(BaseSettings):
                 "NIVESH_SOURCE_MODE=LIVE requires NIVESH_LIVE_SOURCES_ENABLED=True in production."
             )
 
+        # F. Secret key entropy validation
+        if self.secret_key is not None and (
+            "change_this" in self.secret_key.lower()
+            or len(self.secret_key.strip()) < 16
+        ):
+            raise ValueError(
+                "Production environment cannot use placeholder or insecure NIVESH_SECRET_KEY."
+            )
+
     def is_development(self) -> bool:
         return self.env == "development"
 

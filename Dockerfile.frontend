@@ -1,0 +1,43 @@
+# ==============================================================================
+# Nivesh Firewall — Production Frontend Dockerfile
+# Phase 14.5: Deployment, Performance & Production Validation
+# ==============================================================================
+# Multi-stage build: compiles React/TypeScript app into static bundle
+# and serves via Alpine Nginx with reverse proxy to backend API.
+# ==============================================================================
+
+# --- Stage 1: Build Application ---
+FROM node:20-alpine AS build
+
+WORKDIR /app
+
+# Copy package descriptors and install dependencies
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci --prefer-offline --no-audit
+
+# Copy frontend source files
+COPY frontend/ ./
+
+# Build production bundle with optimized chunking
+ENV NODE_ENV=production
+RUN npm run build
+
+# --- Stage 2: Serve with Nginx ---
+FROM nginx:1.27-alpine AS runtime
+
+# Remove default nginx static assets
+RUN rm -rf /usr/share/nginx/html/*
+
+# Copy built assets from builder stage
+COPY --from=build /app/dist /usr/share/nginx/html
+
+# Copy custom Nginx configuration
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# Expose HTTP port
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://127.0.0.1/ || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

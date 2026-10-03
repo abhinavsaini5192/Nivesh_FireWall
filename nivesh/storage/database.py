@@ -140,13 +140,31 @@ def drop_tables(engine: Optional[Engine] = None) -> None:
 
 
 def run_migrations(alembic_ini_path: Optional[str] = None) -> None:
-    """Programmatically run Alembic migrations to head."""
+    """Programmatically run Alembic migrations to head idempotently."""
     from alembic.config import Config
     from alembic import command
+    from sqlalchemy import inspect, text
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     ini_path = alembic_ini_path or os.path.join(base_dir, "alembic.ini")
     alembic_cfg = Config(ini_path)
-    command.upgrade(alembic_cfg, "head")
+
+    eng = get_engine()
+    inspector = inspect(eng)
+    tables = inspector.get_table_names()
+
+    has_analyses = "analyses" in tables
+    has_version_row = False
+    if "alembic_version" in tables:
+        with eng.connect() as conn:
+            val = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+            if val:
+                has_version_row = True
+
+    # If schema exists but alembic_version row was not stamped, stamp head
+    if has_analyses and not has_version_row:
+        command.stamp(alembic_cfg, "head")
+    else:
+        command.upgrade(alembic_cfg, "head")
 
 
 def reset_engine_for_testing() -> None:

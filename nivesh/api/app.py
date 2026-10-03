@@ -176,11 +176,18 @@ async def lifespan(app: FastAPI):
     configure_observability_logging(current_settings)
     if current_settings.is_production():
         current_settings.validate_production_readiness()
-    try:
-        create_tables()
-    except Exception as e:
-        import logging
-        logging.getLogger("nivesh.startup").warning("Database schema check notice: %s", e)
+        try:
+            from nivesh.storage.database import run_migrations
+            run_migrations()
+        except Exception as e:
+            import logging
+            logging.getLogger("nivesh.startup").warning("Alembic migration notice: %s", e)
+    else:
+        try:
+            create_tables()
+        except Exception as e:
+            import logging
+            logging.getLogger("nivesh.startup").warning("Database schema check notice: %s", e)
     yield
     # Graceful shutdown lifecycle
     import logging
@@ -244,7 +251,7 @@ audit_repo = SqlAlchemyAuditRepository()
 content_engine = ContentIntelligenceEngine()
 claims_engine = ClaimIntelligenceEngine()
 actions_engine = ActionIntelligenceEngine()
-sources_engine = SourceIntelligenceEngine()
+sources_engine = SourceIntelligenceEngine(default_mode=settings.source_mode)
 evidence_engine = EvidenceVerificationEngine()
 threat_engine = ThreatIntelligenceEngine()
 fingerprint_engine = ScamFingerprintEngine(repository=fingerprint_repo)

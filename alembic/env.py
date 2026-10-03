@@ -14,9 +14,11 @@ from nivesh.storage.database import get_engine
 
 config = context.config
 
-# Interpret the config file for Python logging if present
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+import logging
+
+# Interpret the config file for Python logging if present and not already configured
+if config.config_file_name is not None and not logging.getLogger().handlers:
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

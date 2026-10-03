@@ -1,0 +1,99 @@
+# ==============================================================================
+# Nivesh Firewall — Production Multi-Container Compose Configuration
+# Phase 14.5: Deployment, Performance & Production Validation
+# ==============================================================================
+
+version: "3.8"
+
+networks:
+  nivesh_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. PostgreSQL Persistent Relational Database
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: nivesh_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nivesh_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Database password required}
+      POSTGRES_DB: ${POSTGRES_DB:-nivesh_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - nivesh_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ----------------------------------------------------------------------------
+  # 2. Nivesh Firewall Backend API Service
+  # ----------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nivesh/firewall-backend:1.0.0
+    container_name: nivesh_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NIVESH_ENV: production
+      NIVESH_DEBUG: "False"
+      NIVESH_HOST: "0.0.0.0"
+      NIVESH_PORT: "8000"
+      NIVESH_SECRET_KEY: ${NIVESH_SECRET_KEY:?Application secret key required}
+      NIVESH_DATABASE_URL: postgresql://${POSTGRES_USER:-nivesh_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nivesh_db}
+      NIVESH_ALLOWED_ORIGINS: ${NIVESH_ALLOWED_ORIGINS:-http://localhost,https://app.nivesh.ai}
+      NIVESH_ALLOWED_EXTENSION_IDS: ${NIVESH_ALLOWED_EXTENSION_IDS:-}
+      NIVESH_LOG_LEVEL: ${NIVESH_LOG_LEVEL:-INFO}
+      NIVESH_LOG_FORMAT: json
+      NIVESH_SOURCE_MODE: ${NIVESH_SOURCE_MODE:-FIXTURE}
+      NIVESH_LIVE_SOURCES_ENABLED: ${NIVESH_LIVE_SOURCES_ENABLED:-False}
+      NIVESH_TRACING_ENABLED: "True"
+      NIVESH_METRICS_ENABLED: "True"
+      NIVESH_ADMIN_API_KEY: ${NIVESH_ADMIN_API_KEY:-}
+      NIVESH_SERVICE_API_KEY: ${NIVESH_SERVICE_API_KEY:-}
+    networks:
+      - nivesh_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health/live"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+
+  # ----------------------------------------------------------------------------
+  # 3. Nivesh Firewall Frontend & Reverse Proxy
+  # ----------------------------------------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    image: nivesh/firewall-frontend:1.0.0
+    container_name: nivesh_frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "80:80"
+    networks:
+      - nivesh_net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
