@@ -11,6 +11,8 @@
 
 import { backgroundState } from './state';
 import { ExtensionApiClient, ExtensionApiClientError } from '../api/client';
+import { analysisBridge } from '../bridge';
+import type { BrowserAnalysisRequest } from '../bridge';
 import { getExtensionConfig, buildNiveshWebAppUrl } from '../config';
 import { generateExtensionRequestId } from '../types/messages';
 import { generateCaptureId } from '../types/capture';
@@ -30,7 +32,7 @@ import type {
 } from '../types/messages';
 import type { ExtensionRuntimeState, LastAnalysisReference } from '../types/state';
 import type { SafePageContext } from '../types/context';
-import type { CapturePayload } from '../types/capture';
+import type { CapturePayload, CaptureSourceType } from '../types/capture';
 
 const apiClient = new ExtensionApiClient();
 
@@ -40,8 +42,9 @@ const apiClient = new ExtensionApiClient();
 export async function handleGetStatus(
   _message: GetStatusMessage
 ): Promise<ExtensionResponse<ExtensionRuntimeState>> {
+  const tabId = _message.payload?.tabId;
   // Probe health in background if still connecting
-  const current = backgroundState.getState();
+  const current = backgroundState.getState(tabId);
   if (current.connectionState === 'CONNECTING') {
     const health = await apiClient.checkHealth(2500);
     backgroundState.setConnectionState(health.isAvailable ? 'CONNECTED' : 'UNAVAILABLE');
@@ -50,7 +53,7 @@ export async function handleGetStatus(
   return {
     success: true,
     requestId: _message.requestId,
-    data: backgroundState.getState(),
+    data: backgroundState.getState(tabId),
   };
 }
 
@@ -245,8 +248,8 @@ export async function handleScanRequest(
   const { tabId, capture } = message.payload;
   const requestId = message.requestId || generateExtensionRequestId();
 
-  // 1. Guard against concurrent duplicate scans
-  const currentState = backgroundState.getState();
+  // 1. Guard against concurrent duplicate scans on this specific tab
+  const currentState = backgroundState.getState(tabId);
   if (currentState.status === 'ANALYZING') {
     return {
       success: false,
@@ -258,23 +261,23 @@ export async function handleScanRequest(
     };
   }
 
-  // 2. Prepare analysis parameters from CapturePayload or fallback
-  let inputType: 'url' | 'text' = 'text';
+  // 2. Prepare canonical bridge request parameters (Phase 13.3 Section 3 & 8)
+  let sourceType: CaptureSourceType = capture?.sourceType || 'CURRENT_PAGE';
   let analyzeText: string | undefined;
   let analyzeUrl: string | undefined;
   let pageOrigin = '';
-  let pageUrl = '';
+  let pageTitle = '';
+  let captureId = capture?.captureId || generateCaptureId();
 
   if (capture) {
     pageOrigin = capture.pageOrigin;
-    pageUrl = capture.url || '';
-    if (capture.sourceType === 'URL') {
-      inputType = 'url';
+    pageTitle = capture.pageTitle || '';
+    analyzeUrl = capture.url;
+    sourceType = capture.sourceType;
+    if (sourceType === 'URL') {
       analyzeUrl = capture.url;
     } else {
-      inputType = 'text';
       analyzeText = capture.text;
-      analyzeUrl = capture.url;
     }
   } else {
     // Phase 13.1 Fallback: Fetch safe context from tab
@@ -282,13 +285,13 @@ export async function handleScanRequest(
     try {
       pageContext = await fetchPageContextFromTab(tabId, requestId);
       pageOrigin = pageContext.pageOrigin;
-      pageUrl = pageContext.pageUrl;
-      inputType = pageContext.pageUrl ? 'url' : 'text';
+      pageTitle = pageContext.pageTitle || '';
       analyzeUrl = pageContext.pageUrl;
       analyzeText = pageContext.selectedText || pageContext.metaDescription || pageContext.pageTitle;
+      sourceType = pageContext.selectedText ? 'SELECTED_TEXT' : 'CURRENT_PAGE';
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Could not communicate with tab content script.';
-      backgroundState.failRequest({ code: 'TAB_COMMUNICATION_FAILED', message: errorMsg });
+      backgroundState.failRequest({ code: 'TAB_COMMUNICATION_FAILED', message: errorMsg }, tabId);
       return {
         success: false,
         requestId,
@@ -297,30 +300,43 @@ export async function handleScanRequest(
     }
   }
 
-  // 3. Mark request started
-  backgroundState.startRequest({
+  // 3. Attach tab-scoped session context (Phase 13.3 Section 5 & 29)
+  const sessionId = backgroundState.getSessionIdForTab(tabId);
+
+  const bridgeRequest: BrowserAnalysisRequest = {
+    captureId,
     requestId,
-    tabId,
-    startedAt: new Date().toISOString(),
+    sessionId,
+    sourceType,
+    text: analyzeText,
+    url: analyzeUrl,
     pageOrigin,
-    pageUrl,
-  });
+    pageTitle,
+    tabId,
+    timestamp: new Date().toISOString(),
+  };
 
-  // 4. Dispatch to Unified Firewall API (No client-side risk scoring)
+  // 4. Mark request started with correlation (Section 4)
+  backgroundState.startRequest(
+    {
+      requestId,
+      tabId,
+      startedAt: new Date().toISOString(),
+      pageOrigin,
+      pageUrl: analyzeUrl || '',
+    },
+    sessionId
+  );
+
+  // 5. Dispatch via Nivesh Analysis Bridge (Unified Firewall API)
   try {
-    const analysisRef = await apiClient.analyze({
-      input_type: inputType,
-      url: analyzeUrl,
-      text: analyzeText,
-      channel: 'web',
-      session_id: capture?.captureId || requestId,
-    });
+    const bridgeResult = await analysisBridge.submitAnalysis(bridgeRequest);
 
-    backgroundState.completeRequest(analysisRef);
+    backgroundState.completeRequest(bridgeResult.reference, tabId);
     return {
       success: true,
       requestId,
-      data: analysisRef,
+      data: bridgeResult.reference,
     };
   } catch (err) {
     let errorCode = 'PIPELINE_FAILURE';
@@ -333,7 +349,7 @@ export async function handleScanRequest(
       errorMessage = err.message;
     }
 
-    backgroundState.failRequest({ code: errorCode, message: errorMessage });
+    backgroundState.failRequest({ code: errorCode, message: errorMessage }, tabId);
     return {
       success: false,
       requestId,

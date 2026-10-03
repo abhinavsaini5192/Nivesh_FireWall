@@ -64,6 +64,7 @@ const decisionCard = document.getElementById('decision-card') as HTMLDivElement;
 const decisionBadge = document.getElementById('decision-badge') as HTMLSpanElement;
 const analysisIdBadge = document.getElementById('analysis-id-badge') as HTMLSpanElement;
 const decisionReason = document.getElementById('decision-reason') as HTMLParagraphElement;
+const resultSignals = document.getElementById('result-signals') as HTMLDivElement;
 
 let currentTabId: number | null = null;
 let currentAnalysisId: string | undefined;
@@ -127,9 +128,39 @@ function renderAnalysisResult(reference: LastAnalysisReference): void {
 
   decisionBadge.textContent = reference.decision;
   analysisIdBadge.textContent = reference.analysisId;
-  decisionReason.textContent = reference.primaryReason;
+  decisionReason.textContent = reference.userMessage || reference.primaryReason;
 
   decisionCard.className = `decision-card ${reference.decision}`;
+
+  // Populate compact signal chips (Phase 13.3 Section 16)
+  if (resultSignals) {
+    resultSignals.innerHTML = '';
+    if (typeof reference.claimsCount === 'number' && reference.claimsCount > 0) {
+      const chip = document.createElement('span');
+      chip.className = 'badge-signal';
+      chip.textContent = `${reference.claimsCount} Claim${reference.claimsCount > 1 ? 's' : ''}`;
+      resultSignals.appendChild(chip);
+    }
+    if (reference.evidenceStatus && reference.evidenceStatus !== 'NOT_ESTABLISHED') {
+      const chip = document.createElement('span');
+      chip.className = 'badge-signal';
+      chip.textContent = `Evidence: ${reference.evidenceStatus}`;
+      resultSignals.appendChild(chip);
+    }
+    if (reference.identityStatus && reference.identityStatus !== 'NOT_ESTABLISHED') {
+      const chip = document.createElement('span');
+      chip.className = 'badge-signal';
+      chip.textContent = `Identity: ${reference.identityStatus}`;
+      resultSignals.appendChild(chip);
+    }
+    if (reference.fingerprintMatch && reference.fingerprintMatch !== 'NO_MATCH') {
+      const chip = document.createElement('span');
+      chip.className = 'badge-signal';
+      chip.textContent = `Pattern: ${reference.fingerprintMatch}`;
+      resultSignals.appendChild(chip);
+    }
+  }
+
   transitionView('result');
 }
 

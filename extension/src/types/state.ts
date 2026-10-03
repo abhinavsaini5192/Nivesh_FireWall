@@ -28,11 +28,34 @@ export interface ActiveRequestRecord {
 
 export interface LastAnalysisReference {
   analysisId: string;
+  captureId?: string;
+  requestId?: string;
+  tabId?: number;
   decision: 'ALLOW' | 'INFORM' | 'WARN' | 'PAUSE' | 'BLOCK' | string;
   severity: string;
   primaryReason: string;
+  userMessage?: string;
   completedAt: string;
   webAppUrl: string;
+  claimsCount?: number;
+  evidenceStatus?: string;
+  identityStatus?: string;
+  fingerprintMatch?: string;
+  threatSignalCount?: number;
+  durationMs?: number;
+}
+
+export interface TabRuntimeState {
+  tabId: number;
+  status: ExtensionStatus;
+  activeRequest: ActiveRequestRecord | null;
+  lastAnalysis: LastAnalysisReference | null;
+  lastError: {
+    code: string;
+    message: string;
+    timestamp: string;
+  } | null;
+  sessionId?: string;
 }
 
 export interface ExtensionRuntimeState {
