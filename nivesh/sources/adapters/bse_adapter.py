@@ -27,7 +27,16 @@ from nivesh.schemas.sources import (
 )
 from nivesh.sources.adapters.base import BaseSourceAdapter
 from nivesh.sources.cache import SourceCache
-from nivesh.sources.rate_limiter import RateLimiter
+from nivesh.sources.adapters.bse_providers import (
+    BaseBSEProvider,
+    OfficialAuthorizedBSEProvider,
+    PublicBSEProvider,
+    BSE_PUBLIC_WEB_URL,
+    BSE_ANN_PAGE_URL,
+    BSE_CORP_ACTION_PAGE_URL,
+    BSE_BOARD_MEETING_PAGE_URL,
+    BSE_RESULTS_PAGE_URL,
+)
 
 BSE_API_BASE_URL = "https://api.bseindia.com/corporate-data/v1/announcements"
 BSE_PUBLIC_BASE_URL = "https://www.bseindia.com/corporates/ann.html"
@@ -104,10 +113,28 @@ class BSEAdapter(BaseSourceAdapter):
         default_mode: RetrievalMode = "LIVE",
         api_key: Optional[str] = None,
         api_secret: Optional[str] = None,
+        provider: Optional[BaseBSEProvider] = None,
+        provider_preference: str = "AUTO",
     ):
         super().__init__(cache, rate_limiter, timeout, default_mode)
         self.api_key = api_key
         self.api_secret = api_secret
+        self.provider = provider
+        self.provider_preference = provider_preference
+
+    def resolve_active_provider(self) -> Optional[BaseBSEProvider]:
+        """Resolves active BSE provider based on configuration, credentials, and preference."""
+        if self.provider:
+            return self.provider
+
+        pref = (self.provider_preference or "AUTO").upper()
+        if pref == "OFFICIAL" or (pref == "AUTO" and self.api_key):
+            if self.api_key:
+                return OfficialAuthorizedBSEProvider(api_key=self.api_key, api_secret=self.api_secret)
+            return None
+        elif pref == "PUBLIC":
+            return PublicBSEProvider(safe_fetch_fn=self.safe_http_fetch, timeout=self.timeout, rate_limiter=self.rate_limiter)
+        return None
 
     def search(self, query: SourceQuery) -> list[SourceSearchResult]:
         """Searches BSE corporate disclosures by scrip code, symbol, or company name."""
@@ -154,10 +181,37 @@ class BSEAdapter(BaseSourceAdapter):
         mode_used: RetrievalMode = self.default_mode
         retrieval_err: Optional[str] = None
         status: RetrievalStatus = "SUCCESS"
+        rec_id: Optional[str] = symbol
+        provider_name: str = "OfficialAuthorizedBSEProvider" if self.api_key else "BSEAdapter"
+        access_method: str = "BSE Corporate Data API"
+        source_authority: str = "Bombay Stock Exchange"
+        pub_date: Optional[str] = None
 
         if self.default_mode == "LIVE":
+            if self.provider:
+                cat = "CORPORATE_ACTION" if any(k in ("bonus", "split", "dividend") for k in keywords) else "CORPORATE_ANNOUNCEMENT"
+                p_status, p_rec, p_err = self.provider.fetch_corporate_data(cat, symbol, keywords)
+                if p_status == "SUCCESS" and p_rec:
+                    live_content = p_rec["details"]
+                    mode_used = self.provider.default_success_mode
+                    status = "SUCCESS"
+                    rec_id = p_rec.get("accession_number")
+                    pub_date = p_rec.get("broadcast_date")
+                    provider_name = self.provider.provider_name
+                    access_method = self.provider.access_method
+                    source_authority = self.provider.source_authority
+                elif p_status in ("CREDENTIALS_MISSING", "ACCESS_UNAUTHORIZED"):
+                    retrieval_err = p_err
+                    status = p_status
+                    mode_used = "SOURCE_UNAVAILABLE"
+                    provider_name = self.provider.provider_name
+                    access_method = self.provider.access_method
+                else:
+                    retrieval_err = p_err
+                    status = p_status
+                    mode_used = "OFFICIAL_SNAPSHOT"
             # Live query requires valid server-side credentials
-            if not self.api_key:
+            elif not self.api_key:
                 retrieval_err = "BSE Corporate Data API credentials missing (BSE_API_KEY unconfigured). Live exchange access requires legitimate production credentials."
                 status = "CREDENTIALS_MISSING"
                 mode_used = "SOURCE_UNAVAILABLE"
@@ -187,32 +241,35 @@ class BSEAdapter(BaseSourceAdapter):
                     retrieval_err = str(e)
                     mode_used = "OFFICIAL_SNAPSHOT"
 
-        if live_content and mode_used == "LIVE":
+        if live_content and (mode_used == "LIVE" or mode_used.startswith("LIVE")):
             content = live_content
             status = "SUCCESS"
             prov = self.build_provenance(
                 source="BSE",
-                source_authority="Bombay Stock Exchange",
-                retrieval_mode="LIVE",
+                source_authority=source_authority,
+                retrieval_mode=mode_used,
                 retrieved_at=retrieved_at_iso,
-                source_record_id=symbol,
+                source_record_id=rec_id or symbol,
                 source_reference=result.url,
                 response_status="SUCCESS",
-                evidence=f"Live BSE Corporate Data API query successfully confirmed disclosures for {symbol}."
+                evidence=f"Live BSE corporate disclosure query confirmed disclosures for {symbol}.",
+                provider=provider_name,
+                access_method=access_method,
             )
-            pub_date = None
         elif mode_used == "SOURCE_UNAVAILABLE" or self.default_mode == "SOURCE_UNAVAILABLE":
             if status not in ("CREDENTIALS_MISSING", "ACCESS_UNAUTHORIZED"):
                 status = "SOURCE_UNAVAILABLE"
             content = f"BSE corporate data service is currently unavailable: {retrieval_err or 'Access unconfigured'}"
             prov = self.build_provenance(
                 source="BSE",
-                source_authority="Bombay Stock Exchange",
+                source_authority=source_authority,
                 retrieval_mode="SOURCE_UNAVAILABLE",
                 retrieved_at=retrieved_at_iso,
                 source_reference=result.url,
                 response_status=status,
-                evidence=f"BSE service unavailable ({status}): {retrieval_err or 'Connection failed'}"
+                evidence=f"BSE service unavailable ({status}): {retrieval_err or 'Connection failed'}",
+                provider=provider_name,
+                access_method=access_method,
             )
             pub_date = None
         else:
@@ -266,7 +323,9 @@ class BSEAdapter(BaseSourceAdapter):
                 source_record_id=rec_id,
                 source_reference=result.url,
                 response_status=status,
-                evidence=f"{'Official regulatory snapshot' if resolved_mode == 'OFFICIAL_SNAPSHOT' else 'Test fixture'} evaluation: {status}"
+                evidence=f"{'Official regulatory snapshot' if resolved_mode == 'OFFICIAL_SNAPSHOT' else 'Test fixture'} evaluation: {status}",
+                provider="OfficialSnapshot" if resolved_mode == "OFFICIAL_SNAPSHOT" else "Fixture",
+                access_method="Verified regulatory snapshot dataset" if resolved_mode == "OFFICIAL_SNAPSHOT" else "Test fixture",
             )
 
         doc = SourceDocument(

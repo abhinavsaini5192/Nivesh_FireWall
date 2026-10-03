@@ -198,27 +198,42 @@ class AuthoritativeSourceGateway:
             )
         elif source_key == "BSE":
             live_on = bool(self.settings.live_sources_enabled or getattr(self.settings, "bse_live_enabled", False))
-            has_creds = bool(getattr(self.settings, "bse_api_key", None))
-            if not live_on:
-                state = "DISABLED"
-                diag = "Live BSE corporate disclosures disabled in configuration"
-            elif not has_creds:
-                state = "CREDENTIALS_MISSING"
-                diag = "BSE Corporate Data API credentials missing (BSE_API_KEY unconfigured). Requires authorized enterprise key."
+            bse_adapter = self.get_adapter("BSEAdapter")
+            active_p = getattr(bse_adapter, "resolve_active_provider", lambda: None)() if bse_adapter else None
+            from nivesh.sources.adapters.bse_providers import PublicBSEProvider
+
+            if active_p and isinstance(active_p, PublicBSEProvider):
+                state = "LIVE_AVAILABLE" if live_on else "DISABLED"
+                diag = "BSE Public Dissemination provider active (SSRF-safe client)"
+                access_mech = "BSE Public Dissemination Endpoint (SSRF-safe client)"
+                creds_req = False
+                has_creds = True
             else:
-                state = "LIVE_AVAILABLE"
-                diag = "BSE Corporate Data API active"
+                has_creds = bool(getattr(self.settings, "bse_api_key", None))
+                if not live_on:
+                    state = "DISABLED"
+                    diag = "Live BSE corporate disclosures disabled in configuration"
+                elif not has_creds:
+                    state = "CREDENTIALS_MISSING"
+                    diag = "BSE Corporate Data API credentials missing (BSE_API_KEY unconfigured). Requires authorized enterprise key."
+                else:
+                    state = "LIVE_AVAILABLE"
+                    diag = "BSE Corporate Data API active"
+                access_mech = "BSE Corporate Data API v1 (Authorized HTTPS API)"
+                creds_req = True
+
             return ProviderAccessConfig(
                 source_identifier="BSE",
                 authority_name="Bombay Stock Exchange",
                 state=state,
-                access_mechanism="BSE Corporate Data API v1 (Authorized HTTPS API)",
-                credentials_required=True,
+                access_mechanism=access_mech,
+                credentials_required=creds_req,
                 has_credentials=has_creds,
                 live_supported=True,
                 snapshot_fallback_available=True,
                 limitations=[
-                    "BSE Corporate Data API licensing required",
+                    "BSE Corporate Data API licensing required for enterprise feed",
+                    "Akamai edge protection blocks unauthenticated automated scripts",
                     "Registered production IP restrictions apply",
                 ],
                 diagnostic_message=diag,
