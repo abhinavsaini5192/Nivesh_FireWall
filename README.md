@@ -1622,4 +1622,55 @@ Phase 12.1 establishes the foundational user interface and design system for the
 - **Reusable Component Library (`components/common/`)**: 18 accessible components (`Button`, `IconButton`, `Input`, `Textarea`, `Select`, `Card`, `Panel`, `Badge`, `StatusIndicator`, `Alert`, `EmptyState`, `LoadingState`, `ErrorState`, `Modal`, `Tooltip`, `Divider`, `SectionHeader`, `MetadataRow`).
 - **Frontend Verification**: 25 Vitest unit/component/API tests passing with 0 warnings and 0 errors.
 
+---
+
+## 19. Firewall Analysis Experience (Phase 12.2)
+
+Phase 12.2 connects the user interface to the **real Phase 11 Unified Firewall API**, delivering the complete user-facing content analysis workflow with zero fake data and zero client-side policy recalculation.
+
+```text
+Enter financial content
+        ↓
+Submit for analysis
+        ↓
+Nivesh Firewall processes it (POST /api/v1/firewall/analyze)
+        ↓
+Receive authoritative backend response
+        ↓
+View Engine 8 Policy Decision (ALLOW | INFORM | WARN | PAUSE | BLOCK)
+        ↓
+Explore 8 Intelligence Panels (Claims, Actions, Evidence, Identity, Threat, Fingerprint, Behaviour, Provenance)
+```
+
+### 19.1 Key Deliverables & Architectural Implementation
+1. **Real Content Input & Submission**:
+   - `ContentEntryCard` on `ProtectView` with client-side character boundary validation (<100,000 chars), channel selection, and duplicate submission prevention during active inflight requests.
+2. **Authoritative Backend API Integration**:
+   - Dispatches requests via `apiClient.analyze()` to `POST /api/v1/firewall/analyze` with session correlation.
+   - Handles deep linking via hash routing (`#protect?id=ORCH-...`) using `apiClient.getAnalysis(id)` without redundant pipeline rerun.
+3. **Calm, Honest State Model**:
+   - State machine: `IDLE` → `VALIDATING` → `SUBMITTING` → `ANALYZING` → `SUCCESS` (or `ERROR` / `PARTIAL_RESULT`).
+   - Multi-step loading experience reflecting the actual pipeline engines without simulated timers.
+4. **Authoritative Decision Presentation (Sole Policy Authority: Engine 8)**:
+   - Hero banner displaying backend `decision` (`ALLOW`, `INFORM`, `WARN`, `PAUSE`, `BLOCK`) with `SemanticStatusBadge`.
+   - Non-accusatory `user_message`, explicit confirmation requirement alerts (`required_user_confirmation`), cooldown pauses (`cooldown_seconds`), and official reason codes.
+5. **8 Multi-Engine Intelligence Breakdown Panels (`AnalysisResultView`)**:
+   - **Claims Intelligence (Engine 2 & 5)**: Atomic assertions with topic, predicate, modality, and verification status (`SUPPORTED`, `CONTRADICTED`, `INSUFFICIENT_EVIDENCE`).
+   - **Requested Actions (Engine 3)**: Action classifications (`DOWNLOAD`, `TRANSFER_MONEY`, `CREDENTIAL_ACCESS`, etc.), targets, urgency, and reversibility.
+   - **Evidence Verification (Engine 5 & 4)**: Official registry checks, supported/contradicted claim counts, and source filing retrieval status.
+   - **Entity Identity Resolution (Engine 9)**: Exact status (`ESTABLISHED`, `NOT_ESTABLISHED`, `IDENTITY_MISMATCH`), confidence, claimed entities, and regulatory registry findings.
+   - **Threat & Attack-Path Analysis (Engine 6)**: Multi-signal attack progression (e.g. `CHANNEL_MIGRATION → FINANCIAL_EXTRACTION`), threat signals, and high-impact action counts.
+   - **Scam Fingerprint Intelligence (Engine 7)**: Structural pattern matching (`EXACT_MATCH`, `SEMANTIC_VARIANT`, `NO_MATCH`) and collective observation counts across channels.
+   - **Behavioural Signal Intelligence (Engine 10)**: Observed dynamics (time pressure, off-platform migration, rapid escalation) without armchair psychological labeling.
+   - **Provenance & Pipeline Audit**: Pipeline status, execution duration in milliseconds, channel, and engine lineage.
+6. **Privacy & Security Enforcement**:
+   - Strictly excludes and prevents storage or display of forbidden credentials (`password`, `otp`, `pin`, `cvv`, `card_number`, `bank_account`).
+   - XSS-safe Virtual DOM rendering without `dangerouslySetInnerHTML`.
+7. **Verification & Quality Standards**:
+   - **Frontend Tests**: 47 Vitest tests passing (100% pass rate across 4 test suites: `api.test.ts`, `App.test.tsx`, `components.test.tsx`, `analysisWorkflow.test.tsx`).
+   - **Lint**: 0 warnings, 0 errors (Oxlint).
+   - **Build**: Production bundle built cleanly (`tsc -b && vite build`) in <1 second.
+   - **Backend Compatibility**: 481 backend tests passing (100% pass rate across all 10 intelligence engines, context, pipeline, and product API).
+
+
 

@@ -5,25 +5,81 @@ import { Card, CardHeader, CardTitle, CardContent } from '../components/common/C
 import { ContentEntryCard } from '../components/firewall/ContentEntryCard';
 import { PrivacyNotice } from '../components/firewall/PrivacyNotice';
 import { SemanticStatusBadge } from '../components/status/SemanticStatusBadge';
-import type { ChannelType } from '../types/firewall';
+import { LoadingState } from '../components/common/LoadingState';
+import { ErrorState } from '../components/common/ErrorState';
+import { AnalysisResultView } from '../components/firewall/AnalysisResultView';
+import type { ChannelType, FirewallAnalysisResponse, AnalysisState } from '../types/firewall';
 
 export interface ProtectViewProps {
   onAnalyze?: (payload: { text?: string; url?: string; channel: ChannelType }) => Promise<void>;
+  analysisResult?: FirewallAnalysisResponse | null;
+  analysisState?: AnalysisState;
+  onAnalyzeAnother?: () => void;
   isLoading?: boolean;
   error?: string | null;
+  errorCode?: string | null;
   onClearError?: () => void;
+  onRetry?: () => void;
   systemAvailable?: boolean;
 }
 
 export const ProtectView: React.FC<ProtectViewProps> = ({
   onAnalyze,
+  analysisResult = null,
+  analysisState = 'IDLE',
+  onAnalyzeAnother,
   isLoading = false,
   error = null,
+  errorCode = null,
   onClearError,
+  onRetry,
   systemAvailable = true,
 }) => {
+  // 1. Result State: Render full analysis result view
+  if (analysisResult) {
+    return (
+      <AnalysisResultView
+        analysis={analysisResult}
+        onAnalyzeAnother={onAnalyzeAnother || (() => {})}
+      />
+    );
+  }
+
+  // 2. Loading State: Render calm analysis progress
+  if (isLoading || analysisState === 'ANALYZING' || analysisState === 'SUBMITTING') {
+    return (
+      <div style={{ width: '100%', maxWidth: '640px', margin: 'var(--space-8) auto' }}>
+        <LoadingState
+          message="Analyzing financial interaction across firewall pipeline..."
+          steps={[
+            'Ingesting & normalizing content (Engine 1)',
+            'Extracting verifiable assertions & return claims (Engine 2)',
+            'Analyzing requested actions & irreversibility (Engine 3)',
+            'Verifying evidence against official registries (Engine 4 & 5)',
+            'Checking claimed identities & lookalikes (Engine 9)',
+            'Evaluating threat signals & attack paths (Engine 6)',
+            'Matching collective scam fingerprints (Engine 7)',
+            'Detecting behavioural escalation patterns (Engine 10)',
+            'Emitting final safety policy decision (Engine 8)',
+          ]}
+          currentStepIndex={4}
+        />
+      </div>
+    );
+  }
+
+  // 3. Error State with Retry
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-8)', width: '100%' }}>
+      {analysisState === 'ERROR' && error && (
+        <ErrorState
+          title="Analysis Could Not Be Completed"
+          message={error}
+          errorCode={errorCode || 'PIPELINE_FAILURE'}
+          onRetry={onRetry}
+        />
+      )}
+
       {/* Hero / Value Proposition Section */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
         <SectionHeader

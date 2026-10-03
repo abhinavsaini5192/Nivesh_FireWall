@@ -22,6 +22,15 @@ export type InputType = 'text' | 'url' | 'image';
 
 export type PipelineStatus = 'COMPLETED' | 'DEGRADED' | 'PARTIAL' | 'FAILED' | 'CANCELLED';
 
+export type AnalysisState =
+  | 'IDLE'
+  | 'VALIDATING'
+  | 'SUBMITTING'
+  | 'ANALYZING'
+  | 'SUCCESS'
+  | 'ERROR'
+  | 'PARTIAL_RESULT';
+
 export type EvidenceStatus =
   | 'SUPPORTED'
   | 'PARTIALLY_SUPPORTED'
