@@ -300,10 +300,10 @@ class RegistrationResolver:
             content_has_reg = (norm_reg_id in IdentityNormalizer.normalize_registration_id(doc.content)) if doc.content else False
 
             if doc_reg_id == norm_reg_id or content_has_reg:
-                authoritative_legal_name = meta.get("legal_name")
+                authoritative_legal_name = meta.get("legal_name") or meta.get("name")
                 if not authoritative_legal_name and doc.content:
-                    # Look for legal name in text (e.g. 'belongs to Alpha Wealth Advisors Private Limited, not Rahul Sharma')
-                    m_legal = re.search(r"Entity Legal Name:\s*([^\n]+)", doc.content, re.IGNORECASE)
+                    # Look for legal name in text (e.g. 'Entity Name: 360 ONE...' or 'belongs to Alpha Wealth...')
+                    m_legal = re.search(r"(?:Entity Legal Name|Legal Name|Entity Name):\s*([^\n]+)", doc.content, re.IGNORECASE)
                     if m_legal:
                         authoritative_legal_name = m_legal.group(1).strip()
                     else:

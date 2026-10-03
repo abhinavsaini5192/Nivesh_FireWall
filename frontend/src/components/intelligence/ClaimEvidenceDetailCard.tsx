@@ -85,6 +85,77 @@ export const ClaimEvidenceDetailCard: React.FC<ClaimEvidenceDetailCardProps> = (
           </Panel>
         </div>
 
+        {/* Authoritative Sources Provenance Drilldown */}
+        {evidence.authoritative_sources && evidence.authoritative_sources.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+            <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Authoritative Registry & Source Provenance
+            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              {evidence.authoritative_sources.map((src, idx) => {
+                const getModeBadge = (mode: string) => {
+                  switch (mode) {
+                    case 'LIVE':
+                      return <Badge variant="success" size="sm">LIVE: Checked Live</Badge>;
+                    case 'OFFICIAL_SNAPSHOT':
+                      return <Badge variant="accent" size="sm">OFFICIAL SNAPSHOT: Downloaded Dataset</Badge>;
+                    case 'CACHE':
+                      return <Badge variant="neutral" size="sm">CACHE: Cached Evidence</Badge>;
+                    case 'SOURCE_UNAVAILABLE':
+                      return <Badge variant="warning" size="sm">UNAVAILABLE: Source Unreachable</Badge>;
+                    default:
+                      return <Badge variant="neutral" size="sm">FIXTURE: Test Fixture</Badge>;
+                  }
+                };
+
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      padding: 'var(--space-3)',
+                      borderRadius: 'var(--radius-md)',
+                      backgroundColor: 'var(--color-surface-subtle)',
+                      border: '1px solid var(--color-border-subtle)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 'var(--space-1)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                        <span style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', color: 'var(--color-text-primary)' }}>
+                          {src.source}
+                        </span>
+                        <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
+                          ({src.source_authority})
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                        {getModeBadge(src.retrieval_mode)}
+                        <Badge variant="neutral" size="sm">Freshness: {src.freshness}</Badge>
+                      </div>
+                    </div>
+
+                    <p style={{ margin: 0, fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
+                      {src.evidence}
+                    </p>
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '10px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                      <span>Record ID: {src.source_record_id || 'N/A'}</span>
+                      <span>Retrieved: {new Date(src.retrieved_at).toLocaleString()}</span>
+                      {src.source_reference && (
+                        <span style={{ maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          Ref: {src.source_reference}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div style={{ marginTop: 'var(--space-1)', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
           Retrieval Status: <strong>{evidence.retrieval_status}</strong> (Total verifications: {evidence.verification_count})
         </div>

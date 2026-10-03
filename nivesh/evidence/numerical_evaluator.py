@@ -31,6 +31,16 @@ class NumericalEvaluator:
         obj_str = str(claim.object or "").strip().lower()
         claim_text = (claim.text.original if claim.text else "").lower()
 
+        # 0. POLICY RATES & MACRO BENCHMARKS (e.g. "Repo Rate is 5.25%", "CRR is 3%")
+        if (
+            predicate in ("POLICY_RATE", "REPO_RATE", "POLICY_REPO_RATE", "CRR", "SLR", "BANK_RATE", "REVERSE_REPO_RATE", "INTEREST_RATE")
+            or any(r in claim_text for r in ("repo rate", "reverse repo", "bank rate", "policy rate", "crr", "slr"))
+            or ("rbi" in claim_text and "%" in claim_text)
+        ):
+            rate_res = cls._evaluate_policy_and_benchmark_rates(claim, candidates)
+            if rate_res:
+                return rate_res
+
         # 1. DEBT STATUS (e.g. "debt free", "zero debt")
         if predicate == "HAS_DEBT" or "debt" in claim_text or "debt free" in claim_text:
             return cls._evaluate_debt(claim, candidates)
@@ -39,11 +49,139 @@ class NumericalEvaluator:
         if predicate in ("ANNOUNCED_BONUS", "STOCK_SPLIT") or re.search(r"\b\d+:\d+\b", obj_str):
             return cls._evaluate_ratio(claim, candidates)
 
+        # 2b. DIVIDEND ANNOUNCEMENTS (e.g. ₹10 per share dividend)
+        if predicate in ("DIVIDEND_ANNOUNCED", "INTERIM_DIVIDEND") or "dividend" in claim_text or "dividend" in predicate.lower():
+            div_res = cls._evaluate_dividend(claim, candidates)
+            if div_res:
+                return div_res
+
         # 3. PERCENTAGE / GROWTH CLAIMS (e.g. "Revenue increased 40%", "Profit increased 200%")
         if "%" in obj_str or "increased" in claim_text or "growth" in predicate.lower() or "profit" in claim_text or "revenue" in claim_text:
             return cls._evaluate_growth_and_financials(claim, candidates)
 
         return None
+
+    @classmethod
+    def _evaluate_policy_and_benchmark_rates(
+        cls,
+        claim: CanonicalClaim,
+        candidates: list[EvidenceCandidate]
+    ) -> Optional[dict]:
+        """Evaluates policy rates and benchmark assertions against authoritative regulatory disclosures."""
+        obj_str = str(claim.object or "").strip().lower()
+        claim_text = (claim.text.original if claim.text else "").lower()
+        pct_match = re.search(r"(\d+(?:\.\d+)?)\s*%", obj_str + " " + claim_text)
+        if not pct_match:
+            return None
+
+        claimed_rate = float(pct_match.group(1))
+
+        # Determine which rate metric is asserted
+        metric_patterns = [
+            ("Policy Repo Rate", [r"repo\s*rate", r"policy\s*rate", r"policy\s*repo", r"\brepo\b"]),
+            ("Standing Deposit Facility Rate", [r"\bsdf\b", r"standing\s*deposit\s*facility"]),
+            ("Marginal Standing Facility Rate", [r"\bmsf\b", r"marginal\s*standing\s*facility"]),
+            ("Bank Rate", [r"bank\s*rate"]),
+            ("Fixed Reverse Repo Rate", [r"reverse\s*repo"]),
+            ("Cash Reserve Ratio", [r"\bcrr\b", r"cash\s*reserve\s*ratio"]),
+            ("Statutory Liquidity Ratio", [r"\bslr\b", r"statutory\s*liquidity\s*ratio"]),
+        ]
+
+        target_metric = None
+        for metric_name, patterns in metric_patterns:
+            if any(re.search(pat, claim_text, re.IGNORECASE) for pat in patterns):
+                target_metric = metric_name
+                break
+
+        # If claim didn't specify a recognized benchmark rate (e.g. "car loan", "personal loan"), return None
+        if not target_metric:
+            return None
+
+        reasoning_trace = [
+            f"1. Claim asserts official RBI rate: '{target_metric}' = {claimed_rate}%",
+            "2. Consulted authoritative Reserve Bank of India benchmark policy rates",
+        ]
+
+        for cand in candidates:
+            text = cand.excerpt
+            # Search for target metric in text, e.g. "Policy Repo Rate: 5.25%" or "Policy Repo Rate ... 5.25%"
+            metric_search = re.search(
+                rf"{re.escape(target_metric)}[^\d%:\n]*[:\s]+(\d+(?:\.\d+)?)\s*%",
+                text,
+                re.IGNORECASE
+            )
+            # Fallback for shorter variants e.g. "Repo Rate: 6.50%" or "CRR: 3.00%"
+            if not metric_search:
+                short_metric = target_metric.replace("Rate", "").replace("Ratio", "").replace("Policy", "").strip()
+                if short_metric:
+                    metric_search = re.search(
+                        rf"\b{re.escape(short_metric)}\b[^\d%:\n]*[:\s]+(\d+(?:\.\d+)?)\s*%",
+                        text,
+                        re.IGNORECASE
+                    )
+
+            if metric_search:
+                actual_rate = float(metric_search.group(1))
+                reasoning_trace.append(f"3. Authoritative RBI publication establishes official {target_metric} as {actual_rate}%.")
+
+                # Compare with tight numerical tolerance (0.05%)
+                if abs(actual_rate - claimed_rate) <= 0.05:
+                    reasoning_trace.extend([
+                        f"4. Claimed rate ({claimed_rate}%) matches authoritative RBI rate ({actual_rate}%).",
+                        "5. Result: SUPPORTED by authoritative regulatory publication.",
+                    ])
+                    return {
+                        "status": "SUPPORTED",
+                        "confidence": 0.98,
+                        "evidence_strength": "HIGH",
+                        "supporting_evidence": [
+                            EvidenceItemEvaluation(
+                                evidence_id=cand.evidence_id,
+                                source_document_id=cand.source_document_id,
+                                source_url=cand.provenance.source_url if cand.provenance else "",
+                                organization=cand.source_type,
+                                relation="SUPPORTS",
+                                excerpt=cand.excerpt,
+                                reasoning=f"Official RBI disclosure verifies {target_metric} is {actual_rate}%, matching claimed {claimed_rate}%.",
+                                matched_signals=[f"{actual_rate}%", target_metric]
+                            )
+                        ],
+                        "contradicting_evidence": [],
+                        "missing_elements": [],
+                        "context_gaps": [],
+                        "reasoning_trace": reasoning_trace,
+                        "uncertainty": [],
+                    }
+                else:
+                    reasoning_trace.extend([
+                        f"4. Conflict detected: Claim asserts {target_metric} is {claimed_rate}%, but authoritative RBI publication states {actual_rate}%.",
+                        "5. Result: CONTRADICTED by authoritative regulatory publication.",
+                    ])
+                    return {
+                        "status": "CONTRADICTED",
+                        "confidence": 0.98,
+                        "evidence_strength": "HIGH",
+                        "supporting_evidence": [],
+                        "contradicting_evidence": [
+                            EvidenceItemEvaluation(
+                                evidence_id=cand.evidence_id,
+                                source_document_id=cand.source_document_id,
+                                source_url=cand.provenance.source_url if cand.provenance else "",
+                                organization=cand.source_type,
+                                relation="CONTRADICTS",
+                                excerpt=cand.excerpt,
+                                reasoning=f"Authoritative RBI publication establishes {target_metric} as {actual_rate}%, contradicting claimed {claimed_rate}%.",
+                                matched_signals=[f"{actual_rate}%", target_metric]
+                            )
+                        ],
+                        "missing_elements": [],
+                        "context_gaps": [],
+                        "reasoning_trace": reasoning_trace,
+                        "uncertainty": [],
+                    }
+
+        return None
+
 
     @classmethod
     def _evaluate_debt(
@@ -346,6 +484,98 @@ class NumericalEvaluator:
                                     excerpt=cand.excerpt,
                                     reasoning=f"Claim asserts +{claimed_pct}%, but source figures ({v1} to {v2}) yield +{calculated_change}%.",
                                     matched_signals=[f"{calculated_change}%"]
+                                )
+                            ],
+                            "missing_elements": [],
+                            "context_gaps": [],
+                            "reasoning_trace": reasoning_trace,
+                            "uncertainty": [],
+                        }
+
+        return None
+
+    @classmethod
+    def _evaluate_dividend(
+        cls,
+        claim: CanonicalClaim,
+        candidates: list[EvidenceCandidate]
+    ) -> Optional[dict]:
+        """Evaluates dividend announcements and per-share payout figures."""
+        obj_str = str(claim.object or "").strip()
+        claim_text = (claim.text.original if claim.text else "").lower()
+        if not ("dividend" in claim_text or "dividend" in (claim.predicate or "").lower()):
+            return None
+
+        # Look for rupee or numeric dividend in claim e.g. "₹10", "Rs 10", "10"
+        amt_match = re.search(r"(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d+)?)\s*(?:per\s*share|per\s*equity\s*share|dividend|\/-\b)", claim_text, re.IGNORECASE)
+        if not amt_match:
+            amt_match = re.search(r"\b(\d+(?:\.\d+)?)\b", obj_str)
+        if not amt_match:
+            return None
+
+        claimed_amt = float(amt_match.group(1))
+        reasoning_trace = [
+            f"1. Claim asserts dividend announcement of ₹{claimed_amt} per share for '{claim.subject}'",
+            "2. Consulted official stock exchange corporate announcements and board meeting outcomes",
+        ]
+
+        for cand in candidates:
+            text = cand.excerpt
+            if "dividend" in text.lower():
+                # Extract amounts associated with dividend in excerpt (e.g. ₹10, Rs 10)
+                source_amts = re.findall(r"(?:₹|rs\.?|inr)\s*(\d+(?:\.\d+)?)", text, re.IGNORECASE)
+                if not source_amts:
+                    source_amts = re.findall(r"\b(\d+(?:\.\d+)?)\s*(?:per\s*equity\s*share|per\s*share)", text, re.IGNORECASE)
+
+                for sa in source_amts:
+                    actual_amt = float(sa)
+                    if abs(actual_amt - claimed_amt) < 0.01:
+                        reasoning_trace.extend([
+                            f"3. Official corporate disclosure verifies dividend of ₹{actual_amt} per equity share.",
+                            "4. Claimed corporate payout is fully supported by exchange disclosure."
+                        ])
+                        return {
+                            "status": "SUPPORTED",
+                            "confidence": 0.98,
+                            "evidence_strength": "HIGH",
+                            "supporting_evidence": [
+                                EvidenceItemEvaluation(
+                                    evidence_id=cand.evidence_id,
+                                    source_document_id=cand.source_document_id,
+                                    source_url=cand.provenance.source_url if cand.provenance else "",
+                                    organization=cand.source_type,
+                                    relation="SUPPORTS",
+                                    excerpt=cand.excerpt,
+                                    reasoning=f"Exchange filing explicitly verifies dividend of ₹{actual_amt} per share.",
+                                    matched_signals=[f"₹{actual_amt}", "dividend"]
+                                )
+                            ],
+                            "contradicting_evidence": [],
+                            "missing_elements": [],
+                            "context_gaps": [],
+                            "reasoning_trace": reasoning_trace,
+                            "uncertainty": [],
+                        }
+                    else:
+                        reasoning_trace.extend([
+                            f"3. Official disclosure reports dividend of ₹{actual_amt} per share, but claim asserts ₹{claimed_amt}.",
+                            "4. Conflict detected: dividend amount is contradicted by authoritative exchange filing."
+                        ])
+                        return {
+                            "status": "CONTRADICTED",
+                            "confidence": 0.96,
+                            "evidence_strength": "HIGH",
+                            "supporting_evidence": [],
+                            "contradicting_evidence": [
+                                EvidenceItemEvaluation(
+                                    evidence_id=cand.evidence_id,
+                                    source_document_id=cand.source_document_id,
+                                    source_url=cand.provenance.source_url if cand.provenance else "",
+                                    organization=cand.source_type,
+                                    relation="CONTRADICTS",
+                                    excerpt=cand.excerpt,
+                                    reasoning=f"Official exchange filing verifies dividend of ₹{actual_amt} per share, contradicting claimed ₹{claimed_amt}.",
+                                    matched_signals=[f"₹{actual_amt}", "dividend"]
                                 )
                             ],
                             "missing_elements": [],

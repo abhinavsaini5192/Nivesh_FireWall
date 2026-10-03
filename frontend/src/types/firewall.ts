@@ -117,6 +117,22 @@ export interface FirewallActionSummary {
   urgency_detected: boolean;
 }
 
+export interface AuthoritativeSourceProvenance {
+  source: string;
+  source_authority: string;
+  retrieval_mode: 'LIVE' | 'OFFICIAL_SNAPSHOT' | 'CACHE' | 'FIXTURE' | 'SOURCE_UNAVAILABLE' | string;
+  retrieved_at: string;
+  published_at?: string;
+  updated_at?: string;
+  source_record_id?: string;
+  source_reference?: string;
+  adapter_name: string;
+  adapter_version?: string;
+  freshness: 'CURRENT' | 'HISTORICAL' | 'STALE' | 'SNAPSHOT' | 'UNKNOWN' | string;
+  response_status: string;
+  evidence: string;
+}
+
 export interface FirewallEvidenceSummary {
   overall_status: EvidenceStatus | string;
   verification_count: number;
@@ -125,6 +141,7 @@ export interface FirewallEvidenceSummary {
   insufficient_claims_count: number;
   source_documents_count: number;
   retrieval_status: string;
+  authoritative_sources?: AuthoritativeSourceProvenance[];
 }
 
 export interface FirewallIdentitySummary {

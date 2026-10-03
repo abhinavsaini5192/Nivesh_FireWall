@@ -25,7 +25,13 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
 ]
+nsepython = [
+    "nsepython>=2.97",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "live: marks tests requiring active live internet connectivity to external authoritative endpoints",
+]

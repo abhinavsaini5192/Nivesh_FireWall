@@ -94,16 +94,16 @@ SENSITIVE_PATTERNS = [
     # Card numbers (13 to 19 digits)
     (re.compile(r"\b(?:\d[ -]*?){13,19}\b"), "[REDACTED_CARD]"),
     # OTP / PIN / CVV / CVC
-    (re.compile(r"(?i)\b(otp|pin|cvv|cvc)\s*[:=]\s*\d+"), r"\1=[REDACTED]"),
-    (re.compile(r"(?i)\b(otp|pin|cvv|cvc)\s+is\s+\d+"), r"\1 is [REDACTED]"),
-    (re.compile(r"(?i)\b(otp|pin|cvv|cvc)\s+(\d{3,8})\b"), r"\1 [REDACTED]"),
+    (re.compile(r"(?i)\b(otp|pin|cvv|cvc)(?:\s|\+|%20)*[:=](?:\s|\+|%20)*\d+"), r"\1=[REDACTED]"),
+    (re.compile(r"(?i)\b(otp|pin|cvv|cvc)(?:\s|\+|%20)+is(?:\s|\+|%20)+\d+"), r"\1 is [REDACTED]"),
+    (re.compile(r"(?i)\b(otp|pin|cvv|cvc)(?:\s|\+|%20)+(\d{3,8})\b"), r"\1 [REDACTED]"),
     # Passwords and secrets
-    (re.compile(r"(?i)\b(password|passwd|pwd|secret|token)\s*[:=]\s*\S+"), r"\1=[REDACTED]"),
-    (re.compile(r"(?i)\b(password|passwd|pwd)\s+is\s+\S+"), r"\1 is [REDACTED]"),
+    (re.compile(r"(?i)\b(password|passwd|pwd|secret|token)(?:\s|\+|%20)*[:=](?:\s|\+|%20)*\S+"), r"\1=[REDACTED]"),
+    (re.compile(r"(?i)\b(password|passwd|pwd)(?:\s|\+|%20)+is(?:\s|\+|%20)+\S+"), r"\1 is [REDACTED]"),
     # Bank accounts
-    (re.compile(r"(?i)\b(account|acct|acc)\s*(?:number|num|no)?\s*[:=]\s*\d+"), r"\1=[REDACTED]"),
+    (re.compile(r"(?i)\b(account|acct|acc)(?:\s|\+|%20)*(?:number|num|no)?(?:\s|\+|%20)*[:=](?:\s|\+|%20)*\d+"), r"\1=[REDACTED]"),
     # Keystrokes & raw credentials
-    (re.compile(r"(?i)\b(keystroke[s]?|raw_credential[s]?)\s*[:=]\s*\S+"), r"\1=[REDACTED]"),
+    (re.compile(r"(?i)\b(keystroke[s]?|raw_credential[s]?)(?:\s|\+|%20)*[:=](?:\s|\+|%20)*\S+"), r"\1=[REDACTED]"),
 ]
 
 FORBIDDEN_FIELD_NAMES = {
@@ -1392,6 +1392,18 @@ def format_firewall_response(result: OrchestrationResult) -> FirewallAnalysisRes
         ):
             retrieval_st = "SOURCE_UNAVAILABLE"
 
+        auth_sources = []
+        if ev and hasattr(ev, "authoritative_provenances") and ev.authoritative_provenances:
+            for p in ev.authoritative_provenances:
+                auth_sources.append(p.model_dump() if hasattr(p, "model_dump") else dict(p))
+        elif state.sources and hasattr(state.sources, "claim_sources"):
+            for cs in state.sources.claim_sources:
+                for doc in getattr(cs, "documents", []):
+                    if hasattr(doc, "authoritative_provenance") and doc.authoritative_provenance:
+                        p_dict = doc.authoritative_provenance.model_dump() if hasattr(doc.authoritative_provenance, "model_dump") else dict(doc.authoritative_provenance)
+                        if p_dict not in auth_sources:
+                            auth_sources.append(p_dict)
+
         evidence_summary = FirewallEvidenceSummary(
             overall_status=overall,
             verification_count=len(ev.verifications),
@@ -1400,16 +1412,25 @@ def format_firewall_response(result: OrchestrationResult) -> FirewallAnalysisRes
             insufficient_claims_count=ev.analysis_metadata.claims_insufficient,
             source_documents_count=src_count,
             retrieval_status=retrieval_st,
+            authoritative_sources=auth_sources,
         )
     else:
         src_status = "SOURCE_UNAVAILABLE" if (state.sources and getattr(state.sources, "retrieval_status", None) == "SOURCE_UNAVAILABLE") else "NOT_RUN"
         overall_ev = "SOURCE_UNAVAILABLE" if src_status == "SOURCE_UNAVAILABLE" else "NOT_ESTABLISHED"
         src_count = 0
+        auth_sources = []
         if state.sources is not None:
             if hasattr(state.sources, "analysis_metadata") and hasattr(state.sources.analysis_metadata, "documents_retrieved"):
                 src_count = state.sources.analysis_metadata.documents_retrieved
             elif hasattr(state.sources, "claim_sources"):
                 src_count = sum(len(getattr(cs, "documents", [])) for cs in state.sources.claim_sources)
+            if hasattr(state.sources, "claim_sources"):
+                for cs in state.sources.claim_sources:
+                    for doc in getattr(cs, "documents", []):
+                        if hasattr(doc, "authoritative_provenance") and doc.authoritative_provenance:
+                            p_dict = doc.authoritative_provenance.model_dump() if hasattr(doc.authoritative_provenance, "model_dump") else dict(doc.authoritative_provenance)
+                            if p_dict not in auth_sources:
+                                auth_sources.append(p_dict)
 
         evidence_summary = FirewallEvidenceSummary(
             overall_status=overall_ev,
@@ -1419,6 +1440,7 @@ def format_firewall_response(result: OrchestrationResult) -> FirewallAnalysisRes
             insufficient_claims_count=0,
             source_documents_count=src_count,
             retrieval_status=src_status,
+            authoritative_sources=auth_sources,
         )
 
     # 6. Identity

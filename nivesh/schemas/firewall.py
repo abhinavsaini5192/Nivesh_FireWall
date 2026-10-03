@@ -129,6 +129,10 @@ class FirewallEvidenceSummary(BaseModel):
     insufficient_claims_count: int = Field(default=0, description="Count of claims with INSUFFICIENT_EVIDENCE")
     source_documents_count: int = Field(default=0, description="Total authoritative documents retrieved")
     retrieval_status: str = Field(default="COMPLETED", description="COMPLETED, SOURCE_UNAVAILABLE, FAILED, SKIPPED")
+    authoritative_sources: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Authoritative source provenances checked (source, authority, retrieval_mode, freshness, reference, status)"
+    )
 
 
 class FirewallIdentitySummary(BaseModel):

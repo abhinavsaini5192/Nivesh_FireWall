@@ -185,7 +185,7 @@ class EntityResolver:
         if claims:
             for c in claims.claims:
                 subj = c.subject.strip()
-                if not subj or len(subj.split()) > 5 or subj.lower() in ("learn", "we", "i", "they", "our team"):
+                if not subj or len(subj.split()) > 12 or subj.lower() in ("learn", "we", "i", "they", "our team"):
                     continue
 
                 canon_s, clean_s = IdentityNormalizer.normalize_org_name(subj)

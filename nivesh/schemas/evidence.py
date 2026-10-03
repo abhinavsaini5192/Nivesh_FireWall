@@ -8,6 +8,8 @@ investment recommendations or scam probability calculations.
 from typing import Literal, Optional, Any
 from pydantic import BaseModel, Field
 
+from nivesh.schemas.sources import AuthoritativeProvenance
+
 ClaimVerificationStatus = Literal[
     "SUPPORTED",
     "PARTIALLY_SUPPORTED",
@@ -126,6 +128,10 @@ class VerificationResult(BaseModel):
         description="Explicit uncertainties, assumptions, or evidence limitations"
     )
     provenance: VerificationProvenance = Field(description="Verification audit metadata")
+    authoritative_provenances: list[AuthoritativeProvenance] = Field(
+        default_factory=list,
+        description="Common authoritative source provenances from retrieved documents"
+    )
 
 
 class EvidenceAnalysisMetadata(BaseModel):
@@ -146,5 +152,9 @@ class EvidenceAnalysis(BaseModel):
     verifications: list[VerificationResult] = Field(
         default_factory=list,
         description="Verification result for each canonical claim"
+    )
+    authoritative_provenances: list[AuthoritativeProvenance] = Field(
+        default_factory=list,
+        description="Consolidated authoritative source provenances"
     )
     analysis_metadata: EvidenceAnalysisMetadata = Field(description="Aggregate execution metrics")

@@ -292,6 +292,7 @@ def health_check():
     """System health check endpoint preserving full engine, environment, and database status."""
     current_settings = get_settings()
     db_health = check_database_health()
+    sources_summary = sources_engine.gateway.get_source_health_report(probe_live=False).summary
     return {
         "status": "healthy" if db_health.get("connected", True) else "degraded",
         "engine": "Content Intelligence Engine",
@@ -303,6 +304,7 @@ def health_check():
             "dialect": db_health["dialect"],
             "connected": db_health["connected"],
         },
+        "authoritative_sources": sources_summary,
         "unified_firewall_api": "/api/v1/firewall/analyze",
         "retrieval_api": "/api/v1/firewall/analysis/{analysis_id}",
         "engines": [
@@ -319,6 +321,23 @@ def health_check():
         ],
         "firewall": f"Nivesh Firewall ({current_settings.env})",
     }
+
+
+@app.get("/api/v1/sources/health", tags=["System", "Authoritative Sources"])
+def authoritative_sources_health(probe: bool = False):
+    """Exposes authoritative regulatory source access and credential states.
+    
+    Diagnostics report explicit provider states:
+    - LIVE_AVAILABLE
+    - CREDENTIALS_MISSING
+    - ACCESS_UNAUTHORIZED
+    - SOURCE_UNAVAILABLE
+    - DISABLED
+    
+    Strictly safeguards secrets: credentials remain server-side and are never exposed.
+    """
+    report = sources_engine.gateway.get_source_health_report(probe_live=probe)
+    return report.model_dump()
 
 
 @app.get("/health/live", tags=["System"])

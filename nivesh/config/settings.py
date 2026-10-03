@@ -19,7 +19,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 EnvironmentMode = Literal["development", "test", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 LogFormat = Literal["json", "text"]
-SourceMode = Literal["LIVE", "CACHE", "FIXTURE"]
+SourceMode = Literal["LIVE", "OFFICIAL_SNAPSHOT", "CACHE", "FIXTURE"]
 
 
 def mask_sensitive_url(url: Optional[str]) -> Optional[str]:
@@ -139,11 +139,59 @@ class Settings(BaseSettings):
     # 6. Authoritative Source Intelligence (Engine 4)
     source_mode: SourceMode = Field(
         default="FIXTURE",
-        description="Source Intelligence retrieval mode: FIXTURE, CACHE, or LIVE",
+        description="Source Intelligence retrieval mode: FIXTURE, OFFICIAL_SNAPSHOT, CACHE, or LIVE",
     )
     live_sources_enabled: bool = Field(
         default=False,
         description="Explicit gate permitting live external regulatory network queries",
+    )
+    sebi_live_enabled: bool = Field(
+        default=False,
+        description="Explicit gate permitting live SEBI registry lookups",
+    )
+    rbi_live_enabled: bool = Field(
+        default=False,
+        description="Explicit gate permitting live RBI data and publication queries",
+    )
+    nse_live_enabled: bool = Field(
+        default=False,
+        description="Explicit gate permitting live NSE corporate announcement lookups",
+    )
+    bse_live_enabled: bool = Field(
+        default=False,
+        description="Explicit gate permitting live BSE corporate data queries",
+    )
+    nse_provider_preference: str = Field(
+        default="AUTO",
+        description="NSE provider selection priority: AUTO (official -> public -> nsepython -> snapshot), OFFICIAL, PUBLIC, or NSEPYTHON",
+    )
+    nsepython_enabled: bool = Field(
+        default=False,
+        description="Explicit gate permitting optional sandboxed NSEPython provider when installed",
+    )
+    nse_api_key: Optional[str] = Field(
+        default=None,
+        description="Server-side secret API key for NSE data access",
+    )
+    nse_api_secret: Optional[str] = Field(
+        default=None,
+        description="Server-side secret API secret for NSE data access",
+    )
+    bse_api_key: Optional[str] = Field(
+        default=None,
+        description="Server-side secret API key for BSE Corporate Data API",
+    )
+    bse_api_secret: Optional[str] = Field(
+        default=None,
+        description="Server-side secret API secret for BSE Corporate Data API",
+    )
+    source_freshness_ttl_seconds: int = Field(
+        default=3600,
+        description="Max cache freshness duration before evidence is considered stale (seconds)",
+    )
+    snapshot_freshness_days: int = Field(
+        default=30,
+        description="Max acceptable age for official snapshots before warning (days)",
     )
 
     # 7. Operational Feature Flags
@@ -333,6 +381,9 @@ class Settings(BaseSettings):
             data["admin_api_key"] = "***REDACTED***"
         if data.get("service_api_key"):
             data["service_api_key"] = "***REDACTED***"
+        for key in ("nse_api_key", "nse_api_secret", "bse_api_key", "bse_api_secret"):
+            if data.get(key):
+                data[key] = "***REDACTED***"
         return data
 
     def get_secret_key(self) -> str:

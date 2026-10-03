@@ -38,6 +38,9 @@ RetrievalStatus = Literal[
     "SUCCESS",
     "NO_MATCH",
     "SOURCE_UNAVAILABLE",
+    "UNAUTHORIZED",
+    "ACCESS_UNAUTHORIZED",
+    "CREDENTIALS_MISSING",
     "RETRIEVAL_FAILED",
     "RATE_LIMITED",
     "INVALID_QUERY",
@@ -47,9 +50,71 @@ RetrievalStatus = Literal[
 
 RetrievalMode = Literal[
     "LIVE",
+    "LIVE_AUTHORIZED",
+    "LIVE_PUBLIC",
+    "OFFICIAL_SNAPSHOT",
     "CACHE",
     "FIXTURE",
+    "SOURCE_UNAVAILABLE",
 ]
+
+FreshnessStatus = Literal[
+    "CURRENT",
+    "HISTORICAL",
+    "STALE",
+    "SNAPSHOT",
+    "UNKNOWN",
+]
+
+ProviderAccessState = Literal[
+    "ENABLED",
+    "DISABLED",
+    "CREDENTIALS_MISSING",
+    "ACCESS_UNAUTHORIZED",
+    "LIVE_AVAILABLE",
+    "SOURCE_UNAVAILABLE",
+]
+
+
+class ProviderAccessConfig(BaseModel):
+    """Configuration, access mode, and operational status for an authoritative provider."""
+    provider_name: str = Field(description="Short identifier of the provider (e.g. SEBI, RBI, NSE, BSE)")
+    authority_name: str = Field(description="Full legal authority name")
+    access_mechanism: str = Field(description="Access method (e.g. Public Web Registry, DBIE, Corporate API)")
+    requires_credentials: bool = Field(description="Whether this source requires API key or subscription credentials")
+    credentials_configured: bool = Field(description="Whether server-side credentials are currently present")
+    live_enabled: bool = Field(description="Whether live querying is enabled in configuration")
+    status: ProviderAccessState = Field(description="Operational status of the provider")
+    supported_capabilities: list[str] = Field(default_factory=list, description="Capabilities supported by the adapter")
+    endpoint_reference: str = Field(description="Base URL or API endpoint for this provider")
+    limitation_note: str = Field(description="Documented access constraints and limitations")
+    last_verified_at: Optional[str] = Field(None, description="ISO timestamp of last live probe")
+
+
+class SourceHealthReport(BaseModel):
+    """System health report covering all authoritative providers."""
+    timestamp: str = Field(description="ISO timestamp of diagnostic generation")
+    overall_status: str = Field(description="Summary status across all providers")
+    providers: dict[str, ProviderAccessConfig] = Field(description="Provider diagnostic mapping")
+
+
+class AuthoritativeProvenance(BaseModel):
+    """Common provenance structure for authoritative source verification results."""
+    source: str = Field(description="Source identifier (e.g. SEBI, RBI, NSE, BSE)")
+    source_authority: str = Field(description="Full legal authority name (e.g. Securities and Exchange Board of India)")
+    retrieval_mode: RetrievalMode = Field(description="LIVE, OFFICIAL_SNAPSHOT, CACHE, FIXTURE, or SOURCE_UNAVAILABLE")
+    retrieved_at: str = Field(description="ISO 8601 timestamp of retrieval")
+    published_at: Optional[str] = Field(None, description="ISO 8601 timestamp of publication")
+    updated_at: Optional[str] = Field(None, description="ISO 8601 timestamp of dataset update")
+    source_record_id: Optional[str] = Field(None, description="Official registration or filing ID")
+    source_reference: Optional[str] = Field(None, description="Official URL, circular ref, or accession number")
+    adapter_name: str = Field(description="Adapter class name")
+    adapter_version: str = Field(default="1.0.0", description="Adapter version string")
+    freshness: FreshnessStatus = Field(default="UNKNOWN", description="Freshness evaluation")
+    response_status: RetrievalStatus = Field(description="Retrieval status")
+    evidence: str = Field(description="Factual summary of what was retrieved or confirmed")
+    access_method: Optional[str] = Field(default=None, description="Access method or connector used (e.g. NSEPython, Official API, Public REST)")
+    provider: Optional[str] = Field(default=None, description="Active provider class or identifier, e.g. NSEPythonProvider, OfficialAuthorizedProvider, PublicNSEProvider")
 
 
 class SourceQuery(BaseModel):
@@ -107,6 +172,7 @@ class SourceDocument(BaseModel):
     content_hash: str = Field(description="SHA-256 hash of normalized content")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Source-specific fields (e.g. registration details)")
     retrieval: RetrievalMetadata = Field(description="Retrieval execution details")
+    authoritative_provenance: Optional[AuthoritativeProvenance] = Field(default=None, description="Common authoritative source provenance")
 
 
 class EvidenceRelevance(BaseModel):
@@ -121,7 +187,7 @@ class EvidenceProvenance(BaseModel):
     """Audit trail of how and when evidence was retrieved."""
     retrieved_at: str = Field(description="ISO 8601 timestamp")
     retrieval_method: str = Field(description="Adapter name")
-    source_mode: RetrievalMode = Field(description="LIVE, CACHE, or FIXTURE")
+    source_mode: RetrievalMode = Field(description="LIVE, OFFICIAL_SNAPSHOT, CACHE, FIXTURE, or SOURCE_UNAVAILABLE")
     source_url: str = Field(description="Authoritative source URL")
 
 
@@ -138,6 +204,7 @@ class EvidenceCandidate(BaseModel):
     source_type: SourceTypeTaxonomy = Field(description="Source taxonomy category")
     authority_tier: AuthorityTier = Field(description="Authority rating of the source")
     provenance: EvidenceProvenance = Field(description="Provenance and retrieval audit trail")
+    authoritative_provenance: Optional[AuthoritativeProvenance] = Field(default=None, description="Common authoritative provenance")
     verification_status: Literal["UNVERIFIED"] = Field(
         default="UNVERIFIED",
         description="Must always be UNVERIFIED in Engine 4"
@@ -151,6 +218,7 @@ class ClaimSourceResult(BaseModel):
     searches: list[SourceSearchResult] = Field(default_factory=list, description="Search hits before retrieval")
     documents: list[SourceDocument] = Field(default_factory=list, description="Retrieved full source documents")
     evidence_candidates: list[EvidenceCandidate] = Field(default_factory=list, description="Structured evidence excerpts")
+    authoritative_provenances: list[AuthoritativeProvenance] = Field(default_factory=list, description="Authoritative provenances per source")
 
 
 class SourceAnalysisMetadata(BaseModel):
@@ -182,3 +250,38 @@ class SourceCatalogEntry(BaseModel):
     base_url: str = Field(description="Official root or search URL")
     adapter_name: str = Field(description="Name of Python adapter class")
     description: str = Field(description="Human readable description")
+
+
+ProviderAccessState = Literal[
+    "ENABLED",
+    "DISABLED",
+    "CREDENTIALS_MISSING",
+    "ACCESS_UNAUTHORIZED",
+    "LIVE_AVAILABLE",
+    "SOURCE_UNAVAILABLE",
+]
+
+
+class ProviderAccessConfig(BaseModel):
+    """Server-side provider access configuration status.
+    
+    CRITICAL: Never exposes secrets or API keys.
+    """
+    source_identifier: str = Field(description="Unique source ID (e.g. SEBI, RBI, NSE, BSE)")
+    authority_name: str = Field(description="Full regulatory authority name")
+    state: ProviderAccessState = Field(description="Current operational access state")
+    access_mechanism: str = Field(description="Protocol/API mechanism (e.g. HTTPS Public Registry, DBIE / Macro Data, Official Exchange API)")
+    credentials_required: bool = Field(default=False, description="Whether server-side credentials are required")
+    has_credentials: bool = Field(default=False, description="Whether credentials are configured (no secret exposed)")
+    live_supported: bool = Field(default=False, description="Whether live requests are supported by this source")
+    snapshot_fallback_available: bool = Field(default=True, description="Whether official snapshot fallback exists")
+    limitations: list[str] = Field(default_factory=list, description="Explicit product or access limitations")
+    diagnostic_message: Optional[str] = Field(default=None, description="Human/audit diagnostic details")
+
+
+class SourceHealthReport(BaseModel):
+    """Overall authoritative source health and diagnostic report."""
+    timestamp: str = Field(description="ISO-8601 evaluation timestamp")
+    sources: dict[str, ProviderAccessConfig] = Field(default_factory=dict, description="Status keyed by source identifier")
+    summary: dict[str, str] = Field(default_factory=dict, description="High-level status per source (e.g. SEBI: LIVE_AVAILABLE)")
+

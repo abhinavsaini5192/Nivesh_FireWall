@@ -5,7 +5,7 @@ Each rule defines explicit logical conditions, returning a PolicyRuleResult
 with machine-readable reason codes when conditions are satisfied.
 """
 
-from typing import Optional, Callable
+from typing import Optional, Callable, Any
 from nivesh.policy.schemas import (
     PolicyDecisionType,
     PolicySeverity,

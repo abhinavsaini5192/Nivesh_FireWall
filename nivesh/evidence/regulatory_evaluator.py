@@ -44,7 +44,10 @@ class RegulatoryEvaluator:
             return cls._evaluate_guaranteed_returns(claim, candidates, documents)
 
         # 2. REGULATORY REGISTRATION / ADVISOR IDENTITY
-        if claim_type in ("REGULATORY", "IDENTITY") or predicate in ("REGISTERED_WITH", "REGULATORY_STATUS", "LICENSED_BY"):
+        if (
+            predicate in ("REGISTERED_WITH", "REGULATORY_STATUS", "LICENSED_BY", "REGISTRATION_NUMBER")
+            or (claim_type in ("REGULATORY", "IDENTITY") and any(r in predicate for r in ("REGISTER", "LICENSE", "ADVISOR", "INTERMEDIARY", "STATUS")))
+        ):
             return cls._evaluate_registration(claim, candidates, documents)
 
         return None

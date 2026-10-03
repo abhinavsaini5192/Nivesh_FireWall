@@ -119,6 +119,7 @@ class SourceNormalizer:
                 source_mode=document.retrieval.mode,
                 source_url=document.url,
             ),
+            authoritative_provenance=document.authoritative_provenance,
             verification_status="UNVERIFIED",  # Strictly UNVERIFIED! Engine 5 decides.
         )
 

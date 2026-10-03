@@ -59,9 +59,26 @@ class EvidenceVerificationEngine:
             s.claim_id: s for s in sources.claim_sources
         }
 
+        all_authoritative_provenances = []
+
         for claim in claims.claims:
             claim_source_res = sources_by_claim.get(claim.claim_id)
             v_res = self.evaluator.evaluate(claim, claim_source_res)
+            
+            # Attach authoritative provenances from source documents
+            if claim_source_res:
+                provs = []
+                if hasattr(claim_source_res, "authoritative_provenances") and claim_source_res.authoritative_provenances:
+                    provs.extend(claim_source_res.authoritative_provenances)
+                for doc in getattr(claim_source_res, "documents", []):
+                    if hasattr(doc, "authoritative_provenance") and doc.authoritative_provenance:
+                        if doc.authoritative_provenance not in provs:
+                            provs.append(doc.authoritative_provenance)
+                v_res.authoritative_provenances = provs
+                for p in provs:
+                    if p not in all_authoritative_provenances:
+                        all_authoritative_provenances.append(p)
+
             verifications.append(v_res)
 
             # Track metadata statistics
@@ -95,5 +112,6 @@ class EvidenceVerificationEngine:
         return EvidenceAnalysis(
             content_id=content.content_id,
             verifications=verifications,
+            authoritative_provenances=all_authoritative_provenances,
             analysis_metadata=metadata,
         )
