@@ -12,6 +12,7 @@
 import { extractSafePageContext } from './context';
 import { extractUserSelection, extractVisiblePageText } from '../capture/extractor';
 import { getSanitizedDisplayUrl } from '../capture/url';
+import { protectionManager } from '../protection';
 import type {
   ExtensionMessage,
   ExtensionResponse,
@@ -19,6 +20,7 @@ import type {
   CheckSelectionResponsePayload,
   CaptureResponsePayload,
   DoCaptureMessage,
+  ShowInterventionMessage,
 } from '../types/messages';
 import type { CapturePayload } from '../types/capture';
 
@@ -162,6 +164,50 @@ export function initializeContentScript(): void {
             },
           });
         }
+        return true;
+      }
+
+      // 4. SHOW_INTERVENTION (Phase 13.4 In-Page Protection)
+      if (message.type === 'SHOW_INTERVENTION') {
+        try {
+          const showMsg = message as ShowInterventionMessage;
+          protectionManager.showIntervention(showMsg.payload);
+          sendResponse({
+            success: true,
+            requestId: message.requestId,
+            data: protectionManager.getState(),
+          });
+        } catch (err) {
+          sendResponse({
+            success: false,
+            requestId: message.requestId,
+            error: {
+              code: 'INTERVENTION_FAILED',
+              message: err instanceof Error ? err.message : 'Failed to display intervention.',
+            },
+          });
+        }
+        return true;
+      }
+
+      // 5. HIDE_INTERVENTION (Phase 13.4)
+      if (message.type === 'HIDE_INTERVENTION') {
+        protectionManager.hideIntervention();
+        sendResponse({
+          success: true,
+          requestId: message.requestId,
+          data: protectionManager.getState(),
+        });
+        return true;
+      }
+
+      // 6. GET_PROTECTION_STATE (Phase 13.4)
+      if (message.type === 'GET_PROTECTION_STATE') {
+        sendResponse({
+          success: true,
+          requestId: message.requestId,
+          data: protectionManager.getState(),
+        });
         return true;
       }
 

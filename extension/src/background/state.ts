@@ -47,7 +47,10 @@ class BackgroundStateManager {
    * Returns current extension runtime state for a specific tab (or default active tab).
    */
   public getState(tabId?: number | null): ExtensionRuntimeState {
-    const targetTabId = tabId || this.currentActiveTabId;
+    const targetTabId =
+      tabId ||
+      this.currentActiveTabId ||
+      (this.tabStates.size > 0 ? Array.from(this.tabStates.keys())[0] : null);
     if (typeof targetTabId === 'number' && targetTabId > 0) {
       const tabState = this.getTabState(targetTabId);
       return {

@@ -333,6 +333,51 @@ export async function handleScanRequest(
     const bridgeResult = await analysisBridge.submitAnalysis(bridgeRequest);
 
     backgroundState.completeRequest(bridgeResult.reference, tabId);
+
+    // Phase 13.4: Dispatch in-page intervention to content script if decision is not ALLOW
+    if (
+      bridgeResult.reference.decision !== 'ALLOW' &&
+      typeof chrome !== 'undefined' &&
+      chrome.tabs &&
+      chrome.tabs.sendMessage
+    ) {
+      try {
+        chrome.tabs.sendMessage(
+          tabId,
+          {
+            type: 'SHOW_INTERVENTION',
+            requestId,
+            tabId,
+            timestamp: new Date().toISOString(),
+            payload: {
+              analysisId: bridgeResult.analysisId,
+              decision: bridgeResult.reference.decision,
+              severity: bridgeResult.reference.severity,
+              primaryReason: bridgeResult.reference.primaryReason,
+              userMessage: bridgeResult.reference.userMessage,
+              claimsCount: bridgeResult.reference.claimsCount,
+              evidenceStatus: bridgeResult.reference.evidenceStatus,
+              identityStatus: bridgeResult.reference.identityStatus,
+              fingerprintMatch: bridgeResult.reference.fingerprintMatch,
+              threatSignalCount: bridgeResult.reference.threatSignalCount,
+              webAppUrl: bridgeResult.reference.webAppUrl,
+              targetUrl: bridgeRequest.url,
+              sourceType: bridgeRequest.sourceType,
+              actions: bridgeResult.fullResponse?.actions,
+              timestamp: new Date().toISOString(),
+            },
+          },
+          () => {
+            if (chrome.runtime.lastError) {
+              // Tab communication fallback
+            }
+          }
+        );
+      } catch {
+        // Tab dispatch error fallback
+      }
+    }
+
     return {
       success: true,
       requestId,

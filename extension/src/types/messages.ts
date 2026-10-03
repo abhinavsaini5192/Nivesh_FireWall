@@ -27,7 +27,10 @@ export type ExtensionMessageType =
   | 'CAPTURE_RESPONSE'
   | 'CHECK_SELECTION'
   | 'CHECK_SELECTION_RESPONSE'
-  | 'EXECUTE_ANALYSIS';
+  | 'EXECUTE_ANALYSIS'
+  | 'SHOW_INTERVENTION'
+  | 'HIDE_INTERVENTION'
+  | 'GET_PROTECTION_STATE';
 
 export interface ExtensionMessageError {
   code: string;
@@ -141,6 +144,15 @@ export interface ExecuteAnalysisPayload {
 }
 export type ExecuteAnalysisMessage = BaseExtensionMessage<ExecuteAnalysisPayload>;
 
+// 13. SHOW_INTERVENTION (Background -> Content Script)
+export type ShowInterventionMessage = BaseExtensionMessage<import('../protection/types').InPageInterventionPayload>;
+
+// 14. HIDE_INTERVENTION (Background / Popup -> Content Script)
+export type HideInterventionMessage = BaseExtensionMessage<{ analysisId?: string }>;
+
+// 15. GET_PROTECTION_STATE (Popup / Background -> Content Script)
+export type GetProtectionStateMessage = BaseExtensionMessage<{ tabId?: number }>;
+
 // Union of all supported message types
 export type ExtensionMessage =
   | GetStatusMessage
@@ -157,7 +169,10 @@ export type ExtensionMessage =
   | CaptureResponseMessage
   | CheckSelectionMessage
   | CheckSelectionResponseMessage
-  | ExecuteAnalysisMessage;
+  | ExecuteAnalysisMessage
+  | ShowInterventionMessage
+  | HideInterventionMessage
+  | GetProtectionStateMessage;
 
 // Generic response envelope
 export interface ExtensionResponse<T = unknown> {

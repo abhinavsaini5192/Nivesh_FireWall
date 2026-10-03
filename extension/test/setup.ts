@@ -100,6 +100,36 @@ export function createChromeMock() {
           });
         }
 
+        if (msg?.type === 'SHOW_INTERVENTION') {
+          return responseCallback({
+            success: true,
+            requestId: reqId,
+            data: {
+              active: true,
+              decision: msg.payload?.decision,
+              analysisId: msg.payload?.analysisId,
+              targetUrl: msg.payload?.targetUrl,
+              overridden: false,
+            },
+          });
+        }
+
+        if (msg?.type === 'HIDE_INTERVENTION') {
+          return responseCallback({
+            success: true,
+            requestId: reqId,
+            data: { active: false, decision: null, analysisId: null, overridden: false },
+          });
+        }
+
+        if (msg?.type === 'GET_PROTECTION_STATE') {
+          return responseCallback({
+            success: true,
+            requestId: reqId,
+            data: { active: false, decision: null, analysisId: null, overridden: false },
+          });
+        }
+
         // Default GET_PAGE_CONTEXT response
         responseCallback({
           success: true,
