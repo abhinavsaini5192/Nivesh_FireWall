@@ -1,16 +1,24 @@
 /**
- * Background Message Router (Phase 13.1 Section 7 & 8)
+ * Background Message Router (Phase 13.1 & 13.2)
  *
  * Routes incoming extension messages to validated handlers.
  */
 
-import { handleGetStatus, handleScanRequest, handleOpenNiveshApp } from './handlers';
+import {
+  handleGetStatus,
+  handleScanRequest,
+  handleOpenNiveshApp,
+  handleCaptureRequest,
+  handleCheckSelection,
+} from './handlers';
 import type {
   ExtensionMessage,
   ExtensionResponse,
   GetStatusMessage,
   ScanRequestMessage,
   OpenNiveshAppMessage,
+  CaptureRequestMessage,
+  CheckSelectionMessage,
 } from '../types/messages';
 
 export async function routeExtensionMessage(
@@ -30,6 +38,12 @@ export async function routeExtensionMessage(
   switch (message.type) {
     case 'GET_STATUS':
       return await handleGetStatus(message as GetStatusMessage);
+
+    case 'CHECK_SELECTION':
+      return await handleCheckSelection(message as CheckSelectionMessage);
+
+    case 'CAPTURE_REQUEST':
+      return await handleCaptureRequest(message as CaptureRequestMessage);
 
     case 'SCAN_REQUEST':
       return await handleScanRequest(message as ScanRequestMessage);

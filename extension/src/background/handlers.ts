@@ -1,8 +1,10 @@
 /**
- * Background Message Handlers (Phase 13.1 Section 5, 7, 8, 9, 12, 14)
+ * Background Message Handlers (Phase 13.1 & 13.2)
  *
  * Coordinates extension actions without implementing intelligence logic:
  * - Status queries
+ * - Selection availability checks (CHECK_SELECTION)
+ * - Page and content capture coordination (CAPTURE_REQUEST -> DO_CAPTURE)
  * - Content inspection requests (relayed to Unified Firewall API)
  * - Safe web app handoff
  */
@@ -11,6 +13,8 @@ import { backgroundState } from './state';
 import { ExtensionApiClient, ExtensionApiClientError } from '../api/client';
 import { getExtensionConfig, buildNiveshWebAppUrl } from '../config';
 import { generateExtensionRequestId } from '../types/messages';
+import { generateCaptureId } from '../types/capture';
+import { isUnsupportedPageUrl, getSanitizedDisplayUrl, isValidAnalysisUrl } from '../capture/url';
 import type {
   ExtensionResponse,
   ScanRequestMessage,
@@ -18,9 +22,15 @@ import type {
   OpenNiveshAppMessage,
   GetPageContextMessage,
   PageContextResponseMessage,
+  CaptureRequestMessage,
+  CaptureResponsePayload,
+  DoCaptureMessage,
+  CheckSelectionMessage,
+  CheckSelectionResponsePayload,
 } from '../types/messages';
 import type { ExtensionRuntimeState, LastAnalysisReference } from '../types/state';
 import type { SafePageContext } from '../types/context';
+import type { CapturePayload } from '../types/capture';
 
 const apiClient = new ExtensionApiClient();
 
@@ -45,16 +55,194 @@ export async function handleGetStatus(
 }
 
 /**
+ * Handles CHECK_SELECTION request from Popup.
+ */
+export async function handleCheckSelection(
+  message: CheckSelectionMessage
+): Promise<ExtensionResponse<CheckSelectionResponsePayload>> {
+  const tabId = message.payload.tabId;
+  const requestId = message.requestId || generateExtensionRequestId();
+
+  if (!tabId) {
+    return {
+      success: true,
+      requestId,
+      data: { hasSelection: false },
+    };
+  }
+
+  return new Promise((resolve) => {
+    if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.tabs.sendMessage) {
+      return resolve({
+        success: true,
+        requestId,
+        data: { hasSelection: false },
+      });
+    }
+
+    const checkMsg: CheckSelectionMessage = {
+      type: 'CHECK_SELECTION',
+      requestId,
+      tabId,
+      timestamp: new Date().toISOString(),
+      payload: { tabId },
+    };
+
+    chrome.tabs.sendMessage(tabId, checkMsg, (response: ExtensionResponse<CheckSelectionResponsePayload>) => {
+      if (chrome.runtime.lastError || !response || !response.success || !response.data) {
+        return resolve({
+          success: true,
+          requestId,
+          data: { hasSelection: false },
+        });
+      }
+      resolve(response);
+    });
+  });
+}
+
+/**
+ * Handles CAPTURE_REQUEST from Popup (Phase 13.2).
+ */
+export async function handleCaptureRequest(
+  message: CaptureRequestMessage
+): Promise<ExtensionResponse<CaptureResponsePayload>> {
+  const { tabId, sourceType } = message.payload;
+  const requestId = message.requestId || generateExtensionRequestId();
+  const captureId = message.payload.captureId || generateCaptureId();
+
+  // 1. Inspect tab metadata
+  let tabUrl = '';
+  let tabTitle = '';
+  if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.get) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      tabUrl = tab.url || '';
+      tabTitle = tab.title || '';
+    } catch {
+      // Tab info query fallback
+    }
+  }
+
+  // 2. Reject unsupported browser-internal pages
+  if (isUnsupportedPageUrl(tabUrl)) {
+    return {
+      success: false,
+      requestId,
+      error: {
+        code: 'UNSUPPORTED_PAGE',
+        message: 'This page cannot be analyzed by the extension.',
+      },
+    };
+  }
+
+  // 3. Mode C: URL Capture directly from tab metadata
+  if (sourceType === 'URL') {
+    const validUrl = isValidAnalysisUrl(tabUrl);
+    if (!validUrl.isValid) {
+      return {
+        success: false,
+        requestId,
+        error: {
+          code: 'INVALID_URL',
+          message: validUrl.error || 'The page URL cannot be analyzed.',
+        },
+      };
+    }
+
+    const capture: CapturePayload = {
+      captureId,
+      sourceType: 'URL',
+      status: 'CAPTURED',
+      url: tabUrl,
+      displayUrl: getSanitizedDisplayUrl(tabUrl),
+      pageTitle: tabTitle,
+      pageOrigin: tabUrl ? new URL(tabUrl).origin : '',
+      tabId,
+      timestamp: new Date().toISOString(),
+      contentLength: tabUrl.length,
+      sanitized: true,
+    };
+
+    return {
+      success: true,
+      requestId,
+      data: { capture },
+    };
+  }
+
+  // 4. Mode A & B: Query Content Script on active tab
+  return new Promise((resolve) => {
+    if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.tabs.sendMessage) {
+      // Unit testing fallback
+      const mockCapture: CapturePayload = {
+        captureId,
+        sourceType,
+        status: 'CAPTURED',
+        text: 'Sample captured visible text for testing.',
+        url: tabUrl || 'https://example.com',
+        displayUrl: getSanitizedDisplayUrl(tabUrl || 'https://example.com'),
+        pageTitle: tabTitle || 'Test Page',
+        pageOrigin: 'https://example.com',
+        tabId,
+        timestamp: new Date().toISOString(),
+        contentLength: 40,
+        sanitized: true,
+      };
+      return resolve({
+        success: true,
+        requestId,
+        data: { capture: mockCapture },
+      });
+    }
+
+    const doCaptureMsg: DoCaptureMessage = {
+      type: 'DO_CAPTURE',
+      requestId,
+      tabId,
+      timestamp: new Date().toISOString(),
+      payload: { captureId, sourceType },
+    };
+
+    chrome.tabs.sendMessage(tabId, doCaptureMsg, (response: ExtensionResponse<CaptureResponsePayload>) => {
+      if (chrome.runtime.lastError) {
+        return resolve({
+          success: false,
+          requestId,
+          error: {
+            code: 'TAB_COMMUNICATION_FAILED',
+            message: chrome.runtime.lastError.message || 'Could not communicate with tab content script.',
+          },
+        });
+      }
+
+      if (!response || !response.success || !response.data) {
+        return resolve({
+          success: false,
+          requestId,
+          error: response?.error || {
+            code: 'CAPTURE_FAILED',
+            message: 'Content script failed to capture content.',
+          },
+        });
+      }
+
+      resolve(response);
+    });
+  });
+}
+
+/**
  * Handles SCAN_REQUEST from Popup.
  * 1. Coordinates request ID.
- * 2. Fetches safe page context from content script.
+ * 2. Uses structured CapturePayload or fetches safe page context.
  * 3. Dispatches to Unified Firewall API.
- * 4. Records completion and returns decision reference.
+ * 4. Records completion and returns Engine 8 decision reference.
  */
 export async function handleScanRequest(
   message: ScanRequestMessage
 ): Promise<ExtensionResponse<LastAnalysisReference>> {
-  const { tabId } = message.payload;
+  const { tabId, capture } = message.payload;
   const requestId = message.requestId || generateExtensionRequestId();
 
   // 1. Guard against concurrent duplicate scans
@@ -70,18 +258,43 @@ export async function handleScanRequest(
     };
   }
 
-  // 2. Fetch Safe Context from Content Script
-  let pageContext: SafePageContext;
-  try {
-    pageContext = await fetchPageContextFromTab(tabId, requestId);
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : 'Could not communicate with tab content script.';
-    backgroundState.failRequest({ code: 'TAB_COMMUNICATION_FAILED', message: errorMsg });
-    return {
-      success: false,
-      requestId,
-      error: { code: 'TAB_COMMUNICATION_FAILED', message: errorMsg },
-    };
+  // 2. Prepare analysis parameters from CapturePayload or fallback
+  let inputType: 'url' | 'text' = 'text';
+  let analyzeText: string | undefined;
+  let analyzeUrl: string | undefined;
+  let pageOrigin = '';
+  let pageUrl = '';
+
+  if (capture) {
+    pageOrigin = capture.pageOrigin;
+    pageUrl = capture.url || '';
+    if (capture.sourceType === 'URL') {
+      inputType = 'url';
+      analyzeUrl = capture.url;
+    } else {
+      inputType = 'text';
+      analyzeText = capture.text;
+      analyzeUrl = capture.url;
+    }
+  } else {
+    // Phase 13.1 Fallback: Fetch safe context from tab
+    let pageContext: SafePageContext;
+    try {
+      pageContext = await fetchPageContextFromTab(tabId, requestId);
+      pageOrigin = pageContext.pageOrigin;
+      pageUrl = pageContext.pageUrl;
+      inputType = pageContext.pageUrl ? 'url' : 'text';
+      analyzeUrl = pageContext.pageUrl;
+      analyzeText = pageContext.selectedText || pageContext.metaDescription || pageContext.pageTitle;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Could not communicate with tab content script.';
+      backgroundState.failRequest({ code: 'TAB_COMMUNICATION_FAILED', message: errorMsg });
+      return {
+        success: false,
+        requestId,
+        error: { code: 'TAB_COMMUNICATION_FAILED', message: errorMsg },
+      };
+    }
   }
 
   // 3. Mark request started
@@ -89,18 +302,18 @@ export async function handleScanRequest(
     requestId,
     tabId,
     startedAt: new Date().toISOString(),
-    pageOrigin: pageContext.pageOrigin,
-    pageUrl: pageContext.pageUrl,
+    pageOrigin,
+    pageUrl,
   });
 
   // 4. Dispatch to Unified Firewall API (No client-side risk scoring)
   try {
     const analysisRef = await apiClient.analyze({
-      input_type: pageContext.pageUrl ? 'url' : 'text',
-      url: pageContext.pageUrl,
-      text: pageContext.selectedText || pageContext.metaDescription || pageContext.pageTitle,
+      input_type: inputType,
+      url: analyzeUrl,
+      text: analyzeText,
       channel: 'web',
-      session_id: requestId,
+      session_id: capture?.captureId || requestId,
     });
 
     backgroundState.completeRequest(analysisRef);
@@ -131,7 +344,6 @@ export async function handleScanRequest(
 
 /**
  * Handles OPEN_NIVESH_APP request.
- * Opens the Nivesh Web Application in a new browser tab with the analysis_id reference.
  */
 export async function handleOpenNiveshApp(
   message: OpenNiveshAppMessage
@@ -158,7 +370,6 @@ export async function fetchPageContextFromTab(
   requestId: string
 ): Promise<SafePageContext> {
   if (typeof chrome === 'undefined' || !chrome.tabs || !chrome.tabs.sendMessage) {
-    // Non-browser fallback for unit testing
     return {
       pageUrl: 'https://example.com/test-financial-page',
       pageOrigin: 'https://example.com',

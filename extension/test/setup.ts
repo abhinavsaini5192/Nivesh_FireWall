@@ -48,6 +48,13 @@ export function createChromeMock() {
       }),
     },
     tabs: {
+      get: vi.fn().mockImplementation((id: number) =>
+        Promise.resolve({
+          id,
+          url: 'https://bank-portal.example.com/dashboard',
+          title: 'Secure Banking Dashboard',
+        })
+      ),
       query: vi.fn().mockResolvedValue([
         {
           id: 101,
@@ -58,20 +65,54 @@ export function createChromeMock() {
         },
       ]),
       sendMessage: vi.fn((_tabId: number, message: unknown, responseCallback?: (response: unknown) => void) => {
-        if (responseCallback) {
-          responseCallback({
+        if (!responseCallback) return;
+        const msg = message as any;
+        const reqId = msg?.requestId || 'EXT-TEST';
+
+        if (msg?.type === 'CHECK_SELECTION') {
+          return responseCallback({
             success: true,
-            requestId: (message as any)?.requestId || 'EXT-TEST',
+            requestId: reqId,
+            data: { hasSelection: true, length: 45, previewText: 'Test sample text' },
+          });
+        }
+
+        if (msg?.type === 'DO_CAPTURE') {
+          return responseCallback({
+            success: true,
+            requestId: reqId,
             data: {
-              context: {
-                pageUrl: 'https://bank-portal.example.com/dashboard',
-                pageOrigin: 'https://bank-portal.example.com',
+              capture: {
+                captureId: msg.payload?.captureId || 'CAP-MOCK-1',
+                sourceType: msg.payload?.sourceType || 'SELECTED_TEXT',
+                status: 'CAPTURED',
+                text: 'Guaranteed 25% returns via Telegram robot.',
+                url: 'https://bank-portal.example.com/dashboard',
+                displayUrl: 'https://bank-portal.example.com/dashboard',
                 pageTitle: 'Secure Banking Dashboard',
-                capturedAt: new Date().toISOString(),
+                pageOrigin: 'https://bank-portal.example.com',
+                tabId: 101,
+                timestamp: new Date().toISOString(),
+                contentLength: 42,
+                sanitized: true,
               },
             },
           });
         }
+
+        // Default GET_PAGE_CONTEXT response
+        responseCallback({
+          success: true,
+          requestId: reqId,
+          data: {
+            context: {
+              pageUrl: 'https://bank-portal.example.com/dashboard',
+              pageOrigin: 'https://bank-portal.example.com',
+              pageTitle: 'Secure Banking Dashboard',
+              capturedAt: new Date().toISOString(),
+            },
+          },
+        });
       }),
       create: vi.fn().mockResolvedValue({ id: 102 }),
     },

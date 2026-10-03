@@ -30,31 +30,73 @@
       <div class="target-url" id="target-url"></div>
     </div>
 
+    <!-- Unsupported Page Warning Banner (Hidden by default) -->
+    <div class="warning-box" id="unsupported-box" style="display: none;">
+      This page cannot be analyzed by the extension.
+    </div>
+
     <!-- Error Banner (Hidden by default) -->
     <div class="error-box" id="error-box" style="display: none;"></div>
 
     <!-- Main Content Area: State-Dependent -->
     <div id="content-container">
-      <!-- 1. Ready State -->
+      <!-- 1. Ready State: Capture Controls -->
       <div id="view-ready" class="state-box">
         <p style="color: var(--color-text-secondary); font-size: 12px; margin-bottom: 8px;">
-          Inspect this page's financial claims, domain authority, and transaction requests before taking action.
+          Choose what content to inspect before taking consequential action:
         </p>
-        <button id="btn-scan" class="btn btn-primary">
-          Scan Current Content
-        </button>
+        <div class="capture-actions" id="capture-actions">
+          <div>
+            <button id="btn-scan-selection" class="btn btn-primary" style="width: 100%;">
+              Analyze Selected Text
+            </button>
+            <span id="selection-hint" class="hint-text" style="display: none; text-align: center;">
+              Select text on the page first.
+            </span>
+          </div>
+          <button id="btn-scan-page" class="btn btn-secondary">
+            Analyze Current Page
+          </button>
+          <button id="btn-scan-url" class="btn btn-secondary">
+            Analyze Current URL
+          </button>
+        </div>
       </div>
 
-      <!-- 2. Analyzing State -->
+      <!-- 2. Preview State (Phase 13.2 Section 25) -->
+      <div id="view-preview" class="state-box" style="display: none; align-items: stretch; text-align: left;">
+        <div class="preview-card">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 11px; font-weight: 600; color: var(--color-text-primary);">Ready to Analyze</span>
+            <span id="preview-badge" class="badge-source">Selected Text</span>
+          </div>
+          <blockquote id="preview-snippet" class="preview-snippet"></blockquote>
+          <div id="preview-meta" class="preview-meta">
+            <span id="preview-length">0 chars</span>
+            <span id="preview-origin">Origin</span>
+          </div>
+          <div class="preview-actions">
+            <button id="btn-confirm-analyze" class="btn btn-primary" style="flex: 1;">
+              Analyze Now
+            </button>
+            <button id="btn-cancel-preview" class="btn btn-ghost" style="flex: 1;">
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Analyzing State -->
       <div id="view-analyzing" class="state-box" style="display: none;">
         <div class="spinner"></div>
         <strong style="color: var(--color-text-primary);">Analyzing Content...</strong>
         <p style="color: var(--color-text-muted); font-size: 11px;">
           Evaluating claims, identity, threat paths, and collective fingerprints across Firewall pipeline.
         </p>
+        <button id="btn-cancel-analyzing" class="btn-link" style="margin-top: 8px;">Cancel</button>
       </div>
 
-      <!-- 3. Result State -->
+      <!-- 4. Result State -->
       <div id="view-result" style="display: none; flex-direction: column; gap: 10px;">
         <div class="decision-card" id="decision-card">
           <div style="display: flex; align-items: center; justify-content: space-between;">

@@ -21,7 +21,13 @@ export type ExtensionMessageType =
   | 'ANALYSIS_STARTED'
   | 'ANALYSIS_COMPLETED'
   | 'ANALYSIS_FAILED'
-  | 'OPEN_NIVESH_APP';
+  | 'OPEN_NIVESH_APP'
+  | 'CAPTURE_REQUEST'
+  | 'DO_CAPTURE'
+  | 'CAPTURE_RESPONSE'
+  | 'CHECK_SELECTION'
+  | 'CHECK_SELECTION_RESPONSE'
+  | 'EXECUTE_ANALYSIS';
 
 export interface ExtensionMessageError {
   code: string;
@@ -63,6 +69,7 @@ export type PageContextResponseMessage = BaseExtensionMessage<PageContextRespons
 export interface ScanRequestPayload {
   tabId: number;
   forceFresh?: boolean;
+  capture?: import('./capture').CapturePayload;
 }
 export type ScanRequestMessage = BaseExtensionMessage<ScanRequestPayload>;
 
@@ -70,18 +77,21 @@ export type ScanRequestMessage = BaseExtensionMessage<ScanRequestPayload>;
 export interface AnalysisStartedPayload {
   pageUrl: string;
   pageOrigin: string;
+  captureId?: string;
 }
 export type AnalysisStartedMessage = BaseExtensionMessage<AnalysisStartedPayload>;
 
 // 5. ANALYSIS_COMPLETED (Background -> Popup)
 export interface AnalysisCompletedPayload {
   reference: LastAnalysisReference;
+  captureId?: string;
 }
 export type AnalysisCompletedMessage = BaseExtensionMessage<AnalysisCompletedPayload>;
 
 // 6. ANALYSIS_FAILED (Background -> Popup)
 export interface AnalysisFailedPayload {
   error: ExtensionMessageError;
+  captureId?: string;
 }
 export type AnalysisFailedMessage = BaseExtensionMessage<AnalysisFailedPayload>;
 
@@ -90,6 +100,46 @@ export interface OpenNiveshAppPayload {
   analysisId?: string;
 }
 export type OpenNiveshAppMessage = BaseExtensionMessage<OpenNiveshAppPayload>;
+
+// 8. CAPTURE_REQUEST (Popup -> Background)
+export interface CaptureRequestPayload {
+  tabId: number;
+  sourceType: import('./capture').CaptureSourceType;
+  captureId?: string;
+}
+export type CaptureRequestMessage = BaseExtensionMessage<CaptureRequestPayload>;
+
+// 9. DO_CAPTURE (Background -> Content Script)
+export interface DoCapturePayload {
+  captureId: string;
+  sourceType: import('./capture').CaptureSourceType;
+}
+export type DoCaptureMessage = BaseExtensionMessage<DoCapturePayload>;
+
+// 10. CAPTURE_RESPONSE (Content Script -> Background / Background -> Popup)
+export interface CaptureResponsePayload {
+  capture: import('./capture').CapturePayload;
+}
+export type CaptureResponseMessage = BaseExtensionMessage<CaptureResponsePayload>;
+
+// 11. CHECK_SELECTION (Popup / Background -> Content Script)
+export interface CheckSelectionPayload {
+  tabId?: number;
+}
+export type CheckSelectionMessage = BaseExtensionMessage<CheckSelectionPayload>;
+
+export interface CheckSelectionResponsePayload {
+  hasSelection: boolean;
+  length?: number;
+  previewText?: string;
+}
+export type CheckSelectionResponseMessage = BaseExtensionMessage<CheckSelectionResponsePayload>;
+
+// 12. EXECUTE_ANALYSIS (Popup -> Background)
+export interface ExecuteAnalysisPayload {
+  capture: import('./capture').CapturePayload;
+}
+export type ExecuteAnalysisMessage = BaseExtensionMessage<ExecuteAnalysisPayload>;
 
 // Union of all supported message types
 export type ExtensionMessage =
@@ -101,7 +151,13 @@ export type ExtensionMessage =
   | AnalysisStartedMessage
   | AnalysisCompletedMessage
   | AnalysisFailedMessage
-  | OpenNiveshAppMessage;
+  | OpenNiveshAppMessage
+  | CaptureRequestMessage
+  | DoCaptureMessage
+  | CaptureResponseMessage
+  | CheckSelectionMessage
+  | CheckSelectionResponseMessage
+  | ExecuteAnalysisMessage;
 
 // Generic response envelope
 export interface ExtensionResponse<T = unknown> {

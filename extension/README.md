@@ -1,100 +1,102 @@
-# Nivesh Firewall Browser Extension (Phase 13.1 Foundation)
+# Nivesh Firewall Browser Extension (Phase 13.1 & 13.2)
 
-The **Nivesh Firewall Browser Extension** provides real-time financial content protection and pre-action intervention directly in the browser.
+The **Nivesh Firewall Browser Extension** provides real-time financial content protection and pre-action intervention directly in Chromium-compatible browsers.
 
-Phase 13.1 establishes the foundational architecture:
-- Manifest V3 structure
-- Background service worker lifecycle and state coordination
-- Content script safe context extraction (zero credential scraping)
-- Popup user interface with explicit user-initiated analysis
-- Typed message communication protocol with request correlation
-- Secure API client communicating with Unified Firewall API (`POST /api/v1/firewall/analyze`)
-- Safe web application deep linking (`analysis_id` handoff)
+- **Phase 13.1**: Extension Foundation (MV3 manifest, service worker, content script, typed messaging, least-privilege permissions, API client).
+- **Phase 13.2**: Page & Content Capture (User-initiated capture, 3 capture modes, visible text extraction, selection validation, URL privacy, compact preview, strict credential exclusion).
 
 ---
 
 ## 1. Architecture Overview
 
 ```text
-               Chromium Browser
-                      │
-       ┌──────────────┼──────────────┐
-       ↓              ↓              ↓
- Content Script     Popup UI     Background
- (Safe Context)   (User Action)    Worker
-       │              │              │
-       └──────────────┴──────────────┘
-                      ↓
-              Extension API Client
-                      ↓
-       Nivesh Unified Firewall API (Backend)
-         POST /api/v1/firewall/analyze
-                      ↓
-               Engine 8 Policy
+                  WEBPAGE
+                     │
+          ┌──────────┴──────────┐
+          │                     │
+   User-selected text      Current page
+          │                     │
+          └──────────┬──────────┘
+                     ↓
+               Content Script
+               (extractor.ts)
+                     ↓
+                 Sanitizer
+               (sanitizer.ts)
+                     ↓
+            Background Service Worker
+               (handlers.ts)
+                     ↓
+            Extension API Client
+               (client.ts)
+                     ↓
+     Unified Firewall API (Backend)
+      POST /api/v1/firewall/analyze
+                     ↓
+         Engine 8 Policy Decision
 ```
 
-### Separation of Responsibilities
+### Component Responsibilities
 
 | Component | Responsibility | Constraints |
 | :--- | :--- | :--- |
-| **Popup UI** | Communicates current extension state, displays active tab domain, and triggers user-initiated content scan. | Never analyzes silently. Uses `textContent` to prevent XSS. |
-| **Content Script** | Extracts safe, non-sensitive page context (`pageUrl`, `pageOrigin`, `pageTitle`, user selection) upon explicit user request. | Never accesses `<input type="password">`, OTP, PIN, CVV, or hidden inputs. No keystroke listeners. |
-| **Background Worker** | Coordinates message routing, runtime state transitions, request correlation, and API invocations. | No local threat scoring, claim extraction, or policy logic. Intelligence is 100% backend-driven. |
-| **Extension API Client** | Communicates exclusively with the Unified Firewall API (`POST /api/v1/firewall/analyze`) and health probes (`GET /api/v1/health`). | Never calls individual engines. No secrets stored in extension bundle. |
+| **Popup UI** | Presents 3 explicit capture triggers (`Selected Text`, `Current Page`, `Page URL`), renders compact preview before submission, and shows Engine 8 decision cards. | Strictly uses `textContent` to prevent XSS. Disables buttons for unsupported browser-internal pages (`chrome://`, etc.). |
+| **Content Script** | Extracts visible page text or highlighted selection on demand; checks selection state (`CHECK_SELECTION`). | Never accesses `<input type="password">`, OTP, PIN, CVV, card numbers, or hidden inputs. No keystroke listeners. |
+| **Sanitizer Layer** | Normalizes whitespace, removes control characters, and redacts accidental credit card numbers, CVVs, and PINs. | Rejects payloads exceeding maximum character limits (`CONTENT_TOO_LARGE`). |
+| **URL Privacy Layer** | Separates full `analysisInputUrl` (sent to backend) from sanitized `displayUrl` (stripped of tracking codes and sensitive query tokens). | Flags unsupported internal schemes (`chrome:`, `edge:`, `about:`, `devtools:`). |
+| **Background Worker** | Coordinates request correlation (`capture_id` → `request_id` → `analysis_id`), manages ephemeral state, and dispatches to API client. | Zero local threat scoring or policy intelligence. |
+| **Extension API Client** | Dispatches structured payloads to `POST /api/v1/firewall/analyze` and checks health via `GET /api/v1/health`. | Never calls individual backend engines directly. No secrets stored in bundle. |
 
 ---
 
-## 2. Manifest & Least Privilege Permissions
+## 2. Supported Capture Modes (Phase 13.2)
 
-The extension targets **Manifest V3** for modern Chromium-compatible browsers (Chrome, Edge, Brave):
-
-| Permission | Purpose | Principle of Least Privilege Justification |
-| :--- | :--- | :--- |
-| `activeTab` | Grants temporary access to the active tab only when the user interacts with the extension. | Eliminates the need for broad `<all_urls>` host permissions. |
-| `storage` | Persists user preferences and backend configuration (`backendApiUrl`, `webAppBaseUrl`). | Runtime scan state remains in memory; page content is never persisted. |
-| `scripting` | Enables content script injection and context communication upon user action. | Used strictly on-demand. |
-
-### Restricted Host Permissions
-- `http://localhost:8000/*`
-- `http://127.0.0.1:8000/*`
-
-Broad wildcard permissions such as `<all_urls>`, `*://*/*`, `history`, `bookmarks`, `passwords`, `downloads`, `webRequest`, and clipboard-wide access are **strictly prohibited**.
+1. **User-Selected Text (`SELECTED_TEXT`)**:
+   - Captures only the text highlighted by the user on the active page.
+   - If no text is selected, popup displays a helpful prompt (`"Select text on the page first."`) and returns `NO_SELECTION`.
+   - Rejects selections originating inside sensitive credential fields.
+   - Enforces a 5,000-character upper limit.
+2. **Current Page (`CURRENT_PAGE`)**:
+   - Walks the DOM starting from visible content, extracting headers, paragraphs, and list items.
+   - Excludes `<script>`, `<style>`, `<iframe>`, `<svg>`, `<nav>`, `<footer>`, and buttons.
+   - Skips hidden elements (`display: none`, `visibility: hidden`, `hidden`, `aria-hidden="true"`).
+   - Enforces a 15,000-character upper limit.
+3. **Current URL (`URL`)**:
+   - Validates that the active page URL uses `http:` or `https:`.
+   - Sends target URL to Unified Firewall API for Engine 4 reputation and threat inspection.
+   - Masks sensitive query parameters (`token`, `auth`, `session_id`, `key`) in popup display and telemetry logs.
 
 ---
 
 ## 3. Privacy Safeguards & Non-Surveillance
 
-1. **User-Initiated Capture Model**: Analysis occurs ONLY when the user clicks **"Scan Current Content"**. The extension never passively monitors browsing activity in the background or continuously uploads page DOMs.
-2. **Sensitive Element Exclusion**: Input elements with `type="password"`, `type="hidden"`, or matching patterns for `otp`, `pin`, `cvv`, `cvc`, `card number`, `ssn`, `secret`, `token`, or autocomplete codes are explicitly rejected and ignored.
-3. **Selection Sanitization**: User text selection is checked against its anchor/parent DOM nodes. If selection originated within a credential field, extraction is blocked and returns `undefined`.
-4. **Zero Credential Persistence**: Passwords, OTPs, PINs, bank details, and keystrokes are never intercepted, logged, or sent to backend services.
+- **User-Initiated Capture Model**: Content is captured ONLY when the user clicks an analysis trigger. Continuous background DOM scraping, page recording, or automated uploads are strictly prohibited.
+- **Sensitive Field Neutralization**: Input fields with `type="password"`, `type="hidden"`, or matching patterns for `otp`, `pin`, `cvv`, `cvc`, `card number`, `ssn`, `secret`, `token` are completely excluded from extraction.
+- **Accidental Pattern Redaction**: Text containing full credit card numbers, CVVs, or ATM PINs is automatically masked (`[CARD_NUMBER_REDACTED]`, `[CVV_REDACTED]`, `[PIN_REDACTED]`).
+- **Zero Credential Persistence**: No cookies, session storage, local storage, authorization headers, or keystroke listeners are accessed or stored.
 
 ---
 
-## 4. Typed Message Protocol & Correlation
+## 4. Message Protocol Contracts
 
-All inter-component communication is strictly typed and correlated via `requestId` (`EXT-...`):
+Extended in Phase 13.2:
 
 ```text
-Popup                    Background                   Content Script
-  │                           │                             │
-  │─── SCAN_REQUEST ─────────>│                             │
-  │    (tabId, requestId)     │─── GET_PAGE_CONTEXT ───────>│
-  │                           │    (requestId)              │
-  │                           │<── PAGE_CONTEXT_RESPONSE ───│
-  │                           │    (SafePageContext)        │
-  │                           │                             │
-  │                           │─── POST /firewall/analyze ─> (Unified API)
-  │                           │<── Decision / Ref ────────── (Engine 8 Result)
-  │<── SCAN_RESULT ───────────│
-       (LastAnalysisReference)
+Popup                       Background                      Content Script
+  │                              │                                │
+  │─── CHECK_SELECTION ─────────>│─── CHECK_SELECTION ───────────>│
+  │<── hasSelection (true/false)─│<── hasSelection (true/false)───│
+  │                              │                                │
+  │─── CAPTURE_REQUEST ─────────>│─── DO_CAPTURE ────────────────>│
+  │    (sourceType, tabId)       │    (sourceType, captureId)     │
+  │                              │<── CAPTURE_RESPONSE ───────────│
+  │<── CAPTURE_RESPONSE ─────────│    (CapturePayload)            │
+  │    (Render Preview)          │                                │
+  │                              │                                │
+  │─── SCAN_REQUEST ────────────>│─── POST /firewall/analyze ────> (Unified API)
+  │    (CapturePayload)          │<── Decision / Ref ───────────── (Engine 8)
+  │<── ANALYSIS_COMPLETED ───────│
 ```
-
-Supported Messages:
-- `GET_STATUS`: Queries current runtime status (`READY`, `ANALYZING`, `RESULT_AVAILABLE`, `ERROR`, `DISCONNECTED`).
-- `GET_PAGE_CONTEXT`: Retrieves sanitized `SafePageContext` from active tab.
-- `SCAN_REQUEST`: Dispatches firewall analysis through background worker.
-- `OPEN_NIVESH_APP`: Deep-links into the Nivesh web application passing exclusively `analysis_id` (`/#protect?id={analysis_id}`).
 
 ---
 
@@ -103,10 +105,7 @@ Supported Messages:
 From the `extension/` directory:
 
 ```bash
-# Install dependencies
-npm install
-
-# Run unit and contract tests (Vitest + JSDOM)
+# Run all unit, privacy, and capture tests (Vitest + JSDOM)
 npm test
 
 # Run linter (Oxlint)
@@ -119,10 +118,9 @@ npm run test:smoke
 npm run build
 ```
 
-The compiled extension is output to `extension/dist/`.
+Compiled output is located in `extension/dist/`.
 
-### Loading in Browser (Chrome / Edge / Brave):
+To load in Chromium browsers:
 1. Navigate to `chrome://extensions/`
-2. Enable **Developer mode** (toggle in upper right).
-3. Click **Load unpacked** and select the `extension/dist/` directory.
-4. The Nivesh Firewall extension will appear in the toolbar.
+2. Enable **Developer mode**.
+3. Click **Load unpacked** and select `extension/dist/`.
