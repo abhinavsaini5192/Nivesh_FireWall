@@ -1,0 +1,314 @@
+/**
+ * Nivesh Firewall Extension — Popup Styles (Phase 13.1 Section 6)
+ * Sleek, dark mode, high-contrast, accessible.
+ */
+
+:root {
+  --color-bg-canvas: #090d16;
+  --color-bg-surface: #111827;
+  --color-bg-subtle: #1f2937;
+  --color-border-subtle: #374151;
+  --color-border-focus: #0ea5e9;
+
+  --color-text-primary: #f9fafb;
+  --color-text-secondary: #9ca3af;
+  --color-text-muted: #6b7280;
+
+  --color-accent: #0ea5e9;
+  --color-accent-hover: #38bdf8;
+  --color-accent-subtle: rgba(14, 165, 233, 0.15);
+
+  --color-allow: #10b981;
+  --color-allow-bg: rgba(16, 185, 129, 0.15);
+  --color-allow-border: rgba(16, 185, 129, 0.4);
+
+  --color-warn: #f59e0b;
+  --color-warn-bg: rgba(245, 158, 11, 0.15);
+  --color-warn-border: rgba(245, 158, 11, 0.4);
+
+  --color-pause: #f97316;
+  --color-pause-bg: rgba(249, 115, 22, 0.15);
+  --color-pause-border: rgba(249, 115, 22, 0.4);
+
+  --color-block: #ef4444;
+  --color-block-bg: rgba(239, 68, 68, 0.15);
+  --color-block-border: rgba(239, 68, 68, 0.4);
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-full: 9999px;
+
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  width: 360px;
+  min-height: 400px;
+  max-height: 580px;
+  background-color: var(--color-bg-canvas);
+  color: var(--color-text-primary);
+  font-family: var(--font-family);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-y: auto;
+}
+
+.popup-container {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 14px;
+}
+
+/* Header */
+.popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-xs);
+  background: var(--color-accent-subtle);
+  border: 1px solid rgba(14, 165, 233, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent);
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.brand-name {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--color-text-primary);
+}
+
+.brand-badge {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+}
+
+/* Connection Pill */
+.connection-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  font-size: 10px;
+  color: var(--color-text-secondary);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--color-text-muted);
+}
+
+.dot.connected {
+  background-color: var(--color-allow);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+}
+
+.dot.connecting {
+  background-color: var(--color-warn);
+}
+
+.dot.unavailable {
+  background-color: var(--color-block);
+}
+
+/* Cards */
+.card {
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.target-domain {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-accent-hover);
+  word-break: break-all;
+}
+
+.target-url {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+  width: 100%;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background-color: var(--color-accent);
+  color: #ffffff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--color-accent-hover);
+}
+
+.btn-secondary {
+  background-color: var(--color-bg-subtle);
+  border-color: var(--color-border-subtle);
+  color: var(--color-text-primary);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--color-accent);
+  padding: 4px 0;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* States */
+.state-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 16px 12px;
+  gap: 8px;
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--color-border-subtle);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Decision Result Card */
+.decision-card {
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--color-border-subtle);
+}
+
+.decision-card.ALLOW {
+  background: var(--color-allow-bg);
+  border-color: var(--color-allow-border);
+}
+
+.decision-card.WARN {
+  background: var(--color-warn-bg);
+  border-color: var(--color-warn-border);
+}
+
+.decision-card.PAUSE {
+  background: var(--color-pause-bg);
+  border-color: var(--color-pause-border);
+}
+
+.decision-card.BLOCK {
+  background: var(--color-block-bg);
+  border-color: var(--color-block-border);
+}
+
+.decision-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.decision-reason {
+  font-size: 12px;
+  color: var(--color-text-primary);
+  line-height: 1.4;
+}
+
+/* Error Alert */
+.error-box {
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-block-bg);
+  border: 1px solid var(--color-block-border);
+  color: #fca5a5;
+  font-size: 11px;
+  line-height: 1.3;
+}

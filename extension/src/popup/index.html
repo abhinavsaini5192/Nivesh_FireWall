@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nivesh Firewall</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="popup-header">
+      <div class="brand">
+        <div class="brand-icon">N</div>
+        <div class="brand-text">
+          <span class="brand-name">NIVESH FIREWALL</span>
+          <span class="brand-badge">EXTENSION v1.0</span>
+        </div>
+      </div>
+      <div class="connection-pill" id="connection-pill" title="Live status of Nivesh Firewall service">
+        <span class="dot connecting" id="connection-dot"></span>
+        <span id="connection-text">Connecting</span>
+      </div>
+    </header>
+
+    <!-- Active Tab Context Card -->
+    <div class="card" id="page-context-card">
+      <div class="card-title">Current Browsing Context</div>
+      <div class="target-domain" id="target-domain">Loading active tab...</div>
+      <div class="target-url" id="target-url"></div>
+    </div>
+
+    <!-- Error Banner (Hidden by default) -->
+    <div class="error-box" id="error-box" style="display: none;"></div>
+
+    <!-- Main Content Area: State-Dependent -->
+    <div id="content-container">
+      <!-- 1. Ready State -->
+      <div id="view-ready" class="state-box">
+        <p style="color: var(--color-text-secondary); font-size: 12px; margin-bottom: 8px;">
+          Inspect this page's financial claims, domain authority, and transaction requests before taking action.
+        </p>
+        <button id="btn-scan" class="btn btn-primary">
+          Scan Current Content
+        </button>
+      </div>
+
+      <!-- 2. Analyzing State -->
+      <div id="view-analyzing" class="state-box" style="display: none;">
+        <div class="spinner"></div>
+        <strong style="color: var(--color-text-primary);">Analyzing Content...</strong>
+        <p style="color: var(--color-text-muted); font-size: 11px;">
+          Evaluating claims, identity, threat paths, and collective fingerprints across Firewall pipeline.
+        </p>
+      </div>
+
+      <!-- 3. Result State -->
+      <div id="view-result" style="display: none; flex-direction: column; gap: 10px;">
+        <div class="decision-card" id="decision-card">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span class="decision-badge" id="decision-badge">PAUSE</span>
+            <span style="font-size: 10px; font-family: var(--font-mono); color: var(--color-text-muted);" id="analysis-id-badge"></span>
+          </div>
+          <p class="decision-reason" id="decision-reason"></p>
+        </div>
+
+        <button id="btn-open-app" class="btn btn-secondary">
+          Open Full Intelligence in Web App ↗
+        </button>
+
+        <button id="btn-rescan" class="btn-link" style="text-align: center; margin-top: 4px;">
+          Rescan this content
+        </button>
+      </div>
+    </div>
+
+    <!-- Footer Privacy Note -->
+    <footer style="margin-top: auto; padding-top: 8px; border-top: 1px solid var(--color-border-subtle); display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: var(--color-text-muted);">
+      <span>Zero credential collection</span>
+      <a href="#" id="link-web-app" style="color: var(--color-text-muted); text-decoration: none;">Nivesh Core ↗</a>
+    </footer>
+  </div>
+
+  <script type="module" src="index.ts"></script>
+</body>
+</html>
