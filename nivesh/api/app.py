@@ -53,6 +53,14 @@ from nivesh.schemas.fingerprint import (
     FingerprintMatch,
     FingerprintAnalysis,
 )
+from nivesh.storage import (
+    create_tables,
+    check_database_health,
+    SqlAlchemyAnalysisRepository,
+    SqlAlchemyFingerprintRepository,
+    SqlAlchemySessionRepository,
+    SqlAlchemyAuditRepository,
+)
 from pydantic import BaseModel
 from datetime import datetime, timezone
 
@@ -134,6 +142,11 @@ async def lifespan(app: FastAPI):
     setup_logging(current_settings)
     if current_settings.is_production():
         current_settings.validate_production_readiness()
+    try:
+        create_tables()
+    except Exception as e:
+        import logging
+        logging.getLogger("nivesh.startup").warning("Database schema check notice: %s", e)
     yield
 
 # Initialize FastAPI application
@@ -173,19 +186,25 @@ async def firewall_validation_exception_handler(request: Request, exc: RequestVa
     )
 
 
-# Instantiate singleton engines
+# Persistent storage repositories
+analysis_repo = SqlAlchemyAnalysisRepository()
+fingerprint_repo = SqlAlchemyFingerprintRepository()
+session_repo = SqlAlchemySessionRepository()
+audit_repo = SqlAlchemyAuditRepository()
+
+# Instantiate singleton engines with persistent collective memory
 content_engine = ContentIntelligenceEngine()
 claims_engine = ClaimIntelligenceEngine()
 actions_engine = ActionIntelligenceEngine()
 sources_engine = SourceIntelligenceEngine()
 evidence_engine = EvidenceVerificationEngine()
 threat_engine = ThreatIntelligenceEngine()
-fingerprint_engine = ScamFingerprintEngine()
+fingerprint_engine = ScamFingerprintEngine(repository=fingerprint_repo)
 policy_engine = PolicyInterventionEngine()
 identity_engine = IdentityVerificationEngine()
 behaviour_engine = BehaviouralSignalEngine()
 
-# Canonical Product Orchestrator singleton wiring all 10 engines with central configuration
+# Canonical Product Orchestrator singleton wiring all 10 engines and persistence
 firewall_orchestrator = ProductOrchestrator(
     engines={
         "engine_1": content_engine,
@@ -204,20 +223,28 @@ firewall_orchestrator = ProductOrchestrator(
         timeout_ms=settings.timeout_pipeline_ms,
         engine_timeout_ms=settings.timeout_engine_ms,
     ),
+    analysis_repository=analysis_repo,
+    session_repository=session_repo,
 )
 
 
 @app.get("/health", tags=["System"])
 @app.get("/api/v1/health", tags=["System"])
 def health_check():
-    """System health check endpoint preserving full engine and environment status."""
+    """System health check endpoint preserving full engine, environment, and database status."""
     current_settings = get_settings()
+    db_health = check_database_health()
     return {
-        "status": "healthy",
+        "status": "healthy" if db_health.get("connected", True) else "degraded",
         "engine": "Content Intelligence Engine",
         "service": "Nivesh Firewall Unified API",
         "environment": current_settings.env,
         "version": ENGINE_VERSION,
+        "database": {
+            "status": db_health["status"],
+            "dialect": db_health["dialect"],
+            "connected": db_health["connected"],
+        },
         "unified_firewall_api": "/api/v1/firewall/analyze",
         "retrieval_api": "/api/v1/firewall/analysis/{analysis_id}",
         "engines": [
@@ -1160,8 +1187,9 @@ async def get_firewall_analysis(analysis_id: str):
                     details={"reason": "The requested analysis ID does not exist or has expired."},
                 ).model_dump(),
             )
-        response = firewall_orchestrator.format_response(result)
-        return response
+        if isinstance(result, FirewallAnalysisResponse):
+            return result
+        return firewall_orchestrator.format_response(result)
     except Exception as e:
         return JSONResponse(
             status_code=500,

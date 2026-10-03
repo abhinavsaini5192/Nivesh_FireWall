@@ -180,14 +180,20 @@ class ProductOrchestrator:
         self,
         engines: Optional[dict[str, Any]] = None,
         config: Optional[OrchestratorConfig] = None,
+        analysis_repository: Optional[Any] = None,
+        session_repository: Optional[Any] = None,
     ):
         """Initialize the product orchestrator with optional dependency injection.
 
         Args:
             engines: Optional mapping of engine overrides for testing or custom adapters.
             config: Optional orchestration configuration (timeouts, modes, fail-fast).
+            analysis_repository: Optional persistent AnalysisRepository.
+            session_repository: Optional persistent SessionRepository.
         """
         self.config = config or OrchestratorConfig()
+        self.analysis_repo = analysis_repository
+        self.session_repo = session_repository
         injected = engines or {}
 
         # Initialize or inject canonical engines
@@ -213,16 +219,35 @@ class ProductOrchestrator:
     def record_interaction_event(
         self, session_id: str, event: InteractionEvent
     ) -> InteractionHistory:
-        """Record an observable interaction event into Engine 10's session tracker."""
+        """Record an observable interaction event into Engine 10 and persistent storage."""
+        if self.session_repo is not None:
+            try:
+                self.session_repo.record_event(session_id, event)
+            except Exception:
+                pass
         return self.e10.record_event(session_id, event)
 
     def get_session_history(self, session_id: str) -> Optional[InteractionHistory]:
         """Retrieve recorded session interaction history by session ID."""
-        return self.e10.get_session(session_id)
+        history = self.e10.get_session(session_id)
+        if not history and self.session_repo is not None:
+            try:
+                return self.session_repo.get_session(session_id)
+            except Exception:
+                pass
+        return history
 
-    def get_analysis(self, analysis_id: str) -> Optional[OrchestrationResult]:
+    def get_analysis(self, analysis_id: str) -> Optional[Any]:
         """Retrieve a previously executed analysis by analysis ID without re-running engines."""
-        return self._analysis_store.get(analysis_id)
+        in_memory = self._analysis_store.get(analysis_id)
+        if in_memory is not None:
+            return in_memory
+        if self.analysis_repo is not None:
+            try:
+                return self.analysis_repo.get_analysis(analysis_id)
+            except Exception:
+                pass
+        return None
 
     def analyze(
         self,
@@ -1123,6 +1148,15 @@ class ProductOrchestrator:
 
         if idempotency_key:
             self._idempotency_cache[idempotency_key] = res
+
+        if self.analysis_repo is not None:
+            try:
+                self.analysis_repo.save_analysis(res, idempotency_key=idempotency_key)
+            except Exception as e:
+                import logging
+                logging.getLogger("nivesh.orchestrator").warning(
+                    "Failed to persist analysis %s: %s", analysis_id, e
+                )
 
         return res
 

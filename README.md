@@ -1809,3 +1809,109 @@ On application startup, `Settings.validate_production_readiness()` verifies that
 4. `NIVESH_SOURCE_MODE=LIVE` is backed by `NIVESH_LIVE_SOURCES_ENABLED=True`.
 5. Any failure aborts startup safely without printing passwords, credentials, or secrets in logs or exceptions.
 
+---
+
+## 22. Persistent Data & Storage Layer (Phase 14.2)
+
+Phase 14.2 establishes the persistent data and storage layer for Nivesh Firewall. It replaces prototype in-memory state with a reliable, transactional database-backed persistence architecture while preserving the strict privacy and zero-secret retention model.
+
+```text
+                        NIVESH APPLICATION / API LAYER
+                                      │
+           ┌──────────────────────────┼──────────────────────────┐
+           ▼                          ▼                          ▼
+  AnalysisRepository         FingerprintRepository        SessionRepository
+(SqlAlchemyAnalysisRepo)    (SqlAlchemyFingerprintRepo) (SqlAlchemySessionRepo)
+           │                          │                          │
+           ▼                          ▼                          ▼
+   analyses                   fingerprints                sessions
+   policy_decisions           fingerprint_observations    session_events
+   analysis_results
+   engine_executions
+           │                          │                          │
+           └──────────────────────────┼──────────────────────────┘
+                                      │
+                                      ▼
+                        AuditRepository (AuditRecordModel)
+                                      │
+                                      ▼
+                      CENTRAL DATABASE ENGINE & POOL
+                 (SQLAlchemy 2.0 / Dialect-Aware Pooling)
+                                      │
+            ┌─────────────────────────┴─────────────────────────┐
+            ▼                                                   ▼
+Development & Test: SQLite                           Production: PostgreSQL
+(sqlite:///./nivesh_dev.db / in-memory)              (NIVESH_DATABASE_URL)
+```
+
+### 22.1 Storage Architecture & Repositories
+
+The storage architecture is organized under `nivesh/storage/` with clean interface abstractions and dependency injection:
+
+1. **`SqlAlchemyAnalysisRepository` (`AnalysisRepository`)**:
+   - Persists complete `FirewallAnalysisResponse` cases including Engine 8 policy decisions, normalized content summaries, extracted claims, action classifications, evidence verification summaries, threat stages, fingerprint matches, and behavioral signals.
+   - Preserves per-engine execution states (`EngineExecutionModel`) with durations, timestamps, and error codes.
+   - Enforces atomic ACID transactions: analysis record, policy decision, results, and execution states commit together or roll back on error.
+   - Supports safe retrieval by `analysis_id` and querying recent analyses filtered by decision or session.
+   - Implements safe soft-deletion semantics (`soft_delete_analysis`) and privacy-compliant hard deletion with foreign key cascading.
+
+2. **`SqlAlchemyFingerprintRepository` (`FingerprintRepository`)**:
+   - Stores collective threat patterns (`ScamFingerprint`) and individual observations (`FingerprintObservation`).
+   - Indexes canonical signatures (`exact_signature`, `semantic_signature`, `attack_path_signature`) and threat families for fast candidate retrieval.
+   - Implements duplicate-origin safeguards (`content_hashes` registry) to prevent copy-amplification from artificially inflating observation counts.
+   - Manages fingerprint lifecycle promotion: automatically promotes fingerprints from `NEW` to `ACTIVE` upon reaching independent observation thresholds (>= 2).
+   - Supports user and analyst disputes (`dispute_fingerprint`) with immutable audit notes.
+
+3. **`SqlAlchemySessionRepository` (`SessionRepository`)**:
+   - Tracks temporal user interaction sequences (`InteractionHistory`, `InteractionEvent`) for Engine 10 behavioural signal intelligence.
+   - Enforces strict session isolation: sessions are partitioned by `session_id`.
+   - Automatically sanitizes and scrubs forbidden credential fields (`password`, `otp`, `pin`, `cvv`, `card_number`, `token`, `keystrokes`) before persistence.
+   - Rejects payloads containing raw credentials with `ForbiddenFieldError`.
+
+4. **`SqlAlchemyAuditRepository` (`AuditRepository`)**:
+   - Append-only audit trail (`AuditRecordModel`) recording operational actions, actor identities, target resources, and event metadata.
+   - Enforces tamper-evident timestamps and sanitized metadata serialization.
+
+### 22.2 Privacy Boundary & Zero-Secret Retention Guarantee
+
+The persistent storage layer strictly adheres to the Nivesh Privacy Model:
+- **What is Persisted**:
+  - Analysis metadata, timestamps, processing duration, and pipeline status.
+  - Engine 8 authoritative policy decisions, severity levels, and reason codes.
+  - Normalized content summaries, entity names, and public claim texts.
+  - Structural threat fingerprints, canonical hashes, and collective observation counts.
+  - Privacy-safe interaction event types (`CONTENT_VIEW`, `CHANNEL_CHANGED`, `PAYMENT_REQUESTED`).
+- **What is NEVER Persisted**:
+  - Raw passwords, OTPs, PINs, CVVs, debit/credit card numbers, and bank account numbers.
+  - Full raw browser DOM dumps or un-normalized webpage contents by default.
+  - User keystrokes, personal identity documents, or authentication tokens.
+- **Fail-Safe Sanitization**:
+  - `ForbiddenFieldError` raised if unredacted financial credentials attempt to enter storage repositories.
+  - Automatic regex-based redaction on all serialized metadata and error messages.
+
+### 22.3 Database Configuration & Schema Migrations
+
+- **Database Engine Management (`nivesh.storage.database`)**:
+  - Configured via `Settings.database_url`.
+  - Dialect-aware pooling: `StaticPool` with WAL mode for SQLite; `QueuePool` with pre-ping, connection recycling (`pool_recycle=1800`), and overflow limits for PostgreSQL.
+  - Context-managed sessions via `get_db_session()` ensuring deterministic commit and rollback semantics.
+  - Health check utility (`check_database_health()`) reporting connectivity, dialect, pool status, and response latency without leaking connection credentials.
+- **Alembic Migrations (`alembic/`)**:
+  - Migration script: `alembic/versions/001_initial_persistence_schema.py`.
+  - Creates all 9 tables: `analyses`, `policy_decisions`, `analysis_results`, `engine_executions`, `fingerprints`, `fingerprint_observations`, `sessions`, `session_events`, and `audit_records`.
+  - Fully reversible migrations with complete `upgrade()` and `downgrade()` routines.
+  - Automated programmatic migration runner (`run_migrations()`) invoked on startup.
+
+### 22.4 Storage Verification & Test Suite
+
+Verify the persistence layer across unit, integration, concurrency, idempotency, restart persistence, and privacy protection tests:
+
+```bash
+python -X utf8 -m pytest tests/test_persistence.py -v
+```
+**Results:** 23 passed in `test_persistence.py` (0 failed, 100% pass rate).
+- Full backend regression suite: **521 passed in 225s** (100% pass rate).
+- Web frontend test suite: **103 passed in 15s** (100% pass rate).
+- Browser extension test suite: **141 passed in 7s** (100% pass rate).
+- Frontend & extension production builds: **Clean (0 errors, 0 warnings)**.
+

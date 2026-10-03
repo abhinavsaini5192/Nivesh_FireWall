@@ -210,6 +210,9 @@ class ScamFingerprintEngine:
                 observation=observation,
                 content_hash=features.get("content_hash")
             )
+            refreshed_target = self.repository.get_fingerprint(target_fp.fingerprint_id)
+            if refreshed_target:
+                target_fp = refreshed_target
 
             # Build privacy-safe collective context
             collective_context = self._generate_collective_context(target_fp, primary_match)
@@ -274,6 +277,9 @@ class ScamFingerprintEngine:
                 observation=observation,
                 content_hash=features.get("content_hash")
             )
+            refreshed_new = self.repository.get_fingerprint(new_fp.fingerprint_id)
+            if refreshed_new:
+                new_fp = refreshed_new
 
             collective_context = {
                 "fingerprint_id": new_fp.fingerprint_id,
