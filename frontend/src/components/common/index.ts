@@ -18,3 +18,4 @@ export * from './SectionHeader';
 export * from './MetadataRow';
 export * from './Accordion';
 export * from './ErrorBoundary';
+export * from './ExtensionInstallModal';
