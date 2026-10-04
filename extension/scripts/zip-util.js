@@ -124,10 +124,48 @@ export function inspectZipBuffer(zipBuf) {
     const crc = zipBuf.readUInt32LE(currOffset + 16);
 
     const filename = zipBuf.subarray(currOffset + 46, currOffset + 46 + filenameLen).toString('utf8');
-    entries.push({ name: filename, uncompressedSize, compressedSize, crc });
+    const localHeaderOffset = zipBuf.readUInt32LE(currOffset + 42);
+    entries.push({ name: filename, uncompressedSize, compressedSize, crc, localHeaderOffset });
 
     currOffset += 46 + filenameLen + extraLen + commentLen;
   }
 
   return entries;
 }
+
+/**
+ * Extracts and decompresses all entries from a ZIP buffer.
+ * @param {Buffer} zipBuf
+ * @returns {Map<string, Buffer>} Map of relative filename to uncompressed Buffer
+ */
+export function extractZipEntries(zipBuf) {
+  const inspected = inspectZipBuffer(zipBuf);
+  const result = new Map();
+
+  for (const entry of inspected) {
+    const locOffset = entry.localHeaderOffset;
+    if (zipBuf.readUInt32LE(locOffset) !== 0x04034b50) {
+      throw new Error(`Invalid local file header signature for ${entry.name}`);
+    }
+
+    const compressionMethod = zipBuf.readUInt16LE(locOffset + 8);
+    const filenameLen = zipBuf.readUInt16LE(locOffset + 26);
+    const extraLen = zipBuf.readUInt16LE(locOffset + 28);
+    const dataOffset = locOffset + 30 + filenameLen + extraLen;
+    const compressedData = zipBuf.subarray(dataOffset, dataOffset + entry.compressedSize);
+
+    let uncompressedData;
+    if (compressionMethod === 8) {
+      uncompressedData = zlib.inflateRawSync(compressedData);
+    } else if (compressionMethod === 0) {
+      uncompressedData = compressedData;
+    } else {
+      throw new Error(`Unsupported compression method ${compressionMethod} for ${entry.name}`);
+    }
+
+    result.set(entry.name, uncompressedData);
+  }
+
+  return result;
+}
+
