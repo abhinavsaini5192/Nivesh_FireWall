@@ -1,24 +1,60 @@
 # Nivesh Firewall — Chrome Web Store Submission & Packaging Guide
 
-This document contains the verified metadata, permission justifications, privacy disclosures, and asset specifications for submitting **Nivesh Firewall** to the Chrome Web Store.
+This document contains the verified metadata, single-purpose declaration, reviewer permission justifications, privacy disclosures, installation UX specifications, and asset checklists for submitting **Nivesh Firewall** to the Chrome Web Store.
 
 ---
 
-## 1. Store Listing Metadata
+## 1. Executive Status & Deployment Reality
 
-| Field | Value |
-| :--- | :--- |
-| **Extension Name** | `Nivesh Firewall` |
-| **Version** | `1.0.0` |
-| **Manifest Version** | `3` |
-| **Category** | `Privacy & Security` / `Productivity` |
-| **Summary / Short Description** | `Inspect financial content and verify claims before consequential actions with real-time pre-action safety checks.` (114 chars, limit: 132 chars) |
-| **Primary Language** | English |
-| **Support / Website URL** | `https://nivesh.ai` *(or local development placeholder)* |
+```text
+Chrome Web Store package:
+Technically ready
+
+Public API dependency:
+NOT YET DEPLOYED
+
+Public user installation:
+NOT YET END-TO-END VERIFIED
+
+Store Publication Status:
+NOT PUBLISHED (Preparation & Review Materials Only)
+```
+
+> [!IMPORTANT]
+> The Nivesh Firewall extension package (`nivesh-firewall-v1.0.0.zip`) is technically prepared and audited for Chrome Web Store compliance. However, public user installation and end-to-end verification cannot be completed until the public production API endpoint (`https://api.nivesh.ai/*`) is deployed and operational. The extension must NOT be claimed as "published" or "live for public users" until Chrome Web Store review is approved and the production API is online.
 
 ---
 
-## 2. Detailed Store Description
+## 2. Store Listing Metadata
+
+| Field | Value | Notes |
+| :--- | :--- | :--- |
+| **Extension Name** | `Nivesh Firewall` | Official product title |
+| **Version** | `1.0.0` | Synchronized with `manifest.json` and `package.json` |
+| **Manifest Version** | `3` | Full MV3 compliance |
+| **Category** | `Privacy & Security` (Secondary: `Productivity`) | Chrome Web Store categories |
+| **Short Description** | `Inspect financial content and verify claims before consequential actions with real-time pre-action safety checks.` | 114 chars (under 132 char limit) |
+| **Primary Language** | English | |
+| **Support / Website URL** | `https://nivesh.ai` | Configurable deployment variable |
+| **Web Store Listing URL** | `https://chromewebstore.google.com/detail/<extension-id>` | Configurable post-submission URL |
+
+---
+
+## 3. Single-Purpose Declaration
+
+The Chrome Web Store Developer Program Policies require an explicit, narrow single-purpose declaration:
+
+> **Single Purpose**:
+> **Helping users inspect financial content and understand potential safety concerns before consequential actions.**
+
+### Behavioral Boundaries
+- **User-Initiated Activation**: The extension operates strictly upon explicit user interaction (clicking the toolbar action or clicking "Analyze This Page" in the popup).
+- **No Background Surveillance**: The extension does NOT passively monitor, record, log, or transmit background browsing activity.
+- **No Autonomous Trading**: The extension does NOT execute trades, transfer funds, or interact with banking accounts.
+
+---
+
+## 4. Detailed Store Description
 
 ```markdown
 Nivesh Firewall provides pre-action verification and intervention for financial content, claims, and investment solicitations directly within your browser.
@@ -27,9 +63,9 @@ Before you make a financial commitment, wire funds, join an unverified investmen
 
 ### Key Capabilities
 
-• One-Click Page Analysis: Inspect visible financial claims and advisory content on any active webpage.
-• Selected Text Verification: Highlight specific claims, return promises, or advisory messages to inspect them in isolation.
-• Pre-Action Interventions: Non-invasive warnings, pauses, or block interventions when high-risk patterns or fabricated regulatory registrations are detected.
+• One-Click Page Analysis: Inspect visible financial claims, return promises, and advisory content on any active webpage with a single click.
+• Selected Text Verification: Highlight specific claims, WhatsApp/Telegram forward texts, or advisory messages to inspect them in isolation.
+• Pre-Action Interventions: Receive non-invasive warnings, pauses, or block interventions when high-risk patterns or unverified regulatory claims are detected.
 • Deep-Link Audit: Open the full Nivesh Web Application with a single click to review detailed claims breakdown, regulatory provenance, and threat intelligence.
 • Privacy-Preserving Architecture: Operates strictly on-demand. Zero continuous background tracking, zero keystroke logging, and zero credential harvesting.
 
@@ -42,78 +78,155 @@ Nivesh Firewall:
 - does NOT offer investment advice, buy/sell recommendations, or portfolio management
 - does NOT execute financial transactions
 - does NOT guarantee that any opportunity is risk-free or fraudulent
+- does NOT guarantee scam or fraud prevention
 ```
 
 ---
 
-## 3. Chrome Web Store Permission Justifications
+## 5. Chrome Web Store Permission Justifications
 
-Chrome Web Store reviewers require an explicit justification for every requested permission demonstrating adherence to the **Principle of Least Privilege**:
+Reviewers require an explicit, granular explanation for every requested permission demonstrating adherence to the **Principle of Least Privilege**:
 
 ### `activeTab`
-> **Justification**: Granted only when the user explicitly interacts with the Nivesh Firewall extension (e.g., clicking the toolbar popup icon or selecting "Analyze This Page"). It allows the extension to inspect the current active webpage's URL and visible content to evaluate financial claims without requiring broad, persistent access to the user's entire browsing session.
+> **Reviewer Justification**: Granted only when the user explicitly interacts with the Nivesh Firewall extension (clicking the extension icon in the toolbar or triggering "Analyze This Page"). It provides temporary access to the active tab to inspect the current webpage URL and visible text for financial claims without requiring broad, persistent access to the user's browsing history or all open tabs.
 
 ### `storage`
-> **Justification**: Used exclusively to persist local user settings (e.g., theme preferences, API endpoint configuration) and tab-scoped lightweight analysis references (`analysisId`, decision status) to ensure UI continuity across service worker suspension cycles. It NEVER stores sensitive credentials, passwords, or raw banking text.
+> **Reviewer Justification**: Used exclusively to store local user preferences (such as auto-scan settings and UI theme) and transient, tab-scoped analysis identifiers (`analysisId`, last evaluation status). It ensures UI continuity when the Manifest V3 service worker suspends between actions. It never stores sensitive credentials, passwords, or personal banking data.
 
 ### `scripting`
-> **Justification**: Used to display the isolated in-page Shadow DOM intervention overlay (`SHOW_INTERVENTION`) when an analysis returns a `WARN`, `PAUSE`, or `BLOCK` decision, warning the user of detected threats before they proceed with a consequential action.
+> **Reviewer Justification**: Injects an ephemeral, isolated Shadow DOM intervention overlay (`SHOW_INTERVENTION`) on the active tab only when an analysis returns a `WARN`, `PAUSE`, or `BLOCK` policy decision, alerting the user to critical financial risks before they proceed.
 
 ### Host Permissions (`https://api.nivesh.ai/*`)
-> **Justification**: Required exclusively to transmit the user-initiated analysis request to the Nivesh Unified Firewall API over secure HTTPS (`POST /api/v1/firewall/analyze`) and receive real-time policy and threat determinations. The extension does not access any other external domain or origin.
+> **Reviewer Justification**: Required exclusively to transmit user-initiated analysis requests to the secure Nivesh Unified Firewall API (`POST /api/v1/firewall/analyze`) and receive real-time threat evaluations and regulatory provenance data over encrypted HTTPS. No communication is permitted with any other domain or origin.
 
 ### Strictly Forbidden Permissions Audit
-The extension explicitly avoids and does **NOT** request:
-- `<all_urls>` or wildcard domain access
-- `tabs` (unrestricted tab monitoring)
-- `history` (browsing history access)
-- `passwords` / `credentials`
-- `clipboardRead` / `clipboardWrite`
-- `webRequest` / `webRequestBlocking`
-- `cookies`
+The extension explicitly avoids all invasive permissions:
+- `*://*/*` or `<all_urls>` (No broad web access)
+- `tabs` (No general tab monitoring or history tracking)
+- `history` (No access to browsing history)
+- `cookies` (No session or cookie extraction)
+- `passwords` / `credentials` (Zero credential access)
+- `clipboardRead` / `clipboardWrite` (No clipboard access)
+- `webRequest` / `webRequestBlocking` (No traffic interception)
+- `downloads` (No file download control)
+- `geolocation` (No location tracking)
+- `management` (No extension management)
 
 ---
 
-## 4. Privacy & Data Disclosure Declaration
+## 6. Privacy & Data Use Disclosure
 
-### Single Purpose Description
-> Nivesh Firewall inspects user-selected or active-page financial claims against authoritative regulatory sources and threat indicators to protect users from deceptive financial schemes.
+### Data Types Accessed & Transmitted
+1. **User-Selected / Page Content**: Visible text or user-highlighted text from the active tab upon explicit user invocation.
+2. **Page URL & Title**: The URL of the inspected page to evaluate domain registration age and known scam fingerprints.
+3. **Transmission Channel**: Encrypted HTTPS directly to `https://api.nivesh.ai/*`.
 
-### Data Types Accessed and Transmitted
-1. **Webpage Content**: Visible text or user-highlighted text from the active tab upon explicit user trigger.
-2. **Page URL & Title**: The URL of the inspected page to identify domain registration anomalies and scam fingerprints.
+### Zero-Collection Guarantee (Excluded Data Types)
+The extension includes active content filtering and sanitization:
+- **No Passwords**: `<input type="password">` fields and credentials are never captured.
+- **No Payment Details**: Credit card numbers, CVVs, expiration dates, PINs, and bank account numbers are scrubbed prior to transmission.
+- **No OTPs / 2FA**: One-time passwords and SMS security codes are strictly filtered out.
+- **No Hidden Inputs**: `<input type="hidden">` values are excluded.
+- **No Keystroke Surveillance**: No global keyboard event listeners exist.
+- **No Continuous Surveillance**: Pages are never scanned autonomously in the background; analysis requires explicit user invocation.
 
-### Data Explicitly Excluded (Zero-Collection Guarantee)
-The content extractor and background service worker enforce strict sanitization rules:
-- **No Passwords**: `<input type="password">` fields are completely excluded.
-- **No Payment Credentials**: Credit card numbers, CVVs, expiration dates, PINs, and bank account numbers are scrubbed.
-- **No One-Time Passwords (OTPs)**: Security codes and OTP fields are explicitly filtered out.
-- **No Hidden Fields**: `<input type="hidden">` values are ignored.
-- **No Keystroke Listening**: There are no keyboard event hooks or input logging listeners.
-- **No Continuous Surveillance**: The extension does not scrape or monitor pages in the background; it acts strictly upon direct user request.
-
----
-
-## 5. Visual Asset Specifications
-
-| Asset | Dimensions | Format | Status | Location |
-| :--- | :--- | :--- | :--- | :--- |
-| **Small Icon** | `16 x 16 px` | PNG (32-bit RGBA) | Built | `icons/icon16.png` |
-| **Medium Icon** | `48 x 48 px` | PNG (32-bit RGBA) | Built | `icons/icon48.png` |
-| **Store / Large Icon** | `128 x 128 px` | PNG (32-bit RGBA) | Built | `icons/icon128.png` |
-| **Screenshot 1** | `1280 x 800 px` | PNG | Ready for capture | Popup: Ready State & Active Context |
-| **Screenshot 2** | `1280 x 800 px` | PNG | Ready for capture | Popup: Analyzing & Signal Detection |
-| **Screenshot 3** | `1280 x 800 px` | PNG | Ready for capture | In-Page: Warning Intervention Overlay |
-| **Screenshot 4** | `1280 x 800 px` | PNG | Ready for capture | Web App: Full Firewall Deep Link Review |
+### Local Storage Policy
+- Local extension storage (`chrome.storage.local`) holds only client configuration flags and short-lived request tokens.
+- No personally identifiable information (PII) is persisted locally.
 
 ---
 
-## 6. Distributable Package Verification
+## 7. Production API Dependency & Environment Status
 
-The production-ready ZIP package is deterministically generated by:
+The production package references the official production API origin:
+```text
+https://api.nivesh.ai/*
+```
+
+### Current Operational Status
+- **Backend Deployment**: The production backend and Unified Firewall API have not yet been deployed to the public domain `api.nivesh.ai`.
+- **Public End-to-End Verification**: Pending public backend deployment.
+- **Review Pre-Condition**: For Chrome Web Store public submission, either the production backend must be live on `https://api.nivesh.ai`, or reviewer test credentials and mock endpoints must be documented in the submission notes.
+
+---
+
+## 8. Installation UX Specification
+
+### Intended Normal-User Flow
+```text
+Nivesh Landing Page
+        ↓
+Click "Add to Chrome"
+        ↓
+Chrome Web Store Listing Page
+        ↓
+Click "Add to Chrome" button
+        ↓
+Chrome Native Permission Confirmation Dialog
+        ↓
+Extension Installed & Action Pinned
+        ↓
+User clicks Nivesh icon → Opens Popup Ready State
+```
+
+### Normal-User Guardrails
+- **No Developer Mode Instructions**: The landing page and public documentation must **NEVER** instruct end users to open `chrome://extensions`, enable Developer Mode, or "Load unpacked".
+- **Dynamic Store Link**: The "Add to Chrome" button on the web landing page uses a configurable environment variable (`VITE_CHROME_WEBSTORE_URL`). During pre-launch, it links to a clear waitlist or readiness modal rather than a broken or fabricated link.
+
+---
+
+## 9. Store Screenshot Preparation Checklist
+
+Chrome Web Store requires high-resolution screenshots showing the actual extension in use. The following 5 scenes represent real, implemented UI states:
+
+| Scene # | Screenshot Title | UI State Captured | Visual Composition & Details | Resolution |
+| :---: | :--- | :--- | :--- | :--- |
+| **1** | **Popup Idle / Ready State** | Extension toolbar popup opened on active webpage | Displays domain context (`example.com`), active protection status badge (`PROTECTED`), clear "Analyze This Page" call-to-action button, and recent audit history count. | `1280 x 800 px` |
+| **2** | **Analyze This Page State** | Active analysis in progress | Progress indicator displaying "Extracting page content...", real-time signal detection progress, and cancel option. | `1280 x 800 px` |
+| **3** | **Example Analysis Result** | Policy decision and findings summary | Clear visual verdict card (e.g., `WARN` or `ALLOW`), risk score gauge, detected claims breakdown (e.g., unverified 50% guaranteed monthly returns), and SEBI verification status. | `1280 x 800 px` |
+| **4** | **Full Firewall Handoff** | Transition to deep audit | User clicking "Open Full Audit in Nivesh", showing clean deep-link handoff to the web dashboard (`/firewall/audit/<id>`) with complete forensic evidence breakdown. | `1280 x 800 px` |
+| **5** | **In-Page Intervention Overlay** | Shadow DOM warning banner on risky content | Non-invasive top banner overlay (`NIVESH FIREWALL WARNING: Unregistered Advisory Claims Detected`) with "Proceed with Caution" and "Dismiss" actions. | `1280 x 800 px` |
+
+### Asset Technical Requirements
+- **Dimensions**: `1280 x 800 px` (preferred) or `640 x 400 px`.
+- **Format**: PNG or 24-bit JPEG with no alpha.
+- **Authenticity**: Must depict real extension UI rendered from the codebase. No fabricated statistics, fake regulatory seals, or misleading security guarantees.
+
+---
+
+## 10. Store Review Risk Audit
+
+A comprehensive review against Chrome Web Store Developer Program rejection reasons:
+
+| Risk Factor | Review Concern | Nivesh Implementation & Mitigation |
+| :--- | :--- | :--- |
+| **1. Misleading Description** | Promising guaranteed safety or fraud immunity | All store copy clearly states Nivesh is a technical verification tool and does not guarantee scam detection. |
+| **2. Unnecessary Permissions** | Requesting `<all_urls>` or `tabs` | Permissions strictly restricted to `activeTab`, `storage`, and `scripting`. |
+| **3. Remote Code Execution** | Violates Manifest V3 CSP | Zero `eval()`, zero `new Function()`, zero dynamic external scripts, zero remote script tags. 100% bundled local code. |
+| **4. Unclear Privacy Behavior** | Undisclosed user data transmission | Complete data disclosures provided; explicit zero-collection guarantee for passwords, OTPs, PINs, and keystrokes. |
+| **5. Financial Advisor Disclaimers** | Unlicensed financial advisory claims | Prominent notice that Nivesh is NOT an RIA, broker, or trading platform. |
+| **6. Development Endpoints** | `localhost` URLs in production manifest | Packaging pipeline automatically replaces development hosts with `https://api.nivesh.ai/*` in the distribution ZIP. |
+| **7. Hidden Functionality** | Undocumented background behaviors | Extension behavior strictly corresponds to declared popup and intervention flows. |
+| **8. Unexplained Data Collection** | Background tracking or browsing history scraping | Ephemeral, user-invoked analysis only; zero continuous surveillance. |
+| **9. Misleading Branding** | Confusion with official regulatory agencies | Brand clearly identified as "Nivesh Firewall", an independent technical security system. |
+
+---
+
+## 11. Distributable Package & Operational Verification
+
+The production ZIP package is generated and verified using deterministic scripts:
+
 ```bash
+# Clean production build
+npm run build
+
+# Security, secrets, and path audit
+npm run audit
+
+# Deterministic ZIP packager
 npm run package
 ```
-- **Archive File**: `nivesh-firewall-v1.0.0.zip`
-- **Integrity**: Contains strictly validated Manifest V3 runtime assets, icons, and bundles.
-- **Cleanliness**: Contains zero `.ts`, `.test.`, `.map`, `.env`, temporary files, or local filesystem paths.
+
+- **Output Archive**: `nivesh-firewall-v1.0.0.zip`
+- **Archive Size**: ~24.9 KB
+- **Contents**: Strictly contains Manifest V3 runtime assets (`manifest.json`, `background.js`, `content.js`, `popup/*`, `icons/*`). Zero source code, tests, `.env` files, or local filesystem paths.

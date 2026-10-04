@@ -69,6 +69,13 @@ export function auditDist(distDir = path.resolve(import.meta.dirname, '../dist')
     { name: 'Local Unix home directory path', regex: /\/home\/[a-zA-Z0-9_-]+\//i },
   ];
 
+  // 2b. Remote code execution scan (Chrome Web Store Developer Program Policy compliance)
+  const remoteCodePatterns = [
+    { name: 'Dynamic eval() execution', regex: /\beval\s*\(/ },
+    { name: 'Dynamic Function() constructor', regex: /new\s+Function\s*\(/ },
+    { name: 'Remote script source in HTML', regex: /<script[^>]+src=["']https?:\/\//i },
+  ];
+
   let scannedCount = 0;
   for (const f of allFiles) {
     if (f.endsWith('.png') || f.endsWith('.jpg') || f.endsWith('.ico')) {
@@ -83,8 +90,14 @@ export function auditDist(distDir = path.resolve(import.meta.dirname, '../dist')
         throw new Error(`[FAIL] Sensitive data detected (${name}) in ${path.relative(distDir, f)}`);
       }
     }
+
+    for (const { name, regex } of remoteCodePatterns) {
+      if (regex.test(content)) {
+        throw new Error(`[FAIL] Prohibited remote code pattern detected (${name}) in ${path.relative(distDir, f)}`);
+      }
+    }
   }
-  console.log(`[PASS] Secret & local-path scan passed (${scannedCount} text/bundle files audited)`);
+  console.log(`[PASS] Secret, local-path & remote-code scans passed (${scannedCount} text/bundle files audited)`);
 
   // 3. Manifest V3 Integrity check
   const manifestPath = path.join(distDir, 'manifest.json');
