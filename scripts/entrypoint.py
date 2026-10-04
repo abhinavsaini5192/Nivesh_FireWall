@@ -88,10 +88,21 @@ def main() -> None:
     from nivesh.config import get_settings
     settings = get_settings()
 
+    # Determine host: in production or cloud runtime, bind to 0.0.0.0 unless explicitly pinned
+    bind_host = settings.host
+    if settings.is_production() and bind_host in ("127.0.0.1", "localhost"):
+        if not os.environ.get("NIVESH_HOST") and not os.environ.get("HOST"):
+            bind_host = "0.0.0.0"
+
+    # Determine port: honor PORT env var (Render/cloud standard) or settings.port
+    bind_port = int(os.environ.get("PORT", settings.port))
+
+    logger.info("Starting Uvicorn ASGI server on %s:%d (workers=%d)...", bind_host, bind_port, settings.workers if settings.is_production() else 1)
+
     uvicorn.run(
         "nivesh.api.app:app",
-        host=settings.host,
-        port=settings.port,
+        host=bind_host,
+        port=bind_port,
         workers=settings.workers if settings.is_production() else 1,
         log_level=settings.log_level.lower(),
         access_log=True,

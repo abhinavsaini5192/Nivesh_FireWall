@@ -67,9 +67,9 @@ USER nivesh:nivesh
 # Expose HTTP port
 EXPOSE 8000
 
-# Healthcheck probe querying internal liveness endpoint
+# Healthcheck probe querying internal liveness endpoint (adapts to PORT or NIVESH_PORT)
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
-    CMD curl -f http://127.0.0.1:8000/health/live || exit 1
+    CMD sh -c 'curl -f http://127.0.0.1:${PORT:-${NIVESH_PORT:-8000}}/health/live || exit 1'
 
 # Production startup command executing preflight checks, migrations, and ASGI server
 CMD ["python", "scripts/entrypoint.py"]

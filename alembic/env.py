@@ -27,11 +27,13 @@ def get_configured_url() -> str:
     """Retrieve database URL from alembic config override, falling back to Nivesh settings."""
     cfg_url = config.get_main_option("sqlalchemy.url")
     if cfg_url and cfg_url.strip() and not cfg_url.startswith("driver://") and not cfg_url.startswith("sqlite:///./nivesh_dev.db"):
-        return cfg_url
-    db_url = get_settings().database_url
-    if db_url and db_url.strip():
-        return db_url
-    return cfg_url or "sqlite:///./nivesh_dev.db"
+        url = cfg_url
+    else:
+        db_url = get_settings().database_url
+        url = db_url if db_url and db_url.strip() else (cfg_url or "sqlite:///./nivesh_dev.db")
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    return url
 
 
 def run_migrations_offline() -> None:

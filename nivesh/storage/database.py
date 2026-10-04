@@ -41,6 +41,8 @@ def get_engine(database_url: Optional[str] = None) -> Engine:
 
     settings = get_settings()
     url = database_url or settings.database_url or "sqlite:///./nivesh_dev.db"
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgres" + "ql://", 1)
 
     engine_kwargs: dict[str, Any] = {}
     if url.startswith("sqlite"):

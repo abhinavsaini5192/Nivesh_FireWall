@@ -12,7 +12,7 @@ import re
 from typing import Any, List, Literal, Optional, Union
 from urllib.parse import urlparse
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -59,10 +59,12 @@ class Settings(BaseSettings):
     # 2. Host & Network Binding
     host: str = Field(
         default="127.0.0.1",
+        validation_alias=AliasChoices("NIVESH_HOST", "HOST"),
         description="Host interface to bind HTTP server",
     )
     port: int = Field(
         default=8000,
+        validation_alias=AliasChoices("NIVESH_PORT", "PORT"),
         description="Port for HTTP server",
     )
     forwarded_allow_ips: str = Field(
@@ -72,6 +74,7 @@ class Settings(BaseSettings):
     workers: int = Field(
         default=4,
         ge=1,
+        validation_alias=AliasChoices("NIVESH_WORKERS", "WEB_CONCURRENCY", "WORKERS"),
         description="Number of ASGI worker processes for production server",
     )
 
@@ -286,6 +289,16 @@ class Settings(BaseSettings):
         default=128,
         description="Maximum session identifier length in characters",
     )
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def normalize_database_url(cls, v: Optional[str]) -> Optional[str]:
+        """Normalize legacy or cloud-provider database URLs (e.g., Render/Heroku postgres://)."""
+        if v and isinstance(v, str):
+            v_clean = v.strip()
+            if v_clean.startswith("postgres://"):
+                return v_clean.replace("postgres://", "postgres" + "ql://", 1)
+        return v
 
     @field_validator("frontend_url")
     @classmethod
