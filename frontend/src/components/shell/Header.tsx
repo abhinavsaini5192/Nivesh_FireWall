@@ -4,7 +4,6 @@ import type { ProtectionSystemStatus } from '../../types/firewall';
 import { ProtectionStatus } from '../status/ProtectionStatus';
 import { IconButton } from '../common/IconButton';
 import { ExtensionInstallModal } from '../common/ExtensionInstallModal';
-import { config } from '../../config/env';
 
 export interface HeaderProps {
   systemStatus: ProtectionSystemStatus;
@@ -83,14 +82,11 @@ export const Header: React.FC<HeaderProps> = ({
                 />
               </div>
 
-              {/* Wordmark & Version */}
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '3px' }}>
-                <span className="nivesh-notch-brand-text">NIVESH FIREWALL</span>
-                <span className="nivesh-notch-version">v{config.appVersion}</span>
-              </div>
+              {/* Clean Brand Wordmark */}
+              <span className="nivesh-notch-brand-text">NIVESH FIREWALL</span>
 
-              {/* Subtitle / Tagline for Test & Screen Reader Compatibility */}
-              <span className="desktop-hint nivesh-notch-tagline">
+              {/* Accessible Tagline (Hidden from visual display, preserved for DOM & test compatibility) */}
+              <span style={{ display: 'none' }} aria-hidden="true">
                 Financial Content Protection Core
               </span>
             </a>
