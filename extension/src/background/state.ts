@@ -106,11 +106,18 @@ class BackgroundStateManager {
   /**
    * Completes an analysis request for a specific tab and persists a lightweight
    * recovery reference to chrome.storage.local for worker restart resilience.
+   * Rejects stale or superseded responses if the tab was reset or superseded.
    */
-  public completeRequest(reference: LastAnalysisReference, tabId?: number | null): void {
+  public completeRequest(reference: LastAnalysisReference, tabId?: number | null): boolean {
     const targetTabId = tabId || reference.tabId || this.currentActiveTabId || 1;
     if (typeof targetTabId === 'number' && targetTabId > 0) {
       const tabState = this.getTabState(targetTabId);
+
+      // Guard: Ignore stale response if active request ID does not match
+      if (tabState.activeRequest && reference.requestId && tabState.activeRequest.requestId !== reference.requestId) {
+        return false;
+      }
+
       tabState.status = 'RESULT_AVAILABLE';
       tabState.lastAnalysis = { ...reference, tabId: targetTabId };
       tabState.activeRequest = null;
@@ -129,16 +136,28 @@ class BackgroundStateManager {
           },
         }).catch(() => {});
       }
+      return true;
     }
+    return false;
   }
 
   /**
    * Records failure for a specific tab.
+   * Ignores stale failures if tab navigated away or was reset.
    */
-  public failRequest(error: { code: string; message: string }, tabId?: number | null): void {
+  public failRequest(
+    error: { code: string; message: string },
+    tabId?: number | null,
+    requestId?: string
+  ): boolean {
     const targetTabId = tabId || this.currentActiveTabId || 1;
     if (typeof targetTabId === 'number' && targetTabId > 0) {
       const tabState = this.getTabState(targetTabId);
+
+      if (requestId && tabState.activeRequest && tabState.activeRequest.requestId !== requestId) {
+        return false;
+      }
+
       tabState.status = 'ERROR';
       tabState.activeRequest = null;
       tabState.lastError = {
@@ -146,18 +165,46 @@ class BackgroundStateManager {
         message: error.message,
         timestamp: new Date().toISOString(),
       };
+      return true;
     }
+    return false;
   }
 
-  public reset(tabId?: number | null): void {
+  /**
+   * Resets tab state. When clearLastAnalysis is true (e.g. navigation or tab close),
+   * clears any cached lastAnalysis to prevent stale results.
+   */
+  public reset(tabId?: number | null, clearLastAnalysis = false): void {
     if (typeof tabId === 'number' && tabId > 0) {
       const tabState = this.getTabState(tabId);
       tabState.status = 'READY';
       tabState.activeRequest = null;
       tabState.lastError = null;
+      if (clearLastAnalysis) {
+        tabState.lastAnalysis = null;
+        if (typeof chrome !== 'undefined' && chrome.storage?.local?.remove) {
+          chrome.storage.local.remove(`tab_ref_${tabId}`).catch(() => {});
+        }
+      }
     } else {
       this.tabStates.clear();
       this.currentActiveTabId = null;
+      if (clearLastAnalysis && typeof chrome !== 'undefined' && chrome.storage?.local?.clear) {
+        chrome.storage.local.clear().catch(() => {});
+      }
+    }
+  }
+
+  /**
+   * Removes tab runtime state when a tab is closed.
+   */
+  public removeTab(tabId: number): void {
+    this.tabStates.delete(tabId);
+    if (this.currentActiveTabId === tabId) {
+      this.currentActiveTabId = null;
+    }
+    if (typeof chrome !== 'undefined' && chrome.storage?.local?.remove) {
+      chrome.storage.local.remove(`tab_ref_${tabId}`).catch(() => {});
     }
   }
 

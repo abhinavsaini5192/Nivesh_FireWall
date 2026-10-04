@@ -5,7 +5,7 @@
  * (POST /api/v1/firewall/analyze). Does NOT call individual engines directly.
  */
 
-import { getExtensionConfig, EXTENSION_METADATA } from '../config';
+import { getExtensionConfig, EXTENSION_METADATA, buildNiveshWebAppUrl } from '../config';
 import type { LastAnalysisReference } from '../types/state';
 
 export interface ExtensionAnalyzePayload {
@@ -117,14 +117,53 @@ export class ExtensionApiClient {
           // Non-JSON response
         }
 
+        let code = errData.error_code;
+        let message = errData.message;
+
+        if (!code) {
+          if (response.status === 429) {
+            code = 'RATE_LIMITED';
+            message = message || 'Rate limit reached. Please wait a moment before analyzing again.';
+          } else if (response.status === 400) {
+            code = 'INVALID_REQUEST';
+            message = message || 'The analysis request was invalid.';
+          } else if (response.status === 404) {
+            code = 'ENDPOINT_NOT_FOUND';
+            message = message || 'The requested Firewall endpoint was not found.';
+          } else if (response.status >= 500) {
+            code = 'PIPELINE_FAILURE';
+            message = message || 'Firewall service encountered an internal error. Please try again.';
+          } else {
+            code = 'HTTP_ERROR';
+            message = message || `Firewall service responded with status ${response.status}`;
+          }
+        }
+
         throw new ExtensionApiClientError({
-          code: errData.error_code || (response.status >= 500 ? 'PIPELINE_FAILURE' : 'INVALID_REQUEST'),
-          message: errData.message || `Firewall service responded with status ${response.status}`,
+          code,
+          message: message || `Firewall service responded with status ${response.status}`,
           statusCode: response.status,
         });
       }
 
-      const result = await response.json();
+      let result: any;
+      try {
+        result = await response.json();
+      } catch {
+        throw new ExtensionApiClientError({
+          code: 'MALFORMED_RESPONSE',
+          message: 'Received invalid JSON response from Nivesh Firewall.',
+          statusCode: response.status,
+        });
+      }
+
+      if (!result || typeof result !== 'object') {
+        throw new ExtensionApiClientError({
+          code: 'MALFORMED_RESPONSE',
+          message: 'Received invalid response payload structure from Nivesh Firewall.',
+          statusCode: response.status,
+        });
+      }
 
       const decisionObj = result.decision || {};
       const analysisId = result.analysis_id || 'UNKNOWN';
@@ -135,7 +174,7 @@ export class ExtensionApiClient {
         severity: decisionObj.severity || 'MEDIUM',
         primaryReason: decisionObj.primary_reason || 'Interaction inspected by Nivesh Firewall.',
         completedAt: result.completed_at || new Date().toISOString(),
-        webAppUrl: `${config.webAppBaseUrl}/#protect?id=${analysisId}`,
+        webAppUrl: buildNiveshWebAppUrl(config.webAppBaseUrl, analysisId),
       };
     } catch (err) {
       clearTimeout(timeoutId);

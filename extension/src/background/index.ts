@@ -53,6 +53,25 @@ export function initializeBackgroundWorker(): void {
   apiClient.checkHealth(3000).then((health) => {
     backgroundState.setConnectionState(health.isAvailable ? 'CONNECTED' : 'UNAVAILABLE');
   });
+
+  // 4. Tab Lifecycle Listeners (Phase 17.2: prevent stale results and isolate tab state)
+  if (typeof chrome !== 'undefined' && chrome.tabs) {
+    chrome.tabs.onActivated?.addListener((activeInfo) => {
+      if (activeInfo && typeof activeInfo.tabId === 'number') {
+        backgroundState.setCurrentTabId(activeInfo.tabId);
+      }
+    });
+
+    chrome.tabs.onUpdated?.addListener((tabId, changeInfo) => {
+      if (changeInfo && (changeInfo.url || changeInfo.status === 'loading')) {
+        backgroundState.reset(tabId, true);
+      }
+    });
+
+    chrome.tabs.onRemoved?.addListener((tabId) => {
+      backgroundState.removeTab(tabId);
+    });
+  }
 }
 
 // Auto-initialize when executing in service worker scope

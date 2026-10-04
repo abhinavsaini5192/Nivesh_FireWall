@@ -153,14 +153,33 @@ export class NiveshAnalysisBridge {
             // Non-JSON response
           }
 
-          const errorCode = errData.error_code || (response.status >= 500 ? 'PIPELINE_FAILURE' : 'INVALID_REQUEST');
-          const errorMsg = errData.message || `Firewall service responded with HTTP ${response.status}`;
+          let errorCode = errData.error_code;
+          let errorMsg = errData.message;
+
+          if (!errorCode) {
+            if (response.status === 429) {
+              errorCode = 'RATE_LIMITED';
+              errorMsg = errorMsg || 'Rate limit reached. Please wait a moment before analyzing again.';
+            } else if (response.status === 400) {
+              errorCode = 'INVALID_REQUEST';
+              errorMsg = errorMsg || 'The analysis request was invalid.';
+            } else if (response.status === 404) {
+              errorCode = 'ENDPOINT_NOT_FOUND';
+              errorMsg = errorMsg || 'The requested Firewall endpoint was not found.';
+            } else if (response.status >= 500) {
+              errorCode = 'PIPELINE_FAILURE';
+              errorMsg = errorMsg || `Firewall service responded with HTTP ${response.status}`;
+            } else {
+              errorCode = 'HTTP_ERROR';
+              errorMsg = errorMsg || `Firewall service responded with HTTP ${response.status}`;
+            }
+          }
 
           // Non-transient errors (4xx) should never be retried
           if (response.status < 500) {
             throw new ExtensionApiClientError({
               code: errorCode,
-              message: errorMsg,
+              message: errorMsg || `Firewall service responded with HTTP ${response.status}`,
               statusCode: response.status,
             });
           }
@@ -168,12 +187,30 @@ export class NiveshAnalysisBridge {
           // 5xx errors may be transient, record and loop
           throw new ExtensionApiClientError({
             code: errorCode,
-            message: errorMsg,
+            message: errorMsg || `Firewall service responded with HTTP ${response.status}`,
             statusCode: response.status,
           });
         }
 
-        const rawResult: FirewallAnalysisResponse = await response.json();
+        let rawResult: FirewallAnalysisResponse;
+        try {
+          rawResult = await response.json();
+        } catch {
+          throw new ExtensionApiClientError({
+            code: 'MALFORMED_RESPONSE',
+            message: 'Received invalid JSON response from Nivesh Firewall.',
+            statusCode: response.status,
+          });
+        }
+
+        if (!rawResult || typeof rawResult !== 'object') {
+          throw new ExtensionApiClientError({
+            code: 'MALFORMED_RESPONSE',
+            message: 'Received invalid response payload structure from Nivesh Firewall.',
+            statusCode: response.status,
+          });
+        }
+
         const durationMs = performance.now() - startTime;
 
         // Construct Canonical LastAnalysisReference (Section 14 & 16)
@@ -221,8 +258,11 @@ export class NiveshAnalysisBridge {
       } catch (err) {
         lastError = err;
 
-        // If error is client validation / non-transient, break retry loop immediately
-        if (err instanceof ExtensionApiClientError && err.statusCode && err.statusCode < 500) {
+        // If error is client validation / non-transient or malformed response, break retry loop immediately
+        if (
+          err instanceof ExtensionApiClientError &&
+          ((err.statusCode && err.statusCode < 500) || err.code === 'MALFORMED_RESPONSE')
+        ) {
           break;
         }
 

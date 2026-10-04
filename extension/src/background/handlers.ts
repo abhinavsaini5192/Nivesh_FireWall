@@ -110,8 +110,42 @@ export async function handleCheckSelection(
 export async function handleCaptureRequest(
   message: CaptureRequestMessage
 ): Promise<ExtensionResponse<CaptureResponsePayload>> {
-  const { tabId, sourceType } = message.payload;
   const requestId = message.requestId || generateExtensionRequestId();
+
+  if (!message.payload || typeof message.payload !== 'object') {
+    return {
+      success: false,
+      requestId,
+      error: {
+        code: 'INVALID_PAYLOAD',
+        message: 'Capture request requires a valid payload object.',
+      },
+    };
+  }
+
+  const { tabId, sourceType } = message.payload;
+  if (!tabId || typeof tabId !== 'number' || tabId <= 0) {
+    return {
+      success: false,
+      requestId,
+      error: {
+        code: 'INVALID_TAB_ID',
+        message: 'Capture request requires a valid numeric tab ID.',
+      },
+    };
+  }
+
+  if (!['CURRENT_PAGE', 'SELECTED_TEXT', 'URL'].includes(sourceType)) {
+    return {
+      success: false,
+      requestId,
+      error: {
+        code: 'INVALID_SOURCE_TYPE',
+        message: `Unsupported capture source type: ${sourceType}`,
+      },
+    };
+  }
+
   const captureId = message.payload.captureId || generateCaptureId();
 
   // 1. Inspect tab metadata
@@ -245,8 +279,30 @@ export async function handleCaptureRequest(
 export async function handleScanRequest(
   message: ScanRequestMessage
 ): Promise<ExtensionResponse<LastAnalysisReference>> {
-  const { tabId, capture } = message.payload;
   const requestId = message.requestId || generateExtensionRequestId();
+
+  if (!message.payload || typeof message.payload !== 'object') {
+    return {
+      success: false,
+      requestId,
+      error: {
+        code: 'INVALID_PAYLOAD',
+        message: 'Scan request requires a valid payload object.',
+      },
+    };
+  }
+
+  const { tabId, capture } = message.payload;
+  if (!tabId || typeof tabId !== 'number' || tabId <= 0) {
+    return {
+      success: false,
+      requestId,
+      error: {
+        code: 'INVALID_TAB_ID',
+        message: 'Scan request requires a valid numeric tab ID.',
+      },
+    };
+  }
 
   // 1. Guard against concurrent duplicate scans on this specific tab
   const currentState = backgroundState.getState(tabId);
@@ -291,7 +347,7 @@ export async function handleScanRequest(
       sourceType = pageContext.selectedText ? 'SELECTED_TEXT' : 'CURRENT_PAGE';
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Could not communicate with tab content script.';
-      backgroundState.failRequest({ code: 'TAB_COMMUNICATION_FAILED', message: errorMsg }, tabId);
+      backgroundState.failRequest({ code: 'TAB_COMMUNICATION_FAILED', message: errorMsg }, tabId, requestId);
       return {
         success: false,
         requestId,
@@ -332,7 +388,17 @@ export async function handleScanRequest(
   try {
     const bridgeResult = await analysisBridge.submitAnalysis(bridgeRequest);
 
-    backgroundState.completeRequest(bridgeResult.reference, tabId);
+    const completed = backgroundState.completeRequest(bridgeResult.reference, tabId);
+    if (!completed) {
+      return {
+        success: false,
+        requestId,
+        error: {
+          code: 'STALE_REQUEST',
+          message: 'The analysis completed after the page navigated away.',
+        },
+      };
+    }
 
     // Phase 13.4: Dispatch in-page intervention to content script if decision is not ALLOW
     if (
@@ -394,7 +460,7 @@ export async function handleScanRequest(
       errorMessage = err.message;
     }
 
-    backgroundState.failRequest({ code: errorCode, message: errorMessage }, tabId);
+    backgroundState.failRequest({ code: errorCode, message: errorMessage }, tabId, requestId);
     return {
       success: false,
       requestId,

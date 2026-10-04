@@ -5,11 +5,15 @@ export function createChromeMock() {
   const listeners: Record<string, Function[]> = {
     'runtime.onMessage': [],
     'runtime.onInstalled': [],
+    'tabs.onActivated': [],
+    'tabs.onUpdated': [],
+    'tabs.onRemoved': [],
   };
 
   const storageData: Record<string, unknown> = {};
 
   return {
+    _listeners: listeners,
     runtime: {
       id: 'mock-extension-id-12345',
       lastError: null as { message: string } | null,
@@ -48,6 +52,30 @@ export function createChromeMock() {
       }),
     },
     tabs: {
+      onActivated: {
+        addListener: vi.fn((callback: Function) => {
+          listeners['tabs.onActivated'].push(callback);
+        }),
+        removeListener: vi.fn((callback: Function) => {
+          listeners['tabs.onActivated'] = listeners['tabs.onActivated'].filter((cb) => cb !== callback);
+        }),
+      },
+      onUpdated: {
+        addListener: vi.fn((callback: Function) => {
+          listeners['tabs.onUpdated'].push(callback);
+        }),
+        removeListener: vi.fn((callback: Function) => {
+          listeners['tabs.onUpdated'] = listeners['tabs.onUpdated'].filter((cb) => cb !== callback);
+        }),
+      },
+      onRemoved: {
+        addListener: vi.fn((callback: Function) => {
+          listeners['tabs.onRemoved'].push(callback);
+        }),
+        removeListener: vi.fn((callback: Function) => {
+          listeners['tabs.onRemoved'] = listeners['tabs.onRemoved'].filter((cb) => cb !== callback);
+        }),
+      },
       get: vi.fn().mockImplementation((id: number) =>
         Promise.resolve({
           id,
@@ -160,6 +188,13 @@ export function createChromeMock() {
         }),
         set: vi.fn((items: Record<string, unknown>) => {
           Object.assign(storageData, items);
+          return Promise.resolve();
+        }),
+        remove: vi.fn((keys: string | string[]) => {
+          const keyList = Array.isArray(keys) ? keys : [keys];
+          for (const key of keyList) {
+            delete storageData[key];
+          }
           return Promise.resolve();
         }),
         clear: vi.fn(() => {

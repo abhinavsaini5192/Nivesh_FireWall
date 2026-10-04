@@ -31,6 +31,10 @@ export function initializeContentScript(): void {
 
   chrome.runtime.onMessage.addListener(
     (message: ExtensionMessage, _sender, sendResponse: (response: ExtensionResponse) => void) => {
+      if (!message || typeof message !== 'object' || !message.type) {
+        return false;
+      }
+
       // 1. GET_PAGE_CONTEXT (Phase 13.1 compatibility)
       if (message.type === 'GET_PAGE_CONTEXT') {
         try {
@@ -84,6 +88,18 @@ export function initializeContentScript(): void {
       // 3. DO_CAPTURE (Phase 13.2 Page & Content Capture)
       if (message.type === 'DO_CAPTURE') {
         const doCaptureMsg = message as DoCaptureMessage;
+        if (!doCaptureMsg.payload || !doCaptureMsg.payload.sourceType) {
+          sendResponse({
+            success: false,
+            requestId: message.requestId,
+            error: {
+              code: 'INVALID_PAYLOAD',
+              message: 'DO_CAPTURE message requires a valid payload with sourceType.',
+            },
+          });
+          return true;
+        }
+
         const { captureId, sourceType } = doCaptureMsg.payload;
 
         try {
