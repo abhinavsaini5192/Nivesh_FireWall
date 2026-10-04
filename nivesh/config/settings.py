@@ -65,6 +65,15 @@ class Settings(BaseSettings):
         default=8000,
         description="Port for HTTP server",
     )
+    forwarded_allow_ips: str = Field(
+        default="*",
+        description="Trusted proxy IPs for X-Forwarded-* headers (comma-separated or '*' for all)",
+    )
+    workers: int = Field(
+        default=4,
+        ge=1,
+        description="Number of ASGI worker processes for production server",
+    )
 
     # 3. Security & Persistence Contract (Phase 14.1 contract for Phase 14.2 persistence)
     secret_key: Optional[str] = Field(

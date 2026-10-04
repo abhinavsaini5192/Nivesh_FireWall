@@ -18,9 +18,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies into a wheelhouse
-COPY pyproject.toml .
+COPY pyproject.toml README.md ./
+COPY nivesh/ ./nivesh/
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip wheel --no-cache-dir --wheel-dir /build/wheels -e .
+    pip wheel --no-cache-dir --wheel-dir /build/wheels .
 
 # --- Stage 2: Production Runtime ---
 FROM python:3.11-slim AS runtime
@@ -44,9 +45,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Copy application source and migration configuration
 COPY --chown=nivesh:nivesh nivesh/ /app/nivesh/
+COPY --chown=nivesh:nivesh scripts/ /app/scripts/
 COPY --chown=nivesh:nivesh alembic/ /app/alembic/
 COPY --chown=nivesh:nivesh alembic.ini /app/alembic.ini
 COPY --chown=nivesh:nivesh pyproject.toml /app/pyproject.toml
+COPY --chown=nivesh:nivesh README.md /app/README.md
 
 # Set secure production environment defaults
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -68,5 +71,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
     CMD curl -f http://127.0.0.1:8000/health/live || exit 1
 
-# Production command launching Uvicorn
-CMD ["uvicorn", "nivesh.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--log-config", "None"]
+# Production startup command executing preflight checks, migrations, and ASGI server
+CMD ["python", "scripts/entrypoint.py"]

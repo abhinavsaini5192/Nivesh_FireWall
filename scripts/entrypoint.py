@@ -92,9 +92,11 @@ def main() -> None:
         "nivesh.api.app:app",
         host=settings.host,
         port=settings.port,
-        workers=4 if settings.is_production() else 1,
+        workers=settings.workers if settings.is_production() else 1,
         log_level=settings.log_level.lower(),
         access_log=True,
+        proxy_headers=True,
+        forwarded_allow_ips=settings.forwarded_allow_ips,
     )
 
 
