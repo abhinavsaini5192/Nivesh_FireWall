@@ -39,7 +39,8 @@ def get_engine(database_url: Optional[str] = None) -> Engine:
     if _ENGINE is not None and database_url is None:
         return _ENGINE
 
-    url = database_url or get_settings().database_url or "sqlite:///./nivesh_dev.db"
+    settings = get_settings()
+    url = database_url or settings.database_url or "sqlite:///./nivesh_dev.db"
 
     engine_kwargs: dict[str, Any] = {}
     if url.startswith("sqlite"):
@@ -50,7 +51,15 @@ def get_engine(database_url: Optional[str] = None) -> Engine:
     else:
         # PostgreSQL / Production settings
         engine_kwargs["pool_pre_ping"] = True
-        engine_kwargs["pool_recycle"] = 3600
+        engine_kwargs["pool_recycle"] = settings.db_pool_recycle
+        engine_kwargs["pool_size"] = settings.db_pool_size
+        engine_kwargs["max_overflow"] = settings.db_max_overflow
+        engine_kwargs["pool_timeout"] = settings.db_pool_timeout
+
+        # Configure SSL mode if specified and not already in connection string
+        if settings.db_ssl_mode and "sslmode=" not in url.lower():
+            connect_args = engine_kwargs.setdefault("connect_args", {})
+            connect_args["sslmode"] = settings.db_ssl_mode
 
     created_engine = create_engine(url, **engine_kwargs)
 
@@ -139,7 +148,10 @@ def drop_tables(engine: Optional[Engine] = None) -> None:
     Base.metadata.drop_all(bind=eng)
 
 
-def run_migrations(alembic_ini_path: Optional[str] = None) -> None:
+def run_migrations(
+    alembic_ini_path: Optional[str] = None,
+    database_url: Optional[str] = None,
+) -> None:
     """Programmatically run Alembic migrations to head idempotently."""
     from alembic.config import Config
     from alembic import command
@@ -148,7 +160,10 @@ def run_migrations(alembic_ini_path: Optional[str] = None) -> None:
     ini_path = alembic_ini_path or os.path.join(base_dir, "alembic.ini")
     alembic_cfg = Config(ini_path)
 
-    eng = get_engine()
+    eng = get_engine(database_url) if database_url else get_engine()
+    if database_url:
+        alembic_cfg.set_main_option("sqlalchemy.url", database_url)
+
     inspector = inspect(eng)
     tables = inspector.get_table_names()
 
@@ -160,11 +175,15 @@ def run_migrations(alembic_ini_path: Optional[str] = None) -> None:
             if val:
                 has_version_row = True
 
-    # If schema exists but alembic_version row was not stamped, stamp head
-    if has_analyses and not has_version_row:
-        command.stamp(alembic_cfg, "head")
-    else:
-        command.upgrade(alembic_cfg, "head")
+    try:
+        # If schema exists but alembic_version row was not stamped, stamp head
+        if has_analyses and not has_version_row:
+            command.stamp(alembic_cfg, "head")
+        else:
+            command.upgrade(alembic_cfg, "head")
+    finally:
+        if database_url:
+            eng.dispose()
 
 
 def reset_engine_for_testing() -> None:

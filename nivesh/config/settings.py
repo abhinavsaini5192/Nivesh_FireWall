@@ -84,6 +84,32 @@ class Settings(BaseSettings):
         default=None,
         description="Database connection URI (required in production; safe fallback in dev/test)",
     )
+    db_pool_size: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Database connection pool size for persistent connections",
+    )
+    db_max_overflow: int = Field(
+        default=20,
+        ge=0,
+        le=200,
+        description="Maximum overflow connections beyond pool_size",
+    )
+    db_pool_timeout: float = Field(
+        default=30.0,
+        ge=1.0,
+        description="Seconds to wait before timing out on connection checkout",
+    )
+    db_pool_recycle: int = Field(
+        default=1800,
+        ge=60,
+        description="Seconds after which connections are recycled (avoids stale connections)",
+    )
+    db_ssl_mode: Optional[str] = Field(
+        default=None,
+        description="Optional SSL mode for PostgreSQL connections: disable, allow, prefer, require, verify-ca, verify-full",
+    )
     admin_api_key: Optional[str] = Field(
         default=None,
         description="Static secret API key for administrative operations",
@@ -323,9 +349,9 @@ class Settings(BaseSettings):
                 "Production environment requires a persistent NIVESH_DATABASE_URL to be configured."
             )
 
-        # C. Disallow dev / in-memory SQLite fallbacks in production
+        # C. Disallow dev / SQLite fallbacks in production
         db_clean = self.database_url.strip().lower()
-        if db_clean.startswith("sqlite:///:memory:") or "nivesh_dev.db" in db_clean:
+        if db_clean.startswith("sqlite"):
             raise ValueError(
                 "Production environment cannot use development or in-memory SQLite database fallback. "
                 "A production-grade persistent database (e.g. PostgreSQL) is required."

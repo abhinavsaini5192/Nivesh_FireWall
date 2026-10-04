@@ -51,17 +51,23 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode using Nivesh database engine."""
     # Use Nivesh's configured engine directly to ensure dialect options (e.g. check_same_thread) match
-    connectable = get_engine(get_configured_url())
+    target_url = get_configured_url()
+    connectable = get_engine(target_url)
 
-    with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            render_as_batch=connection.dialect.name == "sqlite",
-        )
+    try:
+        with connectable.connect() as connection:
+            context.configure(
+                connection=connection,
+                target_metadata=target_metadata,
+                render_as_batch=connection.dialect.name == "sqlite",
+            )
 
-        with context.begin_transaction():
-            context.run_migrations()
+            with context.begin_transaction():
+                context.run_migrations()
+    finally:
+        from nivesh.storage.database import _ENGINE
+        if connectable is not _ENGINE:
+            connectable.dispose()
 
 
 if context.is_offline_mode():
