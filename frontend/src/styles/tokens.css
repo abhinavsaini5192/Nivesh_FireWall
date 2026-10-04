@@ -5,59 +5,70 @@
  */
 
 :root {
-  /* Surface & Elevation Hierarchy (Near-black / Navy foundation) */
-  --color-bg-canvas: #080b11;           /* Ultra-deep dark canvas */
-  --color-bg-surface: #0d131f;          /* Primary app shell & header */
-  --color-bg-surface-elevated: #121a29; /* Elevated workspace cards & panels */
-  --color-bg-surface-hover: #162032;    /* Interactive hover surface */
-  --color-bg-subtle: #0a0f18;           /* Sunken input & code background */
-  --color-bg-active: rgba(56, 189, 248, 0.08); /* Active navigation / selection */
-  --color-bg-overlay: rgba(8, 11, 17, 0.88);   /* Dialog / modal backdrop */
+  /* Official Nivesh Reference Base Palette */
+  --ink: #ffffff;
+  --ink-muted: #ededed;
+  --panel: #181818;
+  --white-btn: #fdfdfd;
+  --btn-ink: #050505;
+  --glass-fill: rgba(0, 0, 0, 0.78);
+  --glass-line: rgba(255, 255, 255, 0.09);
+  --purple-glow: #a855f7;
+  --purple-light: #c084fc;
+
+  /* Surface & Elevation Hierarchy (Pure Black Canvas & #181818 Dark Panels) */
+  --color-bg-canvas: #000000;           /* Pure black canvas background */
+  --color-bg-surface: #0a0a0a;          /* Primary app shell & header */
+  --color-bg-surface-elevated: #181818; /* Official Nivesh dark panels & cards */
+  --color-bg-surface-hover: #222222;    /* Interactive hover surface */
+  --color-bg-subtle: #121212;           /* Sunken input & code background */
+  --color-bg-active: rgba(168, 85, 247, 0.12); /* Subtle violet active state */
+  --color-bg-overlay: rgba(0, 0, 0, 0.85);      /* Dark glass modal backdrop */
 
   /* Text & Content Hierarchy */
-  --color-text-primary: #f8fafc;        /* High-contrast headings and primary labels */
-  --color-text-secondary: #94a3b8;      /* Body copy and explanatory text */
-  --color-text-muted: #64748b;          /* Metadata, hints, and timestamps */
-  --color-text-disabled: #475569;       /* Inactive and disabled text */
-  --color-text-inverse: #080b11;        /* Inverted text on bright badges */
+  --color-text-primary: #ffffff;        /* High-contrast crisp white headings and labels */
+  --color-text-secondary: #cbd5e1;      /* Comfortable muted gray body text */
+  --color-text-muted: #94a3b8;          /* Restrained metadata, hints, and timestamps */
+  --color-text-disabled: #52525b;       /* Inactive and disabled text */
+  --color-text-inverse: #050505;        /* Inverted text on bright white controls */
 
-  /* Borders & Dividers (Thin, crisp 1px borders) */
-  --color-border-subtle: rgba(255, 255, 255, 0.07);
+  /* Borders & Dividers (Subtle white borders) */
+  --color-border-subtle: rgba(255, 255, 255, 0.09);
   --color-border-default: rgba(255, 255, 255, 0.12);
-  --color-border-strong: rgba(255, 255, 255, 0.20);
-  --color-border-focus: #38bdf8;
-  --color-border-accent: rgba(14, 165, 233, 0.35);
+  --color-border-strong: rgba(255, 255, 255, 0.18);
+  --color-border-focus: #c084fc;
+  --color-border-accent: rgba(168, 85, 247, 0.40);
 
-  /* Brand & Technical Accent (Restrained Cyan / Deep Sky) */
-  --color-accent: #0ea5e9;
-  --color-accent-subtle: rgba(14, 165, 233, 0.10);
-  --color-accent-hover: #38bdf8;
-  --color-accent-active: #0284c7;
+  /* Brand & Technical Accent (Violet / Purple Family) */
+  --color-accent: #a855f7;
+  --color-accent-subtle: rgba(168, 85, 247, 0.12);
+  --color-accent-hover: #c084fc;
+  --color-accent-active: #9333ea;
 
-  /* Semantic Policy Status Colors (Strict semantic meaning) */
-  --color-allow: #10b981;
-  --color-allow-bg: rgba(16, 185, 129, 0.08);
-  --color-allow-border: rgba(16, 185, 129, 0.26);
+  /* Semantic Policy Status Colors (Strict semantic meaning, calm and restrained) */
+  --color-allow: #34d399;
+  --color-allow-bg: rgba(52, 211, 153, 0.08);
+  --color-allow-border: rgba(52, 211, 153, 0.24);
 
   --color-inform: #38bdf8;
   --color-inform-bg: rgba(56, 189, 248, 0.08);
-  --color-inform-border: rgba(56, 189, 248, 0.26);
+  --color-inform-border: rgba(56, 189, 248, 0.24);
 
-  --color-warn: #f59e0b;
-  --color-warn-bg: rgba(245, 158, 11, 0.08);
-  --color-warn-border: rgba(245, 158, 11, 0.28);
+  --color-warn: #fbbf24;
+  --color-warn-bg: rgba(251, 191, 36, 0.08);
+  --color-warn-border: rgba(251, 191, 36, 0.25);
 
   --color-pause: #f97316;
-  --color-pause-bg: rgba(249, 115, 22, 0.10);
-  --color-pause-border: rgba(249, 115, 22, 0.30);
+  --color-pause-bg: rgba(249, 115, 22, 0.08);
+  --color-pause-border: rgba(249, 115, 22, 0.25);
 
-  --color-block: #ef4444;
-  --color-block-bg: rgba(239, 68, 68, 0.10);
-  --color-block-border: rgba(239, 68, 68, 0.30);
+  --color-block: #f87171;
+  --color-block-bg: rgba(248, 113, 113, 0.08);
+  --color-block-border: rgba(248, 113, 113, 0.25);
 
   /* Typography Stack */
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   --font-size-xs: 0.75rem;     /* 12px */
   --font-size-sm: 0.8125rem;   /* 13px */

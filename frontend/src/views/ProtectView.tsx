@@ -99,9 +99,9 @@ export const ProtectView: React.FC<ProtectViewProps> = ({
           {/* Stage 01: VERIFY */}
           <div
             style={{
-              padding: 'var(--space-3) var(--space-4)',
-              backgroundColor: 'var(--color-bg-surface)',
-              borderRadius: 'var(--radius-sm)',
+              padding: 'var(--space-4)',
+              backgroundColor: 'var(--color-bg-surface-elevated)',
+              borderRadius: 'var(--radius-md)',
               border: '1px solid var(--color-border-subtle)',
               display: 'flex',
               flexDirection: 'column',
@@ -141,9 +141,9 @@ export const ProtectView: React.FC<ProtectViewProps> = ({
           {/* Stage 02: IDENTITY */}
           <div
             style={{
-              padding: 'var(--space-3) var(--space-4)',
-              backgroundColor: 'var(--color-bg-surface)',
-              borderRadius: 'var(--radius-sm)',
+              padding: 'var(--space-4)',
+              backgroundColor: 'var(--color-bg-surface-elevated)',
+              borderRadius: 'var(--radius-md)',
               border: '1px solid var(--color-border-subtle)',
               display: 'flex',
               flexDirection: 'column',
@@ -182,9 +182,9 @@ export const ProtectView: React.FC<ProtectViewProps> = ({
           {/* Stage 03: THREAT PATH */}
           <div
             style={{
-              padding: 'var(--space-3) var(--space-4)',
-              backgroundColor: 'var(--color-bg-surface)',
-              borderRadius: 'var(--radius-sm)',
+              padding: 'var(--space-4)',
+              backgroundColor: 'var(--color-bg-surface-elevated)',
+              borderRadius: 'var(--radius-md)',
               border: '1px solid var(--color-border-subtle)',
               display: 'flex',
               flexDirection: 'column',
@@ -223,9 +223,9 @@ export const ProtectView: React.FC<ProtectViewProps> = ({
           {/* Stage 04: INTERVENTION */}
           <div
             style={{
-              padding: 'var(--space-3) var(--space-4)',
-              backgroundColor: 'var(--color-bg-surface)',
-              borderRadius: 'var(--radius-sm)',
+              padding: 'var(--space-4)',
+              backgroundColor: 'var(--color-bg-surface-elevated)',
+              borderRadius: 'var(--radius-md)',
               border: '1px solid var(--color-border-subtle)',
               display: 'flex',
               flexDirection: 'column',

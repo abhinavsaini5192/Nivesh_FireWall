@@ -30,21 +30,24 @@ export const Button: React.FC<ButtonProps> = ({
     switch (variant) {
       case 'primary':
         return {
-          backgroundColor: 'var(--color-accent)',
-          color: 'var(--color-text-primary)',
-          border: '1px solid var(--color-accent)',
+          backgroundColor: 'var(--white-btn, #fdfdfd)',
+          color: 'var(--btn-ink, #050505)',
+          border: '1px solid var(--white-btn, #fdfdfd)',
+          fontWeight: 600,
+          boxShadow: '0 0 16px rgba(255, 255, 255, 0.14)',
         };
       case 'secondary':
         return {
-          backgroundColor: 'var(--color-bg-surface-elevated)',
-          color: 'var(--color-text-primary)',
+          backgroundColor: 'rgba(255, 255, 255, 0.06)',
+          color: 'var(--ink, #ffffff)',
           border: '1px solid var(--color-border-default)',
+          backdropFilter: 'blur(8px)',
         };
       case 'outline':
         return {
           backgroundColor: 'transparent',
-          color: 'var(--color-text-primary)',
-          border: '1px solid var(--color-border-strong)',
+          color: 'var(--ink, #ffffff)',
+          border: '1px solid var(--color-border-default)',
         };
       case 'ghost':
         return {
@@ -67,25 +70,25 @@ export const Button: React.FC<ButtonProps> = ({
     switch (size) {
       case 'sm':
         return {
-          padding: '4px 10px',
+          padding: '6px 14px',
           fontSize: 'var(--font-size-xs)',
           gap: '6px',
-          borderRadius: 'var(--radius-sm)',
+          borderRadius: '9999px',
         };
       case 'lg':
         return {
-          padding: '12px 24px',
+          padding: '12px 28px',
           fontSize: 'var(--font-size-md)',
           gap: '10px',
-          borderRadius: 'var(--radius-md)',
+          borderRadius: '9999px',
         };
       case 'md':
       default:
         return {
-          padding: '8px 16px',
+          padding: '8px 18px',
           fontSize: 'var(--font-size-sm)',
           gap: '8px',
-          borderRadius: 'var(--radius-sm)',
+          borderRadius: '9999px',
         };
     }
   };

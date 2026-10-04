@@ -59,7 +59,7 @@ export const Header: React.FC<HeaderProps> = ({
             height: '28px',
             borderRadius: 'var(--radius-sm)',
             backgroundColor: 'var(--color-bg-surface-elevated)',
-            border: '1px solid var(--color-border-default)',
+            border: '1px solid var(--color-border-subtle)',
             color: 'var(--color-accent-hover)',
             display: 'flex',
             alignItems: 'center',
@@ -72,9 +72,19 @@ export const Header: React.FC<HeaderProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
           <span
             style={{
+              display: 'inline-block',
+              width: '7px',
+              height: '7px',
+              borderRadius: '50%',
+              backgroundColor: '#a855f7',
+              boxShadow: '0 0 8px #a855f7',
+            }}
+          />
+          <span
+            style={{
               fontSize: 'var(--font-size-base)',
               fontWeight: 'var(--font-weight-semibold)',
-              letterSpacing: '0.04em',
+              letterSpacing: '0.06em',
               color: 'var(--color-text-primary)',
             }}
           >

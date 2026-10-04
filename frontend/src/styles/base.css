@@ -60,10 +60,15 @@ code, pre, kbd {
 }
 
 button:focus:not(:focus-visible),
-a:focus:not(:focus-visible),
-input:focus:not(:focus-visible),
-textarea:focus:not(:focus-visible),
-select:focus:not(:focus-visible) {
+a:focus:not(:focus-visible) {
+  outline: none;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--color-border-focus) !important;
+  box-shadow: 0 0 0 1px var(--color-border-focus);
   outline: none;
 }
 
@@ -167,6 +172,20 @@ input, textarea, select {
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   letter-spacing: 0.04em;
+}
+
+.nivesh-nav-item {
+  transition: all var(--transition-fast);
+}
+
+.nivesh-nav-item:hover:not(.nivesh-nav-item-active) {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: var(--color-text-primary) !important;
+}
+
+.nivesh-nav-item-active {
+  background-color: var(--color-bg-active) !important;
+  color: var(--color-text-primary) !important;
 }
 
 /* Responsive Breakpoints */

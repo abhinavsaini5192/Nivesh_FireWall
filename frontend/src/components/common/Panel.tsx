@@ -35,10 +35,10 @@ export const Panel: React.FC<PanelProps> = ({
     <div
       className={`nivesh-panel ${className}`}
       style={{
-        backgroundColor: 'var(--color-bg-surface)',
+        backgroundColor: 'var(--color-bg-surface-elevated)',
         border: '1px solid var(--color-border-subtle)',
         borderLeft: `3px solid ${getAccentBorder()}`,
-        borderRadius: 'var(--radius-sm)',
+        borderRadius: 'var(--radius-md)',
         padding: 'var(--space-4)',
         display: 'flex',
         flexDirection: 'column',

@@ -24,7 +24,7 @@ export const Badge: React.FC<BadgeProps> = ({
         return {
           backgroundColor: 'var(--color-accent-subtle)',
           color: 'var(--color-accent-hover)',
-          border: '1px solid rgba(14, 165, 233, 0.3)',
+          border: '1px solid var(--color-border-accent)',
         };
       case 'success':
         return {

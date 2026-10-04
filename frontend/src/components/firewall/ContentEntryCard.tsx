@@ -130,46 +130,55 @@ export const ContentEntryCard: React.FC<ContentEntryCardProps> = ({
             <div
               style={{
                 display: 'inline-flex',
-                padding: '2px',
-                backgroundColor: 'rgba(0, 0, 0, 0.25)',
-                borderRadius: 'var(--radius-xs)',
+                padding: '3px',
+                backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                borderRadius: '9999px',
                 border: '1px solid var(--color-border-subtle)',
                 gap: '2px',
               }}
             >
-              <Button
+              <button
                 type="button"
-                variant={mode === 'text' ? 'secondary' : 'ghost'}
-                size="sm"
                 onClick={() => setMode('text')}
                 disabled={isLoading}
                 style={{
-                  padding: '4px 12px',
+                  padding: '5px 14px',
                   fontSize: 'var(--font-size-xs)',
                   fontWeight: mode === 'text' ? 600 : 400,
-                  backgroundColor: mode === 'text' ? 'var(--color-bg-surface-elevated)' : 'transparent',
-                  borderColor: mode === 'text' ? 'var(--color-border-default)' : 'transparent',
+                  borderRadius: '9999px',
+                  backgroundColor: mode === 'text' ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
+                  color: mode === 'text' ? '#ffffff' : 'var(--color-text-secondary)',
+                  border: '1px solid',
+                  borderColor: mode === 'text' ? 'rgba(255, 255, 255, 0.18)' : 'transparent',
+                  cursor: isLoading ? 'not-allowed' : 'pointer',
+                  transition: 'all var(--transition-fast)',
                 }}
               >
                 Text Message
-              </Button>
-              <Button
+              </button>
+              <button
                 type="button"
-                variant={mode === 'url' ? 'secondary' : 'ghost'}
-                size="sm"
                 onClick={() => setMode('url')}
-                leftIcon={<Globe size={13} />}
                 disabled={isLoading}
                 style={{
-                  padding: '4px 12px',
+                  padding: '5px 14px',
                   fontSize: 'var(--font-size-xs)',
                   fontWeight: mode === 'url' ? 600 : 400,
-                  backgroundColor: mode === 'url' ? 'var(--color-bg-surface-elevated)' : 'transparent',
-                  borderColor: mode === 'url' ? 'var(--color-border-default)' : 'transparent',
+                  borderRadius: '9999px',
+                  backgroundColor: mode === 'url' ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
+                  color: mode === 'url' ? '#ffffff' : 'var(--color-text-secondary)',
+                  border: '1px solid',
+                  borderColor: mode === 'url' ? 'rgba(255, 255, 255, 0.18)' : 'transparent',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  cursor: isLoading ? 'not-allowed' : 'pointer',
+                  transition: 'all var(--transition-fast)',
                 }}
               >
+                <Globe size={13} />
                 Link / URL
-              </Button>
+              </button>
             </div>
 
             {/* Ingestion Channel Dropdown */}

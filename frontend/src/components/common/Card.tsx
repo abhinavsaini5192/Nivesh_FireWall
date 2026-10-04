@@ -34,7 +34,7 @@ export const Card: React.FC<CardProps> = ({
       case 'surface':
       default:
         return {
-          backgroundColor: 'var(--color-bg-surface)',
+          backgroundColor: 'var(--color-bg-surface-elevated)',
           border: '1px solid var(--color-border-subtle)',
           boxShadow: 'var(--shadow-sm)',
         };
