@@ -23,11 +23,23 @@ from nivesh.security.audit import log_security_event
 
 
 def get_client_ip(request: Request) -> str:
-    """Extract client IP address from request, considering proxy headers."""
+    """Extract client IP address from request, safely validating proxy trust boundary."""
+    client_host = request.client.host if request.client else "127.0.0.1"
     forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "127.0.0.1"
+    if not forwarded:
+        return client_host
+
+    # Validate proxy trust boundary against configured settings
+    settings = get_settings()
+    allow_ips = getattr(settings, "forwarded_allow_ips", "*")
+    if allow_ips and allow_ips.strip() != "*":
+        trusted_ips = {ip.strip() for ip in allow_ips.split(",") if ip.strip()}
+        if client_host not in trusted_ips:
+            # Immediate peer is not a trusted reverse proxy; reject spoofed X-Forwarded-For
+            return client_host
+
+    # Trusted proxy: extract leftmost original client IP
+    return forwarded.split(",")[0].strip()
 
 
 def get_optional_user(request: Request) -> Optional[AuthenticatedUser]:

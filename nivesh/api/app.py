@@ -14,6 +14,8 @@ import base64
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Depends, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import http_exception_handler
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
@@ -241,6 +243,33 @@ async def firewall_validation_exception_handler(request: Request, exc: RequestVa
     return JSONResponse(
         status_code=422,
         content={"detail": exc.errors()},
+    )
+
+
+@app.exception_handler(Exception)
+async def global_internal_exception_handler(request: Request, exc: Exception):
+    """Sanitize unexpected server exceptions to prevent credential or traceback leakage."""
+    if isinstance(exc, (HTTPException, StarletteHTTPException)):
+        return await http_exception_handler(request, exc)
+
+    import logging
+    logger = logging.getLogger("nivesh.api.error")
+    req_id = getattr(request.state, "request_id", "UNKNOWN")
+    logger.error("Internal server error [req_id=%s]: %s", req_id, exc, exc_info=True)
+
+    if request.url.path.startswith("/api/v1/firewall"):
+        return JSONResponse(
+            status_code=500,
+            content=FirewallApiError(
+                error_code="INTERNAL_SERVER_ERROR",
+                message="An internal server error occurred while processing the request.",
+                details={"request_id": req_id},
+            ).model_dump(),
+        )
+
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An internal server error occurred.", "request_id": req_id},
     )
 
 

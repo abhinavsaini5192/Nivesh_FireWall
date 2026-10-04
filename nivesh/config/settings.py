@@ -369,6 +369,14 @@ class Settings(BaseSettings):
                 "Production environment requires at least one explicit allowed origin in NIVESH_ALLOWED_ORIGINS."
             )
 
+        for origin in self.allowed_origins:
+            orig = origin.strip()
+            if not (orig.startswith("https://") or orig.startswith("http://") or orig.startswith("chrome-extension://")):
+                raise ValueError(
+                    f"Invalid origin in NIVESH_ALLOWED_ORIGINS: '{origin}'. "
+                    "Allowed origins must start with 'https://', 'http://', or 'chrome-extension://'."
+                )
+
         # E. Live source mode consistency
         if self.source_mode == "LIVE" and not self.live_sources_enabled:
             raise ValueError(

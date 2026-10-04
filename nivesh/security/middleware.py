@@ -37,9 +37,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
             response.headers["Pragma"] = "no-cache"
 
-        # HSTS in production
+        # HSTS in production or over HTTPS / reverse proxy HTTPS
         settings = get_settings()
-        if settings.is_production() or request.url.scheme == "https":
+        if (
+            settings.is_production()
+            or request.url.scheme == "https"
+            or request.headers.get("X-Forwarded-Proto") == "https"
+        ):
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
         return response
