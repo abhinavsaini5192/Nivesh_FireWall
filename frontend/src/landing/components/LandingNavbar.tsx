@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Shield, Menu, X } from 'lucide-react';
 
 export interface LandingNavbarProps {
   onOpenFirewall?: () => void;
@@ -44,250 +45,50 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = ({
   const isActive = (route: string) => currentRoute === route;
 
   return (
-    <header
-      className="fade-in-delayed delay-nav"
-      style={{
-        position: 'relative',
-        zIndex: 30,
-        width: '100%',
-        padding: '16px 20px',
-        maxWidth: '1280px',
-        margin: '0 auto',
-      }}
-    >
-      <nav
-        className="nav-glass"
-        style={{
-          borderRadius: '9999px',
-          padding: '12px 24px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
-        }}
-        aria-label="Main Site Navigation"
-      >
-        {/* Wordmark Identity: NIVESH FIREWALL */}
-        <a
-          href="/"
-          onClick={(e) => {
-            e.preventDefault();
-            handleRouteClick('/');
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            textDecoration: 'none',
-            outline: 'none',
-          }}
-        >
-          <span
-            style={{
-              letterSpacing: '0.16em',
-              textTransform: 'uppercase',
-              fontWeight: 700,
-              fontSize: '15px',
-              color: '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            <span
-              style={{
-                display: 'inline-block',
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                backgroundColor: '#a855f7',
-                boxShadow: '0 0 8px #a855f7',
-              }}
-            />
-            NIVESH <span style={{ fontWeight: 400, color: 'rgba(255, 255, 255, 0.8)' }}>FIREWALL</span>
-          </span>
-        </a>
+    <header className="nivesh-notch-header fade-in-delayed delay-nav">
+      <div className="nivesh-notch-container">
+        {/* Left Inverted Concave Shoulder Wing */}
+        <svg className="nivesh-notch-wing-left" viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M 0 0 C 11.046 0 20 8.954 20 20 H 22 V 0 H 0 Z" fill="#000000" />
+          <path d="M 0 0 C 11.046 0 20 8.954 20 20" stroke="rgba(255, 255, 255, 0.14)" strokeWidth="1" fill="none" />
+        </svg>
 
-        {/* Centered Navigation Links */}
-        <div
-          className="desktop-nav-links"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '32px',
-            fontSize: '13px',
-            letterSpacing: '0.02em',
-            color: '#cbd5e1',
-            fontWeight: 500,
-          }}
-        >
+        {/* Center Hanging Notch Capsule Bar */}
+        <nav className="nivesh-notch-bar" aria-label="Main Site Navigation">
+          {/* Brand & Glossy App Tile Lockup */}
           <a
             href="/"
             onClick={(e) => {
               e.preventDefault();
               handleRouteClick('/');
             }}
-            className={isActive('/') ? 'active-nav-link' : ''}
-            style={{ textDecoration: 'none', color: isActive('/') ? '#ffffff' : '#cbd5e1', cursor: 'pointer', padding: '4px 0' }}
+            className="nivesh-notch-brand"
+            title="Nivesh Firewall Home"
           >
-            Product
+            <div className="nivesh-notch-app-icon" aria-hidden="true">
+              <Shield
+                size={15}
+                color="#ffffff"
+                strokeWidth={2.4}
+                style={{ filter: 'drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))' }}
+              />
+            </div>
+            <span className="nivesh-notch-brand-text">
+              <span>NIVESH</span> <span>FIREWALL</span>
+            </span>
           </a>
-          <a
-            href="/how-it-works"
-            onClick={(e) => {
-              e.preventDefault();
-              handleRouteClick('/how-it-works');
-            }}
-            className={isActive('/how-it-works') ? 'active-nav-link' : ''}
-            style={{ textDecoration: 'none', color: isActive('/how-it-works') ? '#ffffff' : '#cbd5e1', cursor: 'pointer', padding: '4px 0' }}
-          >
-            How It Works
-          </a>
-          <a
-            href="/features"
-            onClick={(e) => {
-              e.preventDefault();
-              handleRouteClick('/features');
-            }}
-            className={isActive('/features') ? 'active-nav-link' : ''}
-            style={{ textDecoration: 'none', color: isActive('/features') ? '#ffffff' : '#cbd5e1', cursor: 'pointer', padding: '4px 0' }}
-          >
-            Features
-          </a>
-          <a
-            href="/sources"
-            onClick={(e) => {
-              e.preventDefault();
-              handleRouteClick('/sources');
-            }}
-            className={isActive('/sources') ? 'active-nav-link' : ''}
-            style={{ textDecoration: 'none', color: isActive('/sources') ? '#ffffff' : '#cbd5e1', cursor: 'pointer', padding: '4px 0' }}
-          >
-            Sources
-          </a>
-          <a
-            href="/extension"
-            onClick={(e) => {
-              e.preventDefault();
-              handleRouteClick('/extension');
-            }}
-            className={isActive('/extension') ? 'active-nav-link' : ''}
-            style={{ textDecoration: 'none', color: isActive('/extension') ? '#ffffff' : '#cbd5e1', cursor: 'pointer', padding: '4px 0' }}
-          >
-            Extension
-          </a>
-        </div>
 
-        {/* Right Side Actions */}
-        <div className="desktop-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button
-            type="button"
-            onClick={handleOpenFirewallAction}
-            className="btn-secondary-glass"
-            style={{
-              fontSize: '12px',
-              fontWeight: 600,
-              padding: '10px 18px',
-              borderRadius: '9999px',
-              letterSpacing: '0.02em',
-              display: 'inline-block',
-              cursor: 'pointer',
-            }}
-          >
-            Open Firewall
-          </button>
-          <button
-            type="button"
-            onClick={handleOpenFirewallAction}
-            className="btn-primary-white"
-            style={{
-              fontSize: '12px',
-              fontWeight: 600,
-              padding: '10px 18px',
-              borderRadius: '9999px',
-              letterSpacing: '0.02em',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              cursor: 'pointer',
-            }}
-          >
-            Get Started
-            <svg
-              style={{ width: '14px', height: '14px' }}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth="2.5"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Mobile Hamburger Button */}
-        <button
-          type="button"
-          onClick={toggleMobileMenu}
-          aria-expanded={mobileMenuOpen}
-          aria-controls="mobile-menu-drawer"
-          aria-label="Toggle navigation menu"
-          className="mobile-menu-toggle"
-          style={{
-            background: 'none',
-            border: 'none',
-            padding: '8px',
-            color: '#cbd5e1',
-            cursor: 'pointer',
-          }}
-        >
-          {mobileMenuOpen ? (
-            <svg style={{ width: '20px', height: '20px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          ) : (
-            <svg style={{ width: '20px', height: '20px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          )}
-        </button>
-      </nav>
-
-      {/* Mobile Drawer Menu */}
-      {mobileMenuOpen && (
-        <div
-          id="mobile-menu-drawer"
-          className="nav-glass"
-          style={{
-            marginTop: '12px',
-            borderRadius: '24px',
-            padding: '24px',
-            fontSize: '14px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '16px',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-          }}
-          role="region"
-          aria-label="Mobile Navigation"
-        >
-          <nav style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontWeight: 500 }}>
+          {/* Centered Navigation Links */}
+          <div className="nivesh-notch-nav">
             <a
-              href="/"
+              href="/features"
               onClick={(e) => {
                 e.preventDefault();
-                handleRouteClick('/');
+                handleRouteClick('/features');
               }}
-              style={{
-                textDecoration: 'none',
-                color: isActive('/') ? '#ffffff' : '#cbd5e1',
-                textAlign: 'left',
-                padding: '8px',
-                fontWeight: isActive('/') ? 600 : 500,
-              }}
+              className={`nivesh-notch-link ${isActive('/features') ? 'active' : ''}`}
             >
-              Product
+              Features
             </a>
             <a
               href="/how-it-works"
@@ -295,31 +96,9 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = ({
                 e.preventDefault();
                 handleRouteClick('/how-it-works');
               }}
-              style={{
-                textDecoration: 'none',
-                color: isActive('/how-it-works') ? '#ffffff' : '#cbd5e1',
-                textAlign: 'left',
-                padding: '8px',
-                fontWeight: isActive('/how-it-works') ? 600 : 500,
-              }}
+              className={`nivesh-notch-link ${isActive('/how-it-works') ? 'active' : ''}`}
             >
               How It Works
-            </a>
-            <a
-              href="/features"
-              onClick={(e) => {
-                e.preventDefault();
-                handleRouteClick('/features');
-              }}
-              style={{
-                textDecoration: 'none',
-                color: isActive('/features') ? '#ffffff' : '#cbd5e1',
-                textAlign: 'left',
-                padding: '8px',
-                fontWeight: isActive('/features') ? 600 : 500,
-              }}
-            >
-              Features
             </a>
             <a
               href="/sources"
@@ -327,13 +106,7 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = ({
                 e.preventDefault();
                 handleRouteClick('/sources');
               }}
-              style={{
-                textDecoration: 'none',
-                color: isActive('/sources') ? '#ffffff' : '#cbd5e1',
-                textAlign: 'left',
-                padding: '8px',
-                fontWeight: isActive('/sources') ? 600 : 500,
-              }}
+              className={`nivesh-notch-link ${isActive('/sources') ? 'active' : ''}`}
             >
               Sources
             </a>
@@ -343,13 +116,7 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = ({
                 e.preventDefault();
                 handleRouteClick('/extension');
               }}
-              style={{
-                textDecoration: 'none',
-                color: isActive('/extension') ? '#ffffff' : '#cbd5e1',
-                textAlign: 'left',
-                padding: '8px',
-                fontWeight: isActive('/extension') ? 600 : 500,
-              }}
+              className={`nivesh-notch-link ${isActive('/extension') ? 'active' : ''}`}
             >
               Extension
             </a>
@@ -359,75 +126,140 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = ({
                 e.preventDefault();
                 handleRouteClick('/about');
               }}
-              style={{
-                textDecoration: 'none',
-                color: isActive('/about') ? '#ffffff' : '#cbd5e1',
-                textAlign: 'left',
-                padding: '8px',
-                fontWeight: isActive('/about') ? 600 : 500,
-              }}
+              className={`nivesh-notch-link ${isActive('/about') ? 'active' : ''}`}
             >
               About
             </a>
-            <a
-              href="/privacy"
-              onClick={(e) => {
-                e.preventDefault();
-                handleRouteClick('/privacy');
-              }}
-              style={{
-                textDecoration: 'none',
-                color: isActive('/privacy') ? '#ffffff' : '#cbd5e1',
-                textAlign: 'left',
-                padding: '8px',
-                fontWeight: isActive('/privacy') ? 600 : 500,
-              }}
-            >
-              Privacy
-            </a>
-          </nav>
-          <div style={{ height: '1px', backgroundColor: 'rgba(255, 255, 255, 0.1)', margin: '4px 0' }} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          </div>
+
+          {/* Right Action Controls: Open Firewall Ghost + Get Started / Download Button */}
+          <div className="nivesh-notch-actions">
             <button
               type="button"
               onClick={handleOpenFirewallAction}
-              className="btn-secondary-glass"
+              className="desktop-hint"
               style={{
-                textAlign: 'center',
+                background: 'none',
+                border: 'none',
+                color: 'rgba(255, 255, 255, 0.7)',
+                fontSize: '12px',
                 fontWeight: 500,
-                fontSize: '13px',
-                padding: '12px',
-                borderRadius: '9999px',
-                width: '100%',
                 cursor: 'pointer',
+                padding: '5px 10px',
+                borderRadius: '8px',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#ffffff';
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'rgba(255, 255, 255, 0.7)';
+                e.currentTarget.style.backgroundColor = 'transparent';
               }}
             >
               Open Firewall
             </button>
+
+            {/* High-Contrast White Pill Button ( Get Started / Download) */}
             <button
               type="button"
               onClick={handleOpenFirewallAction}
-              className="btn-primary-white"
+              className="nivesh-notch-download-btn"
+              title="Get Started with Nivesh Firewall"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.61-.75 1.04-1.8 0.92-2.87-.93.04-2.02.63-2.66 1.38-.56.65-.98 1.7-0.87 2.73 1.02.08 2.05-.53 2.61-1.24z" />
+              </svg>
+              <span>Get Started</span>
+            </button>
+
+            {/* Mobile Hamburger Toggle Button */}
+            <button
+              type="button"
+              onClick={toggleMobileMenu}
+              aria-expanded={mobileMenuOpen}
+              aria-controls="mobile-menu-drawer"
+              aria-label="Toggle navigation menu"
+              className="mobile-menu-toggle"
               style={{
-                textAlign: 'center',
-                fontWeight: 600,
-                fontSize: '13px',
-                padding: '12px',
-                borderRadius: '9999px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                width: '100%',
+                background: 'none',
+                border: 'none',
+                padding: '6px',
+                color: '#cbd5e1',
                 cursor: 'pointer',
+                display: 'none',
               }}
             >
-              Get Started
-              <svg style={{ width: '14px', height: '14px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-              </svg>
+              {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
             </button>
           </div>
+        </nav>
+
+        {/* Right Inverted Concave Shoulder Wing */}
+        <svg className="nivesh-notch-wing-right" viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M 20 0 C 8.954 0 0 8.954 0 20 H -2 V 0 H 20 Z" fill="#000000" />
+          <path d="M 20 0 C 8.954 0 0 8.954 0 20" stroke="rgba(255, 255, 255, 0.14)" strokeWidth="1" fill="none" />
+        </svg>
+      </div>
+
+      {/* Mobile Drawer Menu */}
+      {mobileMenuOpen && (
+        <div
+          id="mobile-menu-drawer"
+          style={{
+            position: 'fixed',
+            top: '56px',
+            left: '12px',
+            right: '12px',
+            borderRadius: '20px',
+            padding: '20px',
+            backgroundColor: '#0a0a0c',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.9)',
+            pointerEvents: 'auto',
+            zIndex: 60,
+          }}
+          role="region"
+          aria-label="Mobile Navigation"
+        >
+          <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontWeight: 500 }}>
+            {['/', '/features', '/how-it-works', '/sources', '/extension', '/about', '/privacy'].map((route) => {
+              const label =
+                route === '/'
+                  ? 'Product'
+                  : route.slice(1).replace('-', ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+              return (
+                <a
+                  key={route}
+                  href={route}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleRouteClick(route);
+                  }}
+                  style={{
+                    textDecoration: 'none',
+                    color: isActive(route) ? '#ffffff' : 'rgba(255, 255, 255, 0.7)',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    backgroundColor: isActive(route) ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+                    fontSize: '14px',
+                  }}
+                >
+                  {label}
+                </a>
+              );
+            })}
+          </nav>
+          <div style={{ height: '1px', backgroundColor: 'rgba(255, 255, 255, 0.1)', margin: '12px 0' }} />
+          <button
+            type="button"
+            onClick={handleOpenFirewallAction}
+            className="nivesh-notch-download-btn"
+            style={{ width: '100%', justifyContent: 'center' }}
+          >
+            Get Started
+          </button>
         </div>
       )}
     </header>
