@@ -15,16 +15,64 @@ import { ActivityView } from './views/ActivityView';
 import { ThreatIntelligenceView } from './views/ThreatIntelligenceView';
 import { SettingsView } from './views/SettingsView';
 import { LandingPage } from './landing';
+import {
+  HowItWorksPage,
+  FeaturesPage,
+  SourcesPage,
+  ExtensionPage,
+  AboutPage,
+  PrivacyPage,
+} from './pages';
 import './styles/index.css';
+
+export type PublicRoute =
+  | '/'
+  | '/how-it-works'
+  | '/features'
+  | '/sources'
+  | '/extension'
+  | '/about'
+  | '/privacy'
+  | '/firewall';
+
+export const resolveRoute = (pathname: string, hash: string): PublicRoute => {
+  const p = (pathname || '/').toLowerCase().replace(/\/+$/, '') || '/';
+  const h = (hash || '').replace('#', '').split('?')[0].toLowerCase().replace(/^\/+/, '');
+
+  // 1. Explicit Hash Overrides (for testing, SPAs, and backward compatibility)
+  if (h === 'landing' || h === 'home') return '/';
+  if (
+    h === 'firewall' ||
+    h === 'protect' ||
+    h === 'activity' ||
+    h === 'threat-intel' ||
+    h === 'settings'
+  ) {
+    return '/firewall';
+  }
+  if (h === 'how-it-works') return '/how-it-works';
+  if (h === 'features') return '/features';
+  if (h === 'sources') return '/sources';
+  if (h === 'extension') return '/extension';
+  if (h === 'about') return '/about';
+  if (h === 'privacy') return '/privacy';
+
+  // 2. Direct pathname matching
+  if (p === '/firewall') return '/firewall';
+  if (p === '/how-it-works') return '/how-it-works';
+  if (p === '/features') return '/features';
+  if (p === '/sources') return '/sources';
+  if (p === '/extension') return '/extension';
+  if (p === '/about') return '/about';
+  if (p === '/privacy') return '/privacy';
+
+  // 3. Root path
+  return '/';
+};
 
 const getAnalysisIdFromHash = (hash: string): string | null => {
   const match = hash.match(/(?:id=|analysis\/)([a-zA-Z0-9_-]+)/);
   return match ? match[1] : null;
-};
-
-const isLandingHash = (hash: string): boolean => {
-  const clean = hash.replace('#', '').split('?')[0].toLowerCase();
-  return ['landing', 'home', 'how-it-works', 'features', 'sources', 'extension', 'about'].includes(clean);
 };
 
 const getTabFromHash = (hash: string): NavTabId => {
@@ -42,12 +90,12 @@ function navigateHash(hash: string): void {
 }
 
 export const App: React.FC = () => {
-  // Landing Page vs Core Console Routing State
-  const [isLanding, setIsLanding] = useState<boolean>(() => {
+  // Public Route State
+  const [currentRoute, setCurrentRoute] = useState<PublicRoute>(() => {
     if (typeof window !== 'undefined') {
-      return isLandingHash(window.location.hash) || window.location.pathname === '/landing';
+      return resolveRoute(window.location.pathname, window.location.hash);
     }
-    return false;
+    return '/';
   });
 
   // Navigation & Routing State
@@ -114,14 +162,12 @@ export const App: React.FC = () => {
         });
     }
 
-    // 3. Hash Change Listener
-    const handleHashChange = () => {
-      const isLandingNow =
-        isLandingHash(window.location.hash) ||
-        (typeof window !== 'undefined' && window.location.pathname === '/landing');
-      setIsLanding(isLandingNow);
+    // 3. Location & Hash Change Listener
+    const handleLocationChange = () => {
+      const targetRoute = resolveRoute(window.location.pathname, window.location.hash);
+      setCurrentRoute(targetRoute);
 
-      if (!isLandingNow) {
+      if (targetRoute === '/firewall') {
         const targetTab = getTabFromHash(window.location.hash);
         setActiveTab(targetTab);
 
@@ -147,10 +193,12 @@ export const App: React.FC = () => {
       }
     };
 
-    window.addEventListener('hashchange', handleHashChange);
+    window.addEventListener('popstate', handleLocationChange);
+    window.addEventListener('hashchange', handleLocationChange);
     return () => {
       isMounted = false;
-      window.removeEventListener('hashchange', handleHashChange);
+      window.removeEventListener('popstate', handleLocationChange);
+      window.removeEventListener('hashchange', handleLocationChange);
     };
   }, [currentAnalysis]);
 
@@ -292,14 +340,80 @@ export const App: React.FC = () => {
     }
   };
 
-  if (isLanding) {
+  const navigateTo = (route: string) => {
+    if (typeof window !== 'undefined') {
+      if (window.history && typeof window.history.pushState === 'function') {
+        window.history.pushState({}, '', route);
+      }
+      setCurrentRoute(resolveRoute(route, window.location.hash));
+    }
+  };
+
+  const handleOpenFirewall = () => {
+    navigateTo('/firewall');
+    setActiveTab('protect');
+    navigateHash('protect');
+  };
+
+  if (currentRoute === '/') {
     return (
       <LandingPage
-        onOpenFirewall={() => {
-          setIsLanding(false);
-          setActiveTab('protect');
-          navigateHash('protect');
-        }}
+        onOpenFirewall={handleOpenFirewall}
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  if (currentRoute === '/how-it-works') {
+    return (
+      <HowItWorksPage
+        onOpenFirewall={handleOpenFirewall}
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  if (currentRoute === '/features') {
+    return (
+      <FeaturesPage
+        onOpenFirewall={handleOpenFirewall}
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  if (currentRoute === '/sources') {
+    return (
+      <SourcesPage
+        onOpenFirewall={handleOpenFirewall}
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  if (currentRoute === '/extension') {
+    return (
+      <ExtensionPage
+        onOpenFirewall={handleOpenFirewall}
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  if (currentRoute === '/about') {
+    return (
+      <AboutPage
+        onOpenFirewall={handleOpenFirewall}
+        onNavigate={navigateTo}
+      />
+    );
+  }
+
+  if (currentRoute === '/privacy') {
+    return (
+      <PrivacyPage
+        onOpenFirewall={handleOpenFirewall}
+        onNavigate={navigateTo}
       />
     );
   }

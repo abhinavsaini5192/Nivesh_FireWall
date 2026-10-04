@@ -36,7 +36,14 @@ export const Header: React.FC<HeaderProps> = ({
     >
       {/* Brand & Identity (links to Landing Page) */}
       <a
-        href="#landing"
+        href="/"
+        onClick={(e) => {
+          if (typeof window !== 'undefined' && window.history) {
+            e.preventDefault();
+            window.history.pushState({}, '', '/');
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }
+        }}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -108,7 +115,14 @@ export const Header: React.FC<HeaderProps> = ({
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
         {/* Landing Page Overview Link */}
         <a
-          href="#landing"
+          href="/"
+          onClick={(e) => {
+            if (typeof window !== 'undefined' && window.history) {
+              e.preventDefault();
+              window.history.pushState({}, '', '/');
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }
+          }}
           style={{
             display: 'none',
             alignItems: 'center',

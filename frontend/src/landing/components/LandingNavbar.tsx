@@ -1,10 +1,16 @@
 import React, { useState } from 'react';
 
 export interface LandingNavbarProps {
-  onOpenFirewall: () => void;
+  onOpenFirewall?: () => void;
+  onNavigate?: (route: string) => void;
+  currentRoute?: string;
 }
 
-export const LandingNavbar: React.FC<LandingNavbarProps> = ({ onOpenFirewall }) => {
+export const LandingNavbar: React.FC<LandingNavbarProps> = ({
+  onOpenFirewall,
+  onNavigate,
+  currentRoute = '/',
+}) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const toggleMobileMenu = () => {
@@ -15,13 +21,27 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = ({ onOpenFirewall }) 
     setMobileMenuOpen(false);
   };
 
-  const handleNavClick = (sectionId: string) => {
+  const handleRouteClick = (route: string) => {
     closeMobileMenu();
-    const el = document.getElementById(sectionId);
-    if (el && typeof el.scrollIntoView === 'function') {
-      el.scrollIntoView({ behavior: 'smooth' });
+    if (onNavigate) {
+      onNavigate(route);
+    } else if (typeof window !== 'undefined') {
+      window.location.pathname = route;
     }
   };
+
+  const handleOpenFirewallAction = () => {
+    closeMobileMenu();
+    if (onOpenFirewall) {
+      onOpenFirewall();
+    } else if (onNavigate) {
+      onNavigate('/firewall');
+    } else if (typeof window !== 'undefined') {
+      window.location.pathname = '/firewall';
+    }
+  };
+
+  const isActive = (route: string) => currentRoute === route;
 
   return (
     <header
@@ -45,14 +65,14 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = ({ onOpenFirewall }) 
           justifyContent: 'space-between',
           boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
         }}
-        aria-label="Main Landing Navigation"
+        aria-label="Main Site Navigation"
       >
         {/* Wordmark Identity: NIVESH FIREWALL */}
         <a
-          href="#product"
+          href="/"
           onClick={(e) => {
             e.preventDefault();
-            handleNavClick('product');
+            handleRouteClick('/');
           }}
           style={{
             display: 'flex',
@@ -101,48 +121,68 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = ({ onOpenFirewall }) 
             fontWeight: 500,
           }}
         >
-          <button
-            type="button"
-            onClick={() => handleNavClick('product')}
-            style={{ background: 'none', border: 'none', color: '#ffffff', cursor: 'pointer', padding: '4px 0' }}
+          <a
+            href="/"
+            onClick={(e) => {
+              e.preventDefault();
+              handleRouteClick('/');
+            }}
+            className={isActive('/') ? 'active-nav-link' : ''}
+            style={{ textDecoration: 'none', color: isActive('/') ? '#ffffff' : '#cbd5e1', cursor: 'pointer', padding: '4px 0' }}
           >
             Product
-          </button>
-          <button
-            type="button"
-            onClick={() => handleNavClick('how-it-works')}
-            style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: '4px 0' }}
+          </a>
+          <a
+            href="/how-it-works"
+            onClick={(e) => {
+              e.preventDefault();
+              handleRouteClick('/how-it-works');
+            }}
+            className={isActive('/how-it-works') ? 'active-nav-link' : ''}
+            style={{ textDecoration: 'none', color: isActive('/how-it-works') ? '#ffffff' : '#cbd5e1', cursor: 'pointer', padding: '4px 0' }}
           >
             How It Works
-          </button>
-          <button
-            type="button"
-            onClick={() => handleNavClick('features')}
-            style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: '4px 0' }}
+          </a>
+          <a
+            href="/features"
+            onClick={(e) => {
+              e.preventDefault();
+              handleRouteClick('/features');
+            }}
+            className={isActive('/features') ? 'active-nav-link' : ''}
+            style={{ textDecoration: 'none', color: isActive('/features') ? '#ffffff' : '#cbd5e1', cursor: 'pointer', padding: '4px 0' }}
           >
             Features
-          </button>
-          <button
-            type="button"
-            onClick={() => handleNavClick('sources')}
-            style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: '4px 0' }}
+          </a>
+          <a
+            href="/sources"
+            onClick={(e) => {
+              e.preventDefault();
+              handleRouteClick('/sources');
+            }}
+            className={isActive('/sources') ? 'active-nav-link' : ''}
+            style={{ textDecoration: 'none', color: isActive('/sources') ? '#ffffff' : '#cbd5e1', cursor: 'pointer', padding: '4px 0' }}
           >
             Sources
-          </button>
-          <button
-            type="button"
-            onClick={() => handleNavClick('extension')}
-            style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: '4px 0' }}
+          </a>
+          <a
+            href="/extension"
+            onClick={(e) => {
+              e.preventDefault();
+              handleRouteClick('/extension');
+            }}
+            className={isActive('/extension') ? 'active-nav-link' : ''}
+            style={{ textDecoration: 'none', color: isActive('/extension') ? '#ffffff' : '#cbd5e1', cursor: 'pointer', padding: '4px 0' }}
           >
             Extension
-          </button>
+          </a>
         </div>
 
         {/* Right Side Actions */}
         <div className="desktop-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button
             type="button"
-            onClick={onOpenFirewall}
+            onClick={handleOpenFirewallAction}
             className="btn-secondary-glass"
             style={{
               fontSize: '12px',
@@ -150,13 +190,15 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = ({ onOpenFirewall }) 
               padding: '10px 18px',
               borderRadius: '9999px',
               letterSpacing: '0.02em',
+              display: 'inline-block',
+              cursor: 'pointer',
             }}
           >
             Open Firewall
           </button>
           <button
             type="button"
-            onClick={onOpenFirewall}
+            onClick={handleOpenFirewallAction}
             className="btn-primary-white"
             style={{
               fontSize: '12px',
@@ -167,6 +209,7 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = ({ onOpenFirewall }) 
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
+              cursor: 'pointer',
             }}
           >
             Get Started
@@ -226,63 +269,144 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = ({ onOpenFirewall }) 
             border: '1px solid rgba(255, 255, 255, 0.1)',
             boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
           }}
+          role="region"
+          aria-label="Mobile Navigation"
         >
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontWeight: 500 }}>
-            <button
-              type="button"
-              onClick={() => handleNavClick('product')}
-              style={{ background: 'none', border: 'none', color: '#ffffff', textAlign: 'left', padding: '8px', cursor: 'pointer' }}
+            <a
+              href="/"
+              onClick={(e) => {
+                e.preventDefault();
+                handleRouteClick('/');
+              }}
+              style={{
+                textDecoration: 'none',
+                color: isActive('/') ? '#ffffff' : '#cbd5e1',
+                textAlign: 'left',
+                padding: '8px',
+                fontWeight: isActive('/') ? 600 : 500,
+              }}
             >
               Product
-            </button>
-            <button
-              type="button"
-              onClick={() => handleNavClick('how-it-works')}
-              style={{ background: 'none', border: 'none', color: '#cbd5e1', textAlign: 'left', padding: '8px', cursor: 'pointer' }}
+            </a>
+            <a
+              href="/how-it-works"
+              onClick={(e) => {
+                e.preventDefault();
+                handleRouteClick('/how-it-works');
+              }}
+              style={{
+                textDecoration: 'none',
+                color: isActive('/how-it-works') ? '#ffffff' : '#cbd5e1',
+                textAlign: 'left',
+                padding: '8px',
+                fontWeight: isActive('/how-it-works') ? 600 : 500,
+              }}
             >
               How It Works
-            </button>
-            <button
-              type="button"
-              onClick={() => handleNavClick('features')}
-              style={{ background: 'none', border: 'none', color: '#cbd5e1', textAlign: 'left', padding: '8px', cursor: 'pointer' }}
+            </a>
+            <a
+              href="/features"
+              onClick={(e) => {
+                e.preventDefault();
+                handleRouteClick('/features');
+              }}
+              style={{
+                textDecoration: 'none',
+                color: isActive('/features') ? '#ffffff' : '#cbd5e1',
+                textAlign: 'left',
+                padding: '8px',
+                fontWeight: isActive('/features') ? 600 : 500,
+              }}
             >
               Features
-            </button>
-            <button
-              type="button"
-              onClick={() => handleNavClick('sources')}
-              style={{ background: 'none', border: 'none', color: '#cbd5e1', textAlign: 'left', padding: '8px', cursor: 'pointer' }}
+            </a>
+            <a
+              href="/sources"
+              onClick={(e) => {
+                e.preventDefault();
+                handleRouteClick('/sources');
+              }}
+              style={{
+                textDecoration: 'none',
+                color: isActive('/sources') ? '#ffffff' : '#cbd5e1',
+                textAlign: 'left',
+                padding: '8px',
+                fontWeight: isActive('/sources') ? 600 : 500,
+              }}
             >
               Sources
-            </button>
-            <button
-              type="button"
-              onClick={() => handleNavClick('extension')}
-              style={{ background: 'none', border: 'none', color: '#cbd5e1', textAlign: 'left', padding: '8px', cursor: 'pointer' }}
+            </a>
+            <a
+              href="/extension"
+              onClick={(e) => {
+                e.preventDefault();
+                handleRouteClick('/extension');
+              }}
+              style={{
+                textDecoration: 'none',
+                color: isActive('/extension') ? '#ffffff' : '#cbd5e1',
+                textAlign: 'left',
+                padding: '8px',
+                fontWeight: isActive('/extension') ? 600 : 500,
+              }}
             >
               Extension
-            </button>
+            </a>
+            <a
+              href="/about"
+              onClick={(e) => {
+                e.preventDefault();
+                handleRouteClick('/about');
+              }}
+              style={{
+                textDecoration: 'none',
+                color: isActive('/about') ? '#ffffff' : '#cbd5e1',
+                textAlign: 'left',
+                padding: '8px',
+                fontWeight: isActive('/about') ? 600 : 500,
+              }}
+            >
+              About
+            </a>
+            <a
+              href="/privacy"
+              onClick={(e) => {
+                e.preventDefault();
+                handleRouteClick('/privacy');
+              }}
+              style={{
+                textDecoration: 'none',
+                color: isActive('/privacy') ? '#ffffff' : '#cbd5e1',
+                textAlign: 'left',
+                padding: '8px',
+                fontWeight: isActive('/privacy') ? 600 : 500,
+              }}
+            >
+              Privacy
+            </a>
           </nav>
           <div style={{ height: '1px', backgroundColor: 'rgba(255, 255, 255, 0.1)', margin: '4px 0' }} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <button
               type="button"
-              onClick={() => {
-                closeMobileMenu();
-                onOpenFirewall();
-              }}
+              onClick={handleOpenFirewallAction}
               className="btn-secondary-glass"
-              style={{ textAlign: 'center', fontWeight: 500, fontSize: '13px', padding: '12px', borderRadius: '9999px' }}
+              style={{
+                textAlign: 'center',
+                fontWeight: 500,
+                fontSize: '13px',
+                padding: '12px',
+                borderRadius: '9999px',
+                width: '100%',
+                cursor: 'pointer',
+              }}
             >
               Open Firewall
             </button>
             <button
               type="button"
-              onClick={() => {
-                closeMobileMenu();
-                onOpenFirewall();
-              }}
+              onClick={handleOpenFirewallAction}
               className="btn-primary-white"
               style={{
                 textAlign: 'center',
@@ -294,6 +418,8 @@ export const LandingNavbar: React.FC<LandingNavbarProps> = ({ onOpenFirewall }) 
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '6px',
+                width: '100%',
+                cursor: 'pointer',
               }}
             >
               Get Started

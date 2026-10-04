@@ -8,9 +8,13 @@ import '../styles/landing.css';
 
 export interface LandingPageProps {
   onOpenFirewall: () => void;
+  onNavigate?: (route: string) => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onOpenFirewall }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({
+  onOpenFirewall,
+  onNavigate,
+}) => {
   useEffect(() => {
     // Scroll to top on mount
     if (typeof window.scrollTo === 'function') {
@@ -30,6 +34,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenFirewall }) => {
   }, []);
 
   const handleExploreHowItWorks = () => {
+    if (onNavigate) {
+      onNavigate('/how-it-works');
+      return;
+    }
     const el = document.getElementById('how-it-works');
     if (el && typeof el.scrollIntoView === 'function') {
       el.scrollIntoView({ behavior: 'smooth' });
@@ -42,7 +50,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenFirewall }) => {
       <GlobeCanvas />
 
       {/* Glassmorphic Navigation Bar */}
-      <LandingNavbar onOpenFirewall={onOpenFirewall} />
+      <LandingNavbar
+        currentRoute="/"
+        onNavigate={onNavigate}
+        onOpenFirewall={onOpenFirewall}
+      />
 
       {/* Hero Section with Staggered Entrance Animations */}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -52,11 +64,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenFirewall }) => {
         />
 
         {/* Detailed Sections: How It Works, Features, Sources, Extension */}
-        <LandingSections onOpenFirewall={onOpenFirewall} />
+        <LandingSections
+          onOpenFirewall={onOpenFirewall}
+          onNavigate={onNavigate}
+        />
       </main>
 
       {/* Clean Minimalist Protocol Footer */}
-      <LandingFooter />
+      <LandingFooter
+        onNavigate={onNavigate}
+        onOpenFirewall={onOpenFirewall}
+      />
     </div>
   );
 };

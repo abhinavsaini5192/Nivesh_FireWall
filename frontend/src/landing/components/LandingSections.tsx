@@ -28,9 +28,10 @@ const ChromeIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
 
 export interface LandingSectionsProps {
   onOpenFirewall: () => void;
+  onNavigate?: (route: string) => void;
 }
 
-export const LandingSections: React.FC<LandingSectionsProps> = ({ onOpenFirewall }) => {
+export const LandingSections: React.FC<LandingSectionsProps> = ({ onOpenFirewall, onNavigate }) => {
   return (
     <div style={{ position: 'relative', zIndex: 10, width: '100%', maxWidth: '1200px', margin: '0 auto', padding: '0 24px' }}>
       
@@ -108,6 +109,32 @@ export const LandingSections: React.FC<LandingSectionsProps> = ({ onOpenFirewall
             </p>
           </div>
         </div>
+
+        <div style={{ textAlign: 'center', marginTop: '36px' }}>
+          <a
+            href="/how-it-works"
+            onClick={(e) => {
+              if (onNavigate) {
+                e.preventDefault();
+                onNavigate('/how-it-works');
+              }
+            }}
+            className="btn-secondary-glass"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 24px',
+              borderRadius: '9999px',
+              fontSize: '13px',
+              fontWeight: 500,
+              textDecoration: 'none',
+            }}
+          >
+            <span>Explore Complete 6-Stage Defense Workflow</span>
+            <ArrowRight size={14} color="#c084fc" />
+          </a>
+        </div>
       </section>
 
       {/* =================================================================== */}
@@ -171,6 +198,32 @@ export const LandingSections: React.FC<LandingSectionsProps> = ({ onOpenFirewall
             </p>
           </div>
         </div>
+
+        <div style={{ textAlign: 'center', marginTop: '36px' }}>
+          <a
+            href="/features"
+            onClick={(e) => {
+              if (onNavigate) {
+                e.preventDefault();
+                onNavigate('/features');
+              }
+            }}
+            className="btn-secondary-glass"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 24px',
+              borderRadius: '9999px',
+              fontSize: '13px',
+              fontWeight: 500,
+              textDecoration: 'none',
+            }}
+          >
+            <span>Explore All 10 Intelligence Layers</span>
+            <ArrowRight size={14} color="#c084fc" />
+          </a>
+        </div>
       </section>
 
       {/* =================================================================== */}
@@ -214,6 +267,32 @@ export const LandingSections: React.FC<LandingSectionsProps> = ({ onOpenFirewall
               Known phishing domain fingerprints, fraudulent certificate hashes, and scam clusters.
             </p>
           </div>
+        </div>
+
+        <div style={{ textAlign: 'center', marginTop: '36px' }}>
+          <a
+            href="/sources"
+            onClick={(e) => {
+              if (onNavigate) {
+                e.preventDefault();
+                onNavigate('/sources');
+              }
+            }}
+            className="btn-secondary-glass"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 24px',
+              borderRadius: '9999px',
+              fontSize: '13px',
+              fontWeight: 500,
+              textDecoration: 'none',
+            }}
+          >
+            <span>Inspect Statutory Verification Architecture</span>
+            <ArrowRight size={14} color="#c084fc" />
+          </a>
         </div>
       </section>
 
