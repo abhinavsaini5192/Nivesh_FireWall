@@ -1,0 +1,264 @@
+/**
+ * Nivesh Firewall Landing Page Styles
+ * Dark cyber-minimalist aesthetic matching the violet dot-matrix earth and starfield.
+ */
+
+:root {
+  --ink: #ffffff;
+  --ink-muted: #ededed;
+  --panel: #181818;
+  --white-btn: #fdfdfd;
+  --btn-ink: #050505;
+  --glass-fill: rgba(0, 0, 0, 0.78);
+  --glass-line: rgba(255, 255, 255, 0.09);
+  --purple-glow: #a855f7;
+  --purple-light: #c084fc;
+}
+
+/* Landing Page Container */
+.landing-root {
+  background-color: #000000;
+  color: var(--ink);
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow-x: hidden;
+  min-height: 100vh;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Video and Canvas Layers */
+.hero-media-container {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.video-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.88;
+  filter: saturate(1.15) contrast(1.1);
+}
+
+/* Procedural globe canvas layer matching the violet dot-matrix earth and starfield */
+.procedural-globe-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  mix-blend-mode: screen;
+  opacity: 0.95;
+}
+
+.hero-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.15) 0%, rgba(0, 0, 0, 0.65) 65%, #000000 100%),
+              linear-gradient(to bottom, rgba(0, 0, 0, 0.6) 0%, transparent 25%, transparent 75%, #000000 100%);
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Staggered Line entrance masks */
+.ln {
+  display: block;
+  overflow: hidden;
+  line-height: 1.08;
+}
+
+.ln-i {
+  display: inline-block;
+  transform: translateY(115%);
+  opacity: 0;
+  animation: lineReveal 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.ln:nth-child(1) .ln-i {
+  animation-delay: 0.25s;
+}
+
+.ln:nth-child(2) .ln-i {
+  animation-delay: 0.42s;
+}
+
+@keyframes lineReveal {
+  0% {
+    transform: translateY(115%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.fade-in-delayed {
+  opacity: 0;
+  transform: translateY(16px);
+  animation: fadeInSubtle 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.delay-sub {
+  animation-delay: 0.65s;
+}
+
+.delay-cta {
+  animation-delay: 0.85s;
+}
+
+.delay-nav {
+  animation-delay: 0.1s;
+}
+
+@keyframes fadeInSubtle {
+  0% {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Navigation Glass */
+.nav-glass {
+  background: var(--glass-fill);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-line);
+}
+
+.btn-secondary-glass {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--ink);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.btn-secondary-glass:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.28);
+  transform: translateY(-1px);
+}
+
+.btn-primary-white {
+  background: var(--white-btn);
+  color: var(--btn-ink);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.btn-primary-white:hover {
+  background: #ffffff;
+  box-shadow: 0 0 24px rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+/* Card Glass */
+.card-glass {
+  background: rgba(18, 18, 18, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.card-glass:hover {
+  border-color: rgba(192, 132, 252, 0.35);
+  transform: translateY(-2px);
+}
+
+/* Pulse indicator */
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--purple-glow);
+  box-shadow: 0 0 8px var(--purple-glow);
+  animation: pulseGlow 2.5s infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.75;
+  }
+}
+
+/* Responsive Grid Utilities */
+.landing-content-wrap {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.section-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  background: rgba(168, 85, 247, 0.1);
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  color: var(--purple-light);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .ln-i, .fade-in-delayed {
+    animation: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+  .pulse-dot {
+    animation: none !important;
+  }
+}
+
+/* Responsive Navbar Rules */
+@media (max-width: 960px) {
+  .desktop-nav-links {
+    display: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .desktop-actions {
+    display: none !important;
+  }
+}
+
+@media (min-width: 961px) {
+  .mobile-menu-toggle {
+    display: none !important;
+  }
+}

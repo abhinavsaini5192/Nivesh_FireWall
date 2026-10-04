@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Menu, X, Terminal, Cpu } from 'lucide-react';
+import { Shield, Menu, X, Terminal, Cpu, Globe } from 'lucide-react';
 import type { ProtectionSystemStatus } from '../../types/firewall';
 import { ProtectionStatus } from '../status/ProtectionStatus';
 import { IconButton } from '../common/IconButton';
@@ -34,8 +34,18 @@ export const Header: React.FC<HeaderProps> = ({
         zIndex: 40,
       }}
     >
-      {/* Brand & Identity */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+      {/* Brand & Identity (links to Landing Page) */}
+      <a
+        href="#landing"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--space-3)',
+          textDecoration: 'none',
+          color: 'inherit',
+        }}
+        title="View Nivesh Landing Page"
+      >
         <div
           style={{
             width: '28px',
@@ -92,10 +102,34 @@ export const Header: React.FC<HeaderProps> = ({
           </span>
 
         </div>
-      </div>
+      </a>
 
       {/* Right Controls: Protection Status & Session */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+        {/* Landing Page Overview Link */}
+        <a
+          href="#landing"
+          style={{
+            display: 'none',
+            alignItems: 'center',
+            gap: '5px',
+            fontSize: '11px',
+            fontFamily: 'var(--font-mono)',
+            color: 'var(--color-text-muted)',
+            backgroundColor: 'var(--color-bg-subtle)',
+            padding: '2px 8px',
+            borderRadius: 'var(--radius-xs)',
+            border: '1px solid var(--color-border-subtle)',
+            textDecoration: 'none',
+            cursor: 'pointer',
+          }}
+          className="desktop-hint"
+          title="Return to Product Landing Page"
+        >
+          <Globe size={11} color="var(--color-accent)" />
+          <span>Overview</span>
+        </a>
+
         {/* Environment Tag */}
         <div
           style={{

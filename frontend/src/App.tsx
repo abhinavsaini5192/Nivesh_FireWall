@@ -14,11 +14,17 @@ import { ProtectView } from './views/ProtectView';
 import { ActivityView } from './views/ActivityView';
 import { ThreatIntelligenceView } from './views/ThreatIntelligenceView';
 import { SettingsView } from './views/SettingsView';
+import { LandingPage } from './landing';
 import './styles/index.css';
 
 const getAnalysisIdFromHash = (hash: string): string | null => {
   const match = hash.match(/(?:id=|analysis\/)([a-zA-Z0-9_-]+)/);
   return match ? match[1] : null;
+};
+
+const isLandingHash = (hash: string): boolean => {
+  const clean = hash.replace('#', '').split('?')[0].toLowerCase();
+  return ['landing', 'home', 'how-it-works', 'features', 'sources', 'extension', 'about'].includes(clean);
 };
 
 const getTabFromHash = (hash: string): NavTabId => {
@@ -36,6 +42,14 @@ function navigateHash(hash: string): void {
 }
 
 export const App: React.FC = () => {
+  // Landing Page vs Core Console Routing State
+  const [isLanding, setIsLanding] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return isLandingHash(window.location.hash) || window.location.pathname === '/landing';
+    }
+    return false;
+  });
+
   // Navigation & Routing State
   const [activeTab, setActiveTab] = useState<NavTabId>(() => {
     if (typeof window !== 'undefined') {
@@ -102,27 +116,34 @@ export const App: React.FC = () => {
 
     // 3. Hash Change Listener
     const handleHashChange = () => {
-      const targetTab = getTabFromHash(window.location.hash);
-      setActiveTab(targetTab);
+      const isLandingNow =
+        isLandingHash(window.location.hash) ||
+        (typeof window !== 'undefined' && window.location.pathname === '/landing');
+      setIsLanding(isLandingNow);
 
-      const targetId = getAnalysisIdFromHash(window.location.hash);
-      if (targetId && (!currentAnalysis || currentAnalysis.analysis_id !== targetId)) {
-        const reqId = ++activeRequestIdRef.current;
-        setAnalysisState('ANALYZING');
-        apiClient.getAnalysis(targetId)
-          .then((res) => {
-            if (isMounted && reqId === activeRequestIdRef.current) {
-              setCurrentAnalysis(res);
-              setAnalysisState(res.pipeline_status === 'PARTIAL' ? 'PARTIAL_RESULT' : 'SUCCESS');
-            }
-          })
-          .catch((err) => {
-            if (isMounted && reqId === activeRequestIdRef.current) {
-              setAnalysisError(err instanceof FirewallClientError ? err.message : 'Unable to retrieve analysis.');
-              setAnalysisErrorCode(err instanceof FirewallClientError ? err.errorCode : 'ANALYSIS_NOT_FOUND');
-              setAnalysisState('ERROR');
-            }
-          });
+      if (!isLandingNow) {
+        const targetTab = getTabFromHash(window.location.hash);
+        setActiveTab(targetTab);
+
+        const targetId = getAnalysisIdFromHash(window.location.hash);
+        if (targetId && (!currentAnalysis || currentAnalysis.analysis_id !== targetId)) {
+          const reqId = ++activeRequestIdRef.current;
+          setAnalysisState('ANALYZING');
+          apiClient.getAnalysis(targetId)
+            .then((res) => {
+              if (isMounted && reqId === activeRequestIdRef.current) {
+                setCurrentAnalysis(res);
+                setAnalysisState(res.pipeline_status === 'PARTIAL' ? 'PARTIAL_RESULT' : 'SUCCESS');
+              }
+            })
+            .catch((err) => {
+              if (isMounted && reqId === activeRequestIdRef.current) {
+                setAnalysisError(err instanceof FirewallClientError ? err.message : 'Unable to retrieve analysis.');
+                setAnalysisErrorCode(err instanceof FirewallClientError ? err.errorCode : 'ANALYSIS_NOT_FOUND');
+                setAnalysisState('ERROR');
+              }
+            });
+        }
       }
     };
 
@@ -270,6 +291,18 @@ export const App: React.FC = () => {
         );
     }
   };
+
+  if (isLanding) {
+    return (
+      <LandingPage
+        onOpenFirewall={() => {
+          setIsLanding(false);
+          setActiveTab('protect');
+          navigateHash('protect');
+        }}
+      />
+    );
+  }
 
   return (
     <AppShell
