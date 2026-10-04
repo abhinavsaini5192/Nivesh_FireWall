@@ -14,10 +14,14 @@ export interface FrontendConfig {
   isProduction: boolean;
 }
 
+const isProduction = typeof import.meta !== 'undefined' && Boolean(import.meta.env && import.meta.env.PROD);
+const envApiUrl =
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) || '';
+
 export const config: FrontendConfig = {
   apiBaseUrl: (
-    (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) ||
-    'http://localhost:8000'
+    envApiUrl ||
+    (isProduction ? '' : 'http://localhost:8000')
   ).replace(/\/+$/, ''),
   appName: (
     (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_APP_NAME) ||
@@ -31,7 +35,5 @@ export const config: FrontendConfig = {
     (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.MODE) ||
     'development'
   ),
-  isProduction: (
-    typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.PROD === true
-  ),
+  isProduction,
 };

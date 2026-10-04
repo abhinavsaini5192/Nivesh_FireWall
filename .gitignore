@@ -25,6 +25,7 @@ frontend/.env
 frontend/.env.*
 frontend/.env.local
 !frontend/.env.example
+!frontend/.env.production.example
 
 extension/dist/
 extension/node_modules/
@@ -32,6 +33,7 @@ extension/.env
 extension/.env.*
 extension/.env.local
 !extension/.env.example
+!extension/.env.production.example
 
 # Local databases and logs
 *.db

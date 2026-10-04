@@ -215,9 +215,18 @@ app = FastAPI(
 )
 
 # Enable CORS with centralized environment-aware origin management
+class DynamicCORSMiddleware(CORSMiddleware):
+    """CORS middleware dynamically evaluating allowed origins against runtime Settings."""
+
+    def is_allowed_origin(self, origin: str) -> bool:
+        current_settings = get_settings()
+        allowed = current_settings.get_cors_origins()
+        return origin in allowed
+
+
 cors_origins = settings.get_cors_origins()
 app.add_middleware(
-    CORSMiddleware,
+    DynamicCORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],

@@ -40,7 +40,7 @@ export class FirewallApiClient {
 
   constructor(baseUrl?: string) {
     // Resolve base URL from explicit argument or centralized environment configuration
-    this.baseUrl = (baseUrl || config.apiBaseUrl).replace(/\/+$/, '');
+    this.baseUrl = (baseUrl !== undefined ? baseUrl : config.apiBaseUrl).replace(/\/+$/, '');
   }
 
   public getBaseUrl(): string {
