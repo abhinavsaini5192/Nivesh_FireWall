@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
-describe('Popup UI Controller & Security Controls (Phase 13.1 & 13.2 Sections 6, 21, 24, 25, 28, 32)', () => {
+describe('Popup UI Controller & Security Controls (Phase 13.1, 13.2 & Phase 17.1)', () => {
   const htmlPath = path.resolve(__dirname, '../src/popup/index.html');
   const htmlContent = fs.readFileSync(htmlPath, 'utf-8');
 
@@ -11,6 +11,8 @@ describe('Popup UI Controller & Security Controls (Phase 13.1 & 13.2 Sections 6,
     document.body.innerHTML = htmlContent;
     vi.restoreAllMocks();
   });
+
+  // --- Phase 13 Baseline Tests (Preserved) ---
 
   it('renders required UI structure with brand, connection pill, context card, and 3 capture mode triggers', () => {
     expect(document.getElementById('connection-pill')).not.toBeNull();
@@ -84,5 +86,89 @@ describe('Popup UI Controller & Security Controls (Phase 13.1 & 13.2 Sections 6,
   it('includes zero-credential collection privacy notice in footer', () => {
     const footer = document.querySelector('footer')!;
     expect(footer.textContent).toContain('Zero credential collection');
+  });
+
+  // --- Phase 17.1 Production UX & Polish Tests ---
+
+  it('communicates Nivesh brand identity and Financial Content Protection descriptor', () => {
+    const brandName = document.querySelector('.brand-name');
+    const brandDescriptor = document.querySelector('.brand-descriptor');
+
+    expect(brandName).not.toBeNull();
+    expect(brandName?.textContent).toBe('NIVESH FIREWALL');
+
+    expect(brandDescriptor).not.toBeNull();
+    expect(brandDescriptor?.textContent).toBe('Financial Content Protection');
+  });
+
+  it('presents prominent "Analyze This Page" hero action button in ready view', () => {
+    const btnScanPage = document.getElementById('btn-scan-page') as HTMLButtonElement;
+    expect(btnScanPage).not.toBeNull();
+    expect(btnScanPage.textContent?.trim()).toContain('Analyze This Page');
+    expect(btnScanPage.classList.contains('btn-hero')).toBe(true);
+
+    const emptyIntro = document.querySelector('.empty-state-lead');
+    expect(emptyIntro?.textContent).toContain("This page hasn't been checked yet.");
+  });
+
+  it('renders pipeline stages list in analyzing view corresponding to firewall engines', () => {
+    const viewAnalyzing = document.getElementById('view-analyzing')!;
+    const stagesList = viewAnalyzing.querySelector('.pipeline-stages-list');
+    expect(stagesList).not.toBeNull();
+
+    const stageItems = viewAnalyzing.querySelectorAll('.pipeline-stage-item');
+    expect(stageItems.length).toBe(4);
+
+    const stagesText = Array.from(stageItems).map((item) => item.textContent || '').join(' ');
+    expect(stagesText).toContain('Claims');
+    expect(stagesText).toContain('Actions');
+    expect(stagesText).toContain('Evidence');
+    expect(stagesText).toContain('Policy');
+  });
+
+  it('renders "Open Full Firewall" handoff action and rescan button in result view', () => {
+    const btnOpenApp = document.getElementById('btn-open-app') as HTMLButtonElement;
+    expect(btnOpenApp).not.toBeNull();
+    expect(btnOpenApp.textContent).toContain('Open Full Firewall');
+    expect(btnOpenApp.classList.contains('btn-hero-handoff')).toBe(true);
+
+    const btnRescan = document.getElementById('btn-rescan') as HTMLButtonElement;
+    expect(btnRescan).not.toBeNull();
+    expect(btnRescan.textContent).toContain('Rescan');
+
+    const linkWebApp = document.getElementById('link-web-app') as HTMLAnchorElement;
+    expect(linkWebApp).not.toBeNull();
+    expect(linkWebApp.textContent).toContain('Open Firewall');
+  });
+
+  it('provides safe error banner with retry trigger and zero stacktrace leakage', () => {
+    const errorBox = document.getElementById('error-box')!;
+    const btnRetryError = document.getElementById('btn-retry-error');
+
+    expect(errorBox).not.toBeNull();
+    expect(btnRetryError).not.toBeNull();
+
+    // Verify error container does not expose raw stack trace
+    const errorText = document.getElementById('error-message-text')!;
+    errorText.textContent = 'Nivesh Firewall is temporarily unavailable.';
+    expect(errorBox.textContent).not.toContain('Traceback');
+    expect(errorBox.textContent).not.toContain('at Object.');
+    expect(errorBox.textContent).toContain('Nivesh Firewall is temporarily unavailable.');
+  });
+
+  it('verifies absence of fake numeric security scores or 100% protection claims', () => {
+    const entireContent = document.body.textContent || '';
+    expect(entireContent).not.toMatch(/\d{2,3}%\s*protected/i);
+    expect(entireContent).not.toMatch(/security\s*score\s*:\s*\d+/i);
+    expect(entireContent).not.toMatch(/100%\s*safe/i);
+  });
+
+  it('includes accessibility attributes including ARIA roles, live regions, and labels', () => {
+    expect(document.querySelector('header[role="banner"]')).not.toBeNull();
+    expect(document.querySelector('footer[role="contentinfo"]')).not.toBeNull();
+    expect(document.getElementById('connection-pill')?.getAttribute('role')).toBe('status');
+    expect(document.getElementById('error-box')?.getAttribute('role')).toBe('alert');
+    expect(document.getElementById('view-analyzing')?.getAttribute('aria-live')).toBe('polite');
+    expect(document.getElementById('btn-scan-page')?.getAttribute('aria-label')).toBe('Analyze Current Page');
   });
 });

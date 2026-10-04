@@ -9,65 +9,123 @@
 <body>
   <div class="popup-container">
     <!-- Header -->
-    <header class="popup-header">
+    <header class="popup-header" role="banner">
       <div class="brand">
-        <div class="brand-icon">N</div>
+        <div class="brand-icon" aria-hidden="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
         <div class="brand-text">
           <span class="brand-name">NIVESH FIREWALL</span>
-          <span class="brand-badge">EXTENSION v1.0</span>
+          <span class="brand-badge brand-descriptor">Financial Content Protection</span>
         </div>
       </div>
-      <div class="connection-pill" id="connection-pill" title="Live status of Nivesh Firewall service">
-        <span class="dot connecting" id="connection-dot"></span>
+      <div class="connection-pill" id="connection-pill" role="status" aria-live="polite" title="Nivesh Firewall Service Status">
+        <span class="dot connecting" id="connection-dot" aria-hidden="true"></span>
         <span id="connection-text">Connecting</span>
       </div>
     </header>
 
     <!-- Active Tab Context Card -->
-    <div class="card" id="page-context-card">
-      <div class="card-title">Current Browsing Context</div>
+    <section class="card" id="page-context-card" aria-label="Current Browsing Context">
+      <div class="card-header-row">
+        <span class="card-title">Current Page</span>
+        <span class="page-security-badge" id="page-security-badge">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          <span id="page-status-label">Active Context</span>
+        </span>
+      </div>
       <div class="target-domain" id="target-domain">Loading active tab...</div>
       <div class="target-url" id="target-url"></div>
-    </div>
+    </section>
 
     <!-- Unsupported Page Warning Banner (Hidden by default) -->
-    <div class="warning-box" id="unsupported-box" style="display: none;">
-      This page cannot be analyzed by the extension.
+    <div class="warning-box" id="unsupported-box" role="alert" style="display: none;">
+      <div class="box-icon" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </div>
+      <div class="box-content">
+        <strong>Protected Browser Surface</strong>
+        <span>This page cannot be analyzed by the extension.</span>
+      </div>
     </div>
 
-    <!-- Error Banner (Hidden by default) -->
-    <div class="error-box" id="error-box" style="display: none;"></div>
+    <!-- Error Banner with Retry (Hidden by default) -->
+    <div class="error-box" id="error-box" role="alert" style="display: none;">
+      <div class="error-box-body">
+        <div class="box-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="15" y1="9" x2="9" y2="15"/>
+            <line x1="9" y1="9" x2="15" y2="15"/>
+          </svg>
+        </div>
+        <div class="error-message-text" id="error-message-text"></div>
+      </div>
+      <button id="btn-retry-error" class="btn btn-retry" style="display: none;" aria-label="Retry operation">
+        Retry
+      </button>
+    </div>
 
     <!-- Main Content Area: State-Dependent -->
-    <div id="content-container">
-      <!-- 1. Ready State: Capture Controls -->
+    <main id="content-container">
+      <!-- 1. Ready State: Primary & Secondary Capture Controls -->
       <div id="view-ready" class="state-box">
-        <p style="color: var(--color-text-secondary); font-size: 12px; margin-bottom: 8px;">
-          Choose what content to inspect before taking consequential action:
-        </p>
+        <div class="empty-state-intro">
+          <p class="empty-state-lead">This page hasn't been checked yet.</p>
+          <span class="empty-state-sub">Inspect financial claims, transactions, and credentials before taking consequential action.</span>
+        </div>
+
         <div class="capture-actions" id="capture-actions">
-          <div>
-            <button id="btn-scan-selection" class="btn btn-primary" style="width: 100%;">
-              Analyze Selected Text
+          <!-- Primary Obvious Action: Analyze This Page -->
+          <button id="btn-scan-page" class="btn btn-hero" aria-label="Analyze Current Page">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <path d="m9 12 2 2 4-4"/>
+            </svg>
+            Analyze This Page
+          </button>
+
+          <!-- Secondary Triggers -->
+          <div class="secondary-actions-group">
+            <div class="selection-trigger-wrapper">
+              <button id="btn-scan-selection" class="btn btn-secondary btn-compact" aria-label="Analyze Selected Text">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <polyline points="4 7 4 4 20 4 20 7"/>
+                  <line x1="9" y1="20" x2="15" y2="20"/>
+                  <line x1="12" y1="4" x2="12" y2="20"/>
+                </svg>
+                Analyze Selected Text
+              </button>
+              <span id="selection-hint" class="hint-text" style="display: none;">
+                Select text on the page first.
+              </span>
+            </div>
+
+            <button id="btn-scan-url" class="btn btn-secondary btn-compact" aria-label="Analyze Current URL">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+              </svg>
+              Analyze Page URL
             </button>
-            <span id="selection-hint" class="hint-text" style="display: none; text-align: center;">
-              Select text on the page first.
-            </span>
           </div>
-          <button id="btn-scan-page" class="btn btn-secondary">
-            Analyze Current Page
-          </button>
-          <button id="btn-scan-url" class="btn btn-secondary">
-            Analyze Current URL
-          </button>
         </div>
       </div>
 
-      <!-- 2. Preview State (Phase 13.2 Section 25) -->
-      <div id="view-preview" class="state-box" style="display: none; align-items: stretch; text-align: left;">
+      <!-- 2. Preview State -->
+      <div id="view-preview" class="state-box" style="display: none;">
         <div class="preview-card">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 11px; font-weight: 600; color: var(--color-text-primary);">Ready to Analyze</span>
+          <div class="preview-header">
+            <span class="preview-title">Ready to Analyze</span>
             <span id="preview-badge" class="badge-source">Selected Text</span>
           </div>
           <blockquote id="preview-snippet" class="preview-snippet"></blockquote>
@@ -86,41 +144,94 @@
         </div>
       </div>
 
-      <!-- 3. Analyzing State -->
-      <div id="view-analyzing" class="state-box" style="display: none;">
-        <div class="spinner"></div>
-        <strong style="color: var(--color-text-primary);">Analyzing Content...</strong>
-        <p style="color: var(--color-text-muted); font-size: 11px;">
-          Evaluating claims, identity, threat paths, and collective fingerprints across Firewall pipeline.
-        </p>
-        <button id="btn-cancel-analyzing" class="btn-link" style="margin-top: 8px;">Cancel</button>
-      </div>
-
-      <!-- 4. Result State -->
-      <div id="view-result" style="display: none; flex-direction: column; gap: 10px;">
-        <div class="decision-card" id="decision-card">
-          <div style="display: flex; align-items: center; justify-content: space-between;">
-            <span class="decision-badge" id="decision-badge">PAUSE</span>
-            <span style="font-size: 10px; font-family: var(--font-mono); color: var(--color-text-muted);" id="analysis-id-badge"></span>
+      <!-- 3. Analyzing State: Pipeline Stage Progress -->
+      <div id="view-analyzing" class="state-box" style="display: none;" aria-live="polite">
+        <div class="analyzing-header">
+          <div class="spinner" aria-hidden="true"></div>
+          <div class="analyzing-text-wrap">
+            <strong class="analyzing-title">Inspecting this page...</strong>
+            <span class="analyzing-subtitle">Nivesh Firewall Intelligence Pipeline</span>
           </div>
-          <p class="decision-reason" id="decision-reason"></p>
-          <div id="result-signals" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;"></div>
         </div>
 
-        <button id="btn-open-app" class="btn btn-secondary">
-          Open Full Intelligence in Web App ↗
-        </button>
+        <!-- Progress Stages Corresponding to Active Pipeline -->
+        <div class="pipeline-stages-list" aria-label="Pipeline Stages">
+          <div class="pipeline-stage-item active">
+            <span class="stage-dot"></span>
+            <span class="stage-label">Claims</span>
+            <span class="stage-desc">Financial targets & commitments</span>
+          </div>
+          <div class="pipeline-stage-item active">
+            <span class="stage-dot"></span>
+            <span class="stage-label">Actions</span>
+            <span class="stage-desc">Urgency & transfer vectors</span>
+          </div>
+          <div class="pipeline-stage-item">
+            <span class="stage-dot"></span>
+            <span class="stage-label">Evidence</span>
+            <span class="stage-desc">Regulatory verification (SEBI/RBI/NSE)</span>
+          </div>
+          <div class="pipeline-stage-item">
+            <span class="stage-dot"></span>
+            <span class="stage-label">Policy</span>
+            <span class="stage-desc">Enforcement decision & safety guidance</span>
+          </div>
+        </div>
 
-        <button id="btn-rescan" class="btn-link" style="text-align: center; margin-top: 4px;">
-          Rescan this content
+        <button id="btn-cancel-analyzing" class="btn-link" style="margin-top: 6px;" aria-label="Cancel analysis">
+          Cancel Analysis
         </button>
       </div>
-    </div>
+
+      <!-- 4. Result State: Executive Decision & Key Signals -->
+      <div id="view-result" class="state-box result-view-container" style="display: none;">
+        <div class="decision-card" id="decision-card" role="region" aria-label="Firewall Decision">
+          <div class="decision-card-top">
+            <div class="decision-badge-wrap">
+              <span class="decision-badge" id="decision-badge">ALLOW</span>
+              <span class="decision-substatus" id="decision-substatus">Protected</span>
+            </div>
+            <span class="analysis-id-badge" id="analysis-id-badge">#ANA</span>
+          </div>
+
+          <p class="decision-reason" id="decision-reason"></p>
+
+          <!-- Key Real Signals from Pipeline Engine -->
+          <div class="result-signals-container" id="result-signals" aria-label="Protection Signals"></div>
+        </div>
+
+        <!-- Full Firewall Handoff -->
+        <button id="btn-open-app" class="btn btn-hero-handoff" aria-label="Open Full Firewall in Web Application">
+          <span>Open Full Firewall</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <polyline points="15 3 21 3 21 9"/>
+            <line x1="10" y1="14" x2="21" y2="3"/>
+          </svg>
+        </button>
+
+        <button id="btn-rescan" class="btn-link rescan-link" aria-label="Rescan this content">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+            <path d="M21 3v5h-5"/>
+            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+            <path d="M3 21v-5h5"/>
+          </svg>
+          Analyze Another Content / Rescan
+        </button>
+      </div>
+    </main>
 
     <!-- Footer Privacy Note -->
-    <footer style="margin-top: auto; padding-top: 8px; border-top: 1px solid var(--color-border-subtle); display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: var(--color-text-muted);">
-      <span>Zero credential collection</span>
-      <a href="#" id="link-web-app" style="color: var(--color-text-muted); text-decoration: none;">Nivesh Core ↗</a>
+    <footer class="popup-footer" role="contentinfo">
+      <div class="footer-privacy-wrap">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        <span>Zero credential collection</span>
+      </div>
+      <a href="#" id="link-web-app" class="footer-link" aria-label="Open Nivesh Firewall web app">Open Firewall ↗</a>
     </footer>
   </div>
 
