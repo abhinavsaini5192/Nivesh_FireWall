@@ -59,6 +59,15 @@ function runSmokeTest(): void {
   }
   console.log(`[PASS] Permission minimization confirmed: [${declaredPerms.join(', ')}]`);
 
+  // 6. Verify Icons
+  for (const size of [16, 48, 128]) {
+    const iconPath = path.join(distDir, `icons/icon${size}.png`);
+    if (!fs.existsSync(iconPath)) {
+      throw new Error(`Missing icon${size}.png in dist/icons/`);
+    }
+  }
+  console.log(`[PASS] Extension icons verified (16x16, 48x48, 128x128)`);
+
   console.log('--- Nivesh Extension Smoke Test Passed Successfully ---');
 }
 

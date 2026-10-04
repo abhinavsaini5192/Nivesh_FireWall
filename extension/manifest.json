@@ -2,7 +2,12 @@
   "manifest_version": 3,
   "name": "Nivesh Firewall",
   "version": "1.0.0",
-  "description": "Real-time financial content protection and pre-action intervention firewall.",
+  "description": "Inspect financial content and verify claims before consequential actions with real-time pre-action safety checks.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "permissions": [
     "activeTab",
     "storage",
@@ -18,7 +23,12 @@
   },
   "action": {
     "default_popup": "popup/index.html",
-    "default_title": "Nivesh Firewall Protection"
+    "default_title": "Nivesh Firewall Protection",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
   "content_scripts": [
     {

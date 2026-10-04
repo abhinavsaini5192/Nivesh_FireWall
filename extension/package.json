@@ -6,6 +6,9 @@
   "type": "module",
   "scripts": {
     "build": "tsc -b && vite build",
+    "package": "node scripts/package.js",
+    "audit": "node scripts/audit-dist.js",
+    "generate-icons": "node scripts/generate-icons.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:smoke": "vite-node test/smoke.ts",

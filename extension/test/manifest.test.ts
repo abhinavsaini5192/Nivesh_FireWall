@@ -54,10 +54,21 @@ describe('Manifest V3 Architecture & Permission Model (Phase 13.1 Sections 3, 18
     expect(manifest.background.type).toBe('module');
   });
 
-  it('declares popup UI action', () => {
+  it('declares popup UI action and default icons', () => {
     expect(manifest.action).toBeDefined();
     expect(manifest.action.default_popup).toBe('popup/index.html');
     expect(manifest.action.default_title).toBe('Nivesh Firewall Protection');
+    expect(manifest.action.default_icon).toBeDefined();
+    expect(manifest.action.default_icon['16']).toBe('icons/icon16.png');
+    expect(manifest.action.default_icon['48']).toBe('icons/icon48.png');
+    expect(manifest.action.default_icon['128']).toBe('icons/icon128.png');
+  });
+
+  it('declares 16x16, 48x48, and 128x128 extension icons', () => {
+    expect(manifest.icons).toBeDefined();
+    expect(manifest.icons['16']).toBe('icons/icon16.png');
+    expect(manifest.icons['48']).toBe('icons/icon48.png');
+    expect(manifest.icons['128']).toBe('icons/icon128.png');
   });
 
   it('declares content script executing at document_idle', () => {

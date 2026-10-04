@@ -39,6 +39,13 @@ export default defineConfig({
           fs.copyFileSync(manifestSrc, manifestDest);
         }
 
+        // Copy extension icons to dist/icons
+        const iconsSrc = resolve(import.meta.dirname, 'icons');
+        const iconsDest = resolve(import.meta.dirname, 'dist/icons');
+        if (fs.existsSync(iconsSrc)) {
+          fs.cpSync(iconsSrc, iconsDest, { recursive: true });
+        }
+
         // Relocate popup HTML to dist/popup/index.html to match manifest action.default_popup
         const popupSrc = resolve(import.meta.dirname, 'dist/src/popup/index.html');
         const popupDest = resolve(import.meta.dirname, 'dist/popup/index.html');
