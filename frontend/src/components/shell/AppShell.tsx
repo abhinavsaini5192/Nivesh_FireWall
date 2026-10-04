@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { ProtectionSystemStatus } from '../../types/firewall';
 import { Header } from './Header';
 import { Navigation, type NavTabId } from './Navigation';
+import { NiveshBackground } from '../background';
 
 export interface AppShellProps {
   children: React.ReactNode;
@@ -33,8 +34,13 @@ export const AppShell: React.FC<AppShellProps> = ({
         display: 'flex',
         flexDirection: 'column',
         backgroundColor: 'var(--color-bg-canvas)',
+        position: 'relative',
+        isolation: 'isolate',
       }}
     >
+      {/* Dynamic Nivesh Atmospheric Wave Background Layer */}
+      <NiveshBackground />
+
       {/* Top Header */}
       <Header
         systemStatus={systemStatus}
@@ -49,6 +55,8 @@ export const AppShell: React.FC<AppShellProps> = ({
           display: 'flex',
           flex: 1,
           width: '100%',
+          position: 'relative',
+          zIndex: 1,
         }}
       >
         {/* Desktop Sidebar Navigation */}
@@ -64,6 +72,8 @@ export const AppShell: React.FC<AppShellProps> = ({
             flexDirection: 'column',
             justifyContent: 'space-between',
             flexShrink: 0,
+            position: 'relative',
+            zIndex: 10,
           }}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
